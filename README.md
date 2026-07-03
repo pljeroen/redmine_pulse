@@ -227,6 +227,13 @@ competitor.
 - `GET /pulse/projects/:id.json` — one project's full breakdown plus its history
   series and forward milestones.
 
+The exact response shapes are published as JSON Schemas —
+[`portfolio.json`](docs/specs/redmine-pulse/contracts/schemas/portfolio.json) and
+[`project.json`](docs/specs/redmine-pulse/contracts/schemas/project.json) — with
+validated example payloads under
+[`contracts/seeds/`](docs/specs/redmine-pulse/contracts/seeds/). Write your consumer
+against these.
+
 Authentication uses the standard Redmine REST mechanism: the admin **Enable REST
 web service** setting must be on, and the request carries an API key
 (`X-Redmine-API-Key` header, `key` param, or HTTP Basic). Both endpoints are

@@ -1,8 +1,9 @@
-# redmine_pulse
+# Redmine Pulse
 
-A **portfolio / project-health cockpit** for Redmine 6.x — it answers *"which
-project deserves attention next, and why?"* with real-data-grounded health
-scoring, multi-lens prioritisation, and a clean read API.
+A **portfolio / project-health cockpit** for Redmine 6.x (plugin id
+`redmine_pulse`) — it answers *"which project deserves attention next, and why?"*
+with real-data-grounded health scoring, multi-lens prioritisation, and a clean
+read API. Ships in **English and Dutch**.
 
 [![CI](https://github.com/pljeroen/redmine_pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/pljeroen/redmine_pulse/actions/workflows/ci.yml)
 [![License: GPL-2.0-only](https://img.shields.io/badge/license-GPL--2.0--only-green)](LICENSE)
@@ -76,7 +77,7 @@ table, one fail-silent hook.
 From your Redmine root:
 
 ```sh
-cd redmine/plugins
+cd plugins
 git clone https://github.com/pljeroen/redmine_pulse.git redmine_pulse
 cd ..
 bundle install
@@ -98,7 +99,7 @@ Then restart your application server (Passenger, Puma, etc.).
 From your Redmine root:
 
 ```sh
-cd redmine/plugins/redmine_pulse
+cd plugins/redmine_pulse
 git pull
 cd ../..
 bundle install
@@ -146,7 +147,9 @@ read permission to the roles that should see it:
    and permissions*, and for each role that should use the cockpit, grant
    **View pulse** (`view_pulse`) under the *Pulse* group.
 3. Visit **`/pulse`** for the portfolio overview, or open the **Pulse** tab on
-   any Pulse-enabled project for its health panel.
+   any Pulse-enabled project for its health panel. The panel deep-links to
+   Redmine's built-in **Gantt** for that project when you have permission to see
+   it (`view_gantt`).
 
 **A fresh install shows nothing — that is expected, not a fault.** Until you
 enable the **Pulse** module on at least one project, `/pulse` renders an empty
@@ -171,11 +174,17 @@ Pulse ships with sane defaults and works out of the box. Tune it under
 | **RAG green / amber thresholds** | Score at/above green → green; at/above amber → amber; below → red. | 67 / 34 |
 | **Horizons** (`h_stale`, `h_risk`, `h_blocked`) | The day/count horizons that normalise the staleness, risk, and blocked signals to 0–1. | 180 / 50 / 20 |
 | **Activity window (days)** | The trailing window used for the momentum signal and the sparkline. | 30 |
+| **Momentum shape** (`momentum_activity_half`, `momentum_direction_bias`) | Tunes the momentum signal: the activity level that reads as neutral (0.5), and how much net issue completion nudges it up or down. | 8 · 0.15 |
+| **On-track threshold** | When a project's worst signal is at or above this (0–1), its main concern reads *"On track"* instead of naming a signal. | 0.5 |
+| **Freshness cap (minutes)** | Auto-refreshes a cached snapshot older than this on the next view, so *"computed X ago"* never exceeds it. `0` = only recompute when the underlying data changes. | 60 |
 
 Mappings that depend on your custom fields or trackers (effort field, risk
 trackers, blocked status) are **optional enrichment** — leave them blank and the
 affected signal is gracefully omitted, never faked. Out-of-range values are
-rejected and reported, not silently saved.
+rejected and reported, not silently saved. When the **effort field** is left
+blank, the settings page *suggests* the numeric custom fields whose name looks
+like effort or story points — it only suggests; nothing is applied until you
+enter an id, so scoring never changes on you silently.
 
 ## The scoring model
 
@@ -243,21 +252,27 @@ meaning).
 ## Compatibility
 
 The [GitHub Actions CI workflow](.github/workflows/ci.yml) defines and exercises
-this matrix on every push and pull request:
+this matrix on every push to `master` (and on manual dispatch):
 
 | Redmine   | Ruby 3.2          | Ruby 3.4          |
 | --------- | ----------------- | ----------------- |
 | **6.1.x** | PostgreSQL 16 · MySQL 8 | PostgreSQL 16 · MySQL 8 |
 
 Four combinations (Redmine 6.1.x × Ruby 3.2/3.4 × PostgreSQL 16 / MySQL 8) plus a
-fast standalone pure-domain lane.
+fast standalone pure-domain lane. CI is **maintainer-only** — it runs on pushes to
+`master` and manual dispatch, never on pull requests, so a public fork PR triggers
+nothing by design.
 
 **Tested on.** Development verifies the full functional/integration suite against
 **Redmine 6.1.2** on **Ruby 3.4 + PostgreSQL 16** (primary), the pure-domain lane
 on **Ruby 3.2 and 3.4**, and at least one full run against **MySQL 8**. Other
 Redmine 6.x point releases are expected to work but are not yet part of the
 verified envelope — the DOM and asset assumptions are kept defensive and
-fail-silent. Please report what you run it on.
+fail-silent.
+
+**Localisation.** The interface ships in **English and Dutch** (`nl`) — Redmine
+renders Pulse in each viewer's own language, falling back to English for anything a
+locale doesn't translate.
 
 ## How it works
 

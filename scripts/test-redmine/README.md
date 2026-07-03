@@ -37,9 +37,11 @@ Status: **WORKS-WITH-CAVEAT**
 
 - Redmine 6.1.2 (docker.io/library/redmine:6.1.2, Debian 13 trixie, Ruby 3.4)
 - Postgres 16-alpine
-- `rake redmine:plugins:test NAME=redmine_pulse RAILS_ENV=test` ran to completion:
-  `147 runs, 1403 assertions, 1 failure, 0 errors, 0 skips`
-- The 1 failure is the documented load-path caveat (see below).
+- `rake redmine:plugins:test NAME=redmine_pulse RAILS_ENV=test` runs the full
+  functional/integration + domain suite to completion. Expect **0 failures and
+  2 skips** — the 2 skips are the bare-process purity guards described in the
+  caveat below (they are only meaningful in the standalone domain lane). Any other
+  skip or failure is a real signal.
 
 ## Domain unit tests vs. Redmine functional tests — load-path caveat
 
@@ -55,12 +57,15 @@ ruby -Itest -Ilib test/unit/domain/scoring_formula_test.rb
 ```
 
 When Redmine's rake task picks up these tests, they run under Rails' load path.
-**One test explicitly asserts Rails is not loaded** (`DomainPurityTest#test_suite_loads_without_rails_or_redmine`).
-Under `rake redmine:plugins:test` this test FAILS — this is expected and is
-not a harness defect. All other domain tests pass correctly.
+**Two tests assert Rails/Redmine are not loaded** (`DomainPurityTest` and
+`TimelineDomainPurityTest`, `#test_suite_loads_without_rails_or_redmine`). Those
+guards are only meaningful in the standalone domain lane, so under
+`rake redmine:plugins:test` — where Rails is booted first — they **SKIP** rather
+than fail. That is the source of the expected 2 skips; they are verified in the
+standalone lane. All other domain tests pass correctly.
 
-Do NOT modify the domain tests to suppress this failure. The standalone suite
-stays standalone; the Redmine task is for functional tests.
+Do NOT modify the domain tests to force these two guards green under rake. The
+standalone suite stays standalone; the Redmine task is for functional tests.
 
 ### Functional / integration suite (`test/functional/`, `test/integration/`)
 
@@ -77,8 +82,8 @@ rake redmine:plugins:test NAME=redmine_pulse RAILS_ENV=test
 - First line: `require File.expand_path('../../../../test/test_helper', __FILE__)`
   (already wired in `test/test_helper.rb` — just `require 'test_helper'`)
 - The standalone domain suite in `test/unit/domain/` stays untouched.
-- The `DomainPurityTest` failure under `rake redmine:plugins:test` is
-  acceptable as-is (it proves the isolation is real).
+- The `DomainPurityTest` / `TimelineDomainPurityTest` **skip** under
+  `rake redmine:plugins:test` is expected as-is (it proves the isolation is real).
 
 ## First-run prerequisites (handled by up.sh)
 

@@ -2,6 +2,11 @@
 
 **Status:** FROZEN (rev 3.1, 2026-06-20) — passed independent review (all conditions resolved).
 Governs downstream implementation.
+**Note:** this is the frozen v1 *design* specification, kept as a historical design record.
+The shipped plugin has since evolved beyond it (e.g. English + Dutch locales, a Gantt
+deep-link, effort-field suggestions). For current behaviour and configuration, see the
+[README](../../../README.md) and [CHANGELOG](../../../CHANGELOG.md) — those are authoritative
+for the released plugin; this document is not updated feature-by-feature.
 **Post-freeze correction (rev 3.1, operator-approved revision):** §3.1 changeset visibility uses Redmine's
 `:view_changesets` permission (not `browse-repository`) — a Redmine-6.1-reality correction surfaced while
 building the metrics source. Behaviour change: which users' changeset activity feeds the staleness
@@ -293,7 +298,9 @@ all-null values (the key set is preserved per §4.3). **Boundary:** any single s
 
 ### 5.3 Settings (admin)
 - Signal mappings (effort field, risk tracker(s), blocked status **id**); weights; RAG thresholds;
-  activity-window length; horizons (`H_stale`, `H_risk`, `H_blocked`). All validated; defaults ship
+  activity-window length; horizons (`H_stale`, `H_risk`, `H_blocked`); momentum shape
+  (`momentum_activity_half`, `momentum_direction_bias`); the on-track threshold; and the snapshot
+  freshness cap (`snapshot_max_age_minutes`). All validated; defaults ship
   working (DEC-13). A settings change bumps the **settings-version hash** (§6.4) so caches recompute.
 
 Visual encodings (RAG colors, sparklines) are driven by the **real thresholds/data**, never decorative.
@@ -397,8 +404,8 @@ DEC-11):
 ### 6.5 Plugin packaging & compatibility
 Standard Redmine plugin layout (`init.rb`, `app/`, `lib/`, `config/locales/`, `db/migrate/`, `assets/`,
 `test/`). Declares Redmine `>= 6.1`. A documented compatibility matrix + CI against the targeted Redmine
-version on a Redmine-supported Ruby. i18n via `config/locales` (English shipped; structure ready for
-more). Prefers public Redmine APIs over private internals where one exists (`SOFT-COMPAT-FORWARD`).
+version on a Redmine-supported Ruby. i18n via `config/locales` (English and Dutch shipped; structure
+ready for more). Prefers public Redmine APIs over private internals where one exists (`SOFT-COMPAT-FORWARD`).
 
 ---
 

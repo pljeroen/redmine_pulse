@@ -2,9 +2,8 @@
  * Copyright (C) 2026 Jeroen
  *
  * This program is free software: you can redistribute it and/or modify it under
- * the terms of the GNU General Public License (GPL-2.0) as published by the Free
- * Software Foundation, either version 2 of the License, or (at your option) any
- * later version. See the GNU General Public License for more details.
+ * the terms of version 2 of the GNU General Public License (GPL-2.0-only) as
+ * published by the Free Software Foundation. See the GNU GPL v2 for more details.
  *
  * project-list-badge (B2 server-inline, D-PLB-C04). This is a PURE RENDERER
  * (INV-RENDERER-PURITY): it reads the server-inlined viewer-scoped portfolio blob and

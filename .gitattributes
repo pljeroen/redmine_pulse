@@ -1,0 +1,8 @@
+# Normalise text line endings to LF, both in the repo and on checkout.
+* text=auto eol=lf
+
+# Treat screenshots and other binaries as binary (no diff/eol munging).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary

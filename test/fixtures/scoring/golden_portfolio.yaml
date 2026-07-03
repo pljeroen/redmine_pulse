@@ -1,0 +1,64 @@
+# Golden scoring fixtures for AC-SCORE-FORMULA (validated portfolio.yaml seed math).
+# clock_today fixes Clock.today; inputs are the SUPPLIED ProjectMetrics aggregates
+# (already-derived by the adapter); expected_* are the exact domain outputs.
+#
+# Provenance: docs/specs/redmine-pulse/contracts/seeds/portfolio.yaml (rev 3).
+# The seed file shows DISPLAY-ROUNDED n/effective_weight/contribution values; the
+# domain carries full-precision Floats, so the assertions use tolerances for the
+# Float fields and exact equality for health_score / rag / dominant_signal / Integer
+# raw values / lens Integer keys.
+clock_today: "2026-06-20"
+activity_window_days: 30
+fixtures:
+  - name: kernel-aios
+    project_id: 11
+    inputs:
+      # reference_date = today - 150 = 2026-01-21
+      days_stale: 150
+      effort_open: 7.0
+      effort_total: 10.0     # progress_ratio 0.30
+      risk_raw: 40.0
+      blocked_count: 12
+      risk_mapped: true
+      effort_mapped: true
+      # momentum: opened 6, closed 2 -> activity 8, base 8/16=0.5, dir -0.5 -> n 0.425 (raw 8)
+      opened: 6
+      closed: 2
+    expected:
+      health_score: 29
+      rag: "red"
+      dominant_signal: "staleness"
+      signal_completeness: 1.0
+      lens_keys: { health: 29, at_risk: 41.83, stale: 150, done: 30.0, blocked: 12 }
+      signals:
+        staleness:    { active: true,  raw_value: 150,  n: 0.166667, effective_weight: 0.25,   contribution: 4.166667 }
+        progress:     { active: true,  raw_value: 0.30, n: 0.30,     effective_weight: 0.25,   contribution: 7.5 }
+        momentum:     { active: true,  raw_value: 8,    n: 0.425,    effective_weight: 0.20,   contribution: 8.5 }
+        risk_load:    { active: true,  raw_value: 40.0, n: 0.20,     effective_weight: 0.15,   contribution: 3.0 }
+        blocked_load: { active: true,  raw_value: 12,   n: 0.40,     effective_weight: 0.15,   contribution: 6.0 }
+  - name: pdfree
+    project_id: 16
+    inputs:
+      # reference_date = today - 20 = 2026-05-31
+      days_stale: 20
+      effort_open: 2.0
+      effort_total: 10.0     # progress_ratio 0.80
+      risk_raw: 0.0
+      blocked_count: 1
+      risk_mapped: false     # risk_load INACTIVE
+      effort_mapped: true
+      # momentum: opened 4, closed 6 -> activity 10, base 10/18=0.555556, dir 0.2 -> n 0.585556 (raw 10)
+      opened: 4
+      closed: 6
+    expected:
+      health_score: 80
+      rag: "green"
+      dominant_signal: "on_track"
+      signal_completeness: 0.8
+      lens_keys: { health: 80, at_risk: 4.15, stale: 20, done: 80.0, blocked: 1 }
+      signals:
+        staleness:    { active: true,  raw_value: 20,   n: 0.888889, effective_weight: 0.294118, contribution: 26.143791 }
+        progress:     { active: true,  raw_value: 0.80, n: 0.80,     effective_weight: 0.294118, contribution: 23.529412 }
+        momentum:     { active: true,  raw_value: 10,   n: 0.585556, effective_weight: 0.235294, contribution: 13.777778 }
+        risk_load:    { active: false, raw_value: null, n: null,     effective_weight: null,     contribution: null }
+        blocked_load: { active: true,  raw_value: 1,    n: 0.95,     effective_weight: 0.176471, contribution: 16.764706 }

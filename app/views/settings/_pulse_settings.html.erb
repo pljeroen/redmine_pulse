@@ -1,0 +1,144 @@
+<%# Pulse plugin settings (CA-23). Exposes EXACTLY the CA-23 field set, grouped into
+    Enrichment / Weights / Thresholds / Windows. The deferred enrichment controls
+    (DEC-12) are NOT rendered (COND-CA-02). risk_trackers is a native HTML multi-select
+    (<select multiple>) populated with the project trackers — a working, no-JS control
+    (D-CA-OQ02). The tracker option list is prepared OUTSIDE this view by
+    PulseSettingsHelper#pulse_tracker_options (COND-A4-002 / Rule 18); the partial renders
+    presenter/form state only — no scoring/AR logic.
+    E1 settings-help: each field carries an inline <em class="info"> help paragraph
+    (what it influences + shipped default) and each fieldset a group intro; all i18n-keyed
+    (label_pulse_help_*). Presentation-only, no JS (HELP_SPEC presentation decision). %>
+<% settings ||= @settings || {} %>
+<% weights = (settings['weights'] || settings[:weights] || {}) %>
+<% selected_trackers = Array(settings['risk_trackers'] || settings[:risk_trackers]).map(&:to_s) %>
+
+<fieldset class="box tabular pulse-settings-enrichment">
+  <legend><%= t(:label_pulse_settings_enrichment) %></legend>
+  <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_enrichment) %></em></p>
+
+  <p>
+    <label for="settings_effort_field"><%= t(:label_pulse_effort_field) %></label>
+    <input type="text" id="settings_effort_field" name="settings[effort_field]"
+           value="<%= settings['effort_field'] %>" />
+    <em class="info"><%= t(:label_pulse_help_effort_field) %></em>
+  </p>
+
+  <% if settings['effort_field'].to_s.strip.empty? %>
+    <% effort_candidates = pulse_effort_field_candidates %>
+    <% if effort_candidates.any? %>
+      <p class="pulse-effort-candidates info">
+        <%= t(:label_pulse_effort_field_detected) %>
+        <% effort_candidates.each do |cf_name, cf_id| %>
+          <span class="pulse-effort-candidate"><%= cf_name %> (id <%= cf_id %>)</span>
+        <% end %>
+      </p>
+    <% end %>
+  <% end %>
+
+  <p>
+    <label for="settings_risk_trackers"><%= t(:label_pulse_risk_trackers) %></label>
+    <select id="settings_risk_trackers" name="settings[risk_trackers][]" multiple="multiple"
+            size="6" class="pulse-risk-trackers">
+      <% pulse_tracker_options.each do |tracker_name, tracker_id| %>
+        <option value="<%= tracker_id %>" <%= 'selected' if selected_trackers.include?(tracker_id) %>>
+          <%= tracker_name %>
+        </option>
+      <% end %>
+    </select>
+    <em class="info"><%= t(:label_pulse_help_risk_trackers) %></em>
+  </p>
+
+  <p>
+    <label for="settings_blocked_status"><%= t(:label_pulse_blocked_status) %></label>
+    <input type="text" id="settings_blocked_status" name="settings[blocked_status]"
+           value="<%= settings['blocked_status'] %>" />
+    <em class="info"><%= t(:label_pulse_help_blocked_status) %></em>
+  </p>
+</fieldset>
+
+<fieldset class="box tabular pulse-settings-weights">
+  <legend><%= t(:label_pulse_settings_weights) %></legend>
+  <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_weights) %></em></p>
+  <% [[:staleness, t(:label_pulse_weight_staleness)],
+      [:progress, t(:label_pulse_weight_progress)],
+      [:momentum, t(:label_pulse_weight_momentum)],
+      [:risk_load, t(:label_pulse_weight_risk_load)],
+      [:blocked_load, t(:label_pulse_weight_blocked_load)]].each do |sig, label| %>
+    <p>
+      <label for="settings_weight_<%= sig %>"><%= label %></label>
+      <input type="text" id="settings_weight_<%= sig %>" name="settings[weights][<%= sig %>]"
+             value="<%= weights[sig.to_s] || weights[sig] %>" />
+      <em class="info"><%= t("label_pulse_help_weight_#{sig}") %></em>
+    </p>
+  <% end %>
+</fieldset>
+
+<fieldset class="box tabular pulse-settings-thresholds">
+  <legend><%= t(:label_pulse_settings_thresholds) %></legend>
+  <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_thresholds) %></em></p>
+  <p>
+    <label for="settings_rag_green_min"><%= t(:label_pulse_rag_green_min) %></label>
+    <input type="number" id="settings_rag_green_min" name="settings[rag_green_min]"
+           value="<%= settings['rag_green_min'] %>" min="0" max="100" />
+    <em class="info"><%= t(:label_pulse_help_rag_green_min) %></em>
+  </p>
+  <p>
+    <label for="settings_rag_amber_min"><%= t(:label_pulse_rag_amber_min) %></label>
+    <input type="number" id="settings_rag_amber_min" name="settings[rag_amber_min]"
+           value="<%= settings['rag_amber_min'] %>" min="0" max="100" />
+    <em class="info"><%= t(:label_pulse_help_rag_amber_min) %></em>
+  </p>
+  <p>
+    <label for="settings_on_track_threshold"><%= t(:label_pulse_on_track_threshold) %></label>
+    <input type="number" id="settings_on_track_threshold" name="settings[on_track_threshold]"
+           value="<%= settings['on_track_threshold'] %>" min="0" max="1" step="0.01" />
+    <em class="info"><%= t(:label_pulse_help_on_track_threshold) %></em>
+  </p>
+</fieldset>
+
+<fieldset class="box tabular pulse-settings-windows">
+  <legend><%= t(:label_pulse_settings_windows) %></legend>
+  <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_windows) %></em></p>
+  <p>
+    <label for="settings_h_stale"><%= t(:label_pulse_h_stale) %></label>
+    <input type="number" id="settings_h_stale" name="settings[h_stale]"
+           value="<%= settings['h_stale'] %>" min="1" />
+    <em class="info"><%= t(:label_pulse_help_h_stale) %></em>
+  </p>
+  <p>
+    <label for="settings_h_risk"><%= t(:label_pulse_h_risk) %></label>
+    <input type="number" id="settings_h_risk" name="settings[h_risk]"
+           value="<%= settings['h_risk'] %>" min="1" />
+    <em class="info"><%= t(:label_pulse_help_h_risk) %></em>
+  </p>
+  <p>
+    <label for="settings_h_blocked"><%= t(:label_pulse_h_blocked) %></label>
+    <input type="number" id="settings_h_blocked" name="settings[h_blocked]"
+           value="<%= settings['h_blocked'] %>" min="1" />
+    <em class="info"><%= t(:label_pulse_help_h_blocked) %></em>
+  </p>
+  <p>
+    <label for="settings_activity_window_days"><%= t(:label_pulse_activity_window_days) %></label>
+    <input type="number" id="settings_activity_window_days" name="settings[activity_window_days]"
+           value="<%= settings['activity_window_days'] %>" min="1" />
+    <em class="info"><%= t(:label_pulse_help_activity_window_days) %></em>
+  </p>
+  <p>
+    <label for="settings_momentum_activity_half"><%= t(:label_pulse_momentum_activity_half) %></label>
+    <input type="number" id="settings_momentum_activity_half" name="settings[momentum_activity_half]"
+           value="<%= settings['momentum_activity_half'] %>" min="0.1" step="0.1" />
+    <em class="info"><%= t(:label_pulse_help_momentum_activity_half) %></em>
+  </p>
+  <p>
+    <label for="settings_momentum_direction_bias"><%= t(:label_pulse_momentum_direction_bias) %></label>
+    <input type="number" id="settings_momentum_direction_bias" name="settings[momentum_direction_bias]"
+           value="<%= settings['momentum_direction_bias'] %>" min="0" max="0.5" step="0.01" />
+    <em class="info"><%= t(:label_pulse_help_momentum_direction_bias) %></em>
+  </p>
+  <p>
+    <label for="settings_snapshot_max_age_minutes"><%= t(:label_pulse_snapshot_max_age_minutes) %></label>
+    <input type="number" id="settings_snapshot_max_age_minutes" name="settings[snapshot_max_age_minutes]"
+           value="<%= settings['snapshot_max_age_minutes'] %>" min="0" step="1" />
+    <em class="info"><%= t(:label_pulse_help_snapshot_max_age_minutes) %></em>
+  </p>
+</fieldset>

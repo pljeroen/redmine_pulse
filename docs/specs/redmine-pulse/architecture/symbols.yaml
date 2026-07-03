@@ -1,0 +1,85 @@
+architecture_style: hexagonal
+# Hexagonal layer designation for every public symbol. The scoring engine is pure-Ruby
+# domain (zero Rails/AR/IO); Redmine is reached only through adapters implementing ports.
+# Adapters own ALL visibility scoping (Project.visible / Issue.visible(user)); the domain
+# receives only already-visibility-scoped value objects.
+symbols:
+  # ---- DOMAIN (pure Ruby, stdlib only, no Rails/AR/Time.now) ----
+  - name: ProjectMetrics
+    type: type
+    layer: domain
+    description: "Immutable value object: one project's already-visibility-scoped raw inputs — reference_date, effort_open/effort_total, risk_raw, blocked_count, event series (issue create + close-event timestamps over the retention horizon), version due dates (with provenance), and the active-mapping flags. No AR objects, only plain values."
+  - name: ScoringConfig
+    type: type
+    layer: domain
+    description: "Weights, RAG thresholds, horizons (H_stale/H_risk/H_blocked), activity_window_days, and the active-signal set (post-mapping). Plain values."
+  - name: SignalResult
+    type: type
+    layer: domain
+    description: "Immutable value object per signal: key, active, raw_value, n (normalized health 0..1), effective_weight, contribution (>=0)."
+  - name: HealthResult
+    type: type
+    layer: domain
+    description: "Immutable value object: health_score (int 0..100), RAG band, dominant_signal, signal_completeness, the SignalResult breakdown, and the per-lens keys."
+  - name: Pulse::Signals
+    type: module
+    layer: domain
+    dependencies: [ProjectMetrics, ScoringConfig]
+    description: "Pure per-signal computations (staleness, progress, momentum, risk_load, blocked_load) over ProjectMetrics + Clock value + ScoringConfig, incl. active/inactive determination and edge-case rules (§4.1)."
+  - name: Pulse::Scoring
+    type: module
+    layer: domain
+    dependencies: [ProjectMetrics, ScoringConfig, HealthResult, SignalResult, Pulse::Signals]
+    description: "Pure composite + lens computation: weight redistribution over active signals, non-negative contributions summing to health_score, dominant_signal, and the five lens keys. The IP."
+  # ---- PORTS (interfaces; no I/O) ----
+  - name: Clock
+    type: port
+    layer: port
+    description: "Current time provider, injected (keeps Time.now out of the domain → deterministic)."
+  - name: MetricsSource
+    type: port
+    layer: port
+    description: "Supplies visibility-scoped ProjectMetrics for a requesting user over a project set. Contract: every returned field is already scoped through Redmine visibility for that user and carries date provenance; nullability is part of the contract. Implemented by an adapter."
+  - name: SettingsProvider
+    type: port
+    layer: port
+    description: "Supplies ScoringConfig (weights/mappings/thresholds/horizons/window) from plugin settings, plus the settings_version_hash."
+  - name: SnapshotStore
+    type: port
+    layer: port
+    description: "Reads/writes the static aggregate snapshot keyed by (project_id, visibility_context_id, snapshot_fingerprint). Read returns a snapshot or miss; write is an idempotent upsert."
+  # ---- ADAPTERS (Rails/Redmine; own all I/O + visibility scoping) ----
+  - name: SystemClock
+    type: class
+    layer: adapter
+    dependencies: [Clock]
+    description: "Implements Clock with the real wall clock."
+  - name: RedmineMetricsSource
+    type: class
+    layer: adapter
+    dependencies: [MetricsSource, ProjectMetrics]
+    description: "Implements MetricsSource via Project.visible / Issue.visible(user) / Journal / Changeset / Version / IssueRelation queries. Read-only. Computes visibility_context_id and the snapshot's static aggregates + event series."
+  - name: RedmineSettingsProvider
+    type: class
+    layer: adapter
+    dependencies: [SettingsProvider, ScoringConfig]
+    description: "Implements SettingsProvider from Redmine plugin Settings; derives settings_version_hash."
+  - name: ActiveRecordSnapshotStore
+    type: class
+    layer: adapter
+    dependencies: [SnapshotStore]
+    description: "Implements SnapshotStore over a plugin-owned table (db/migrate); unique constraint on (project_id, visibility_context_id, snapshot_fingerprint); idempotent insert-or-ignore on read-miss recompute."
+  - name: VisibilityContext
+    type: class
+    layer: adapter
+    description: "Computes visibility_context_id = fingerprint of the FULL resolved Redmine visibility predicate (view_issues via issue_tracking module + Project.allowed_to_condition active/closed precondition, per-project effective roles + issues_visibility all/default/own, per-tracker view restrictions, repository module + :view_changesets permission, pulse module state, admin flag, non-member/anonymous overrides) PLUS user id + group ids whenever any applicable role is identity-dependent (own/default). No view_private_issues permission exists in Redmine 6.1. Collapses to per-user where identity-dependent; shared only where provably identity-independent."
+  - name: PulseController
+    type: class
+    layer: adapter
+    dependencies: [MetricsSource, SettingsProvider, Clock, SnapshotStore, Pulse::Scoring]
+    description: "Rails controller for the portfolio overview + per-project panel (HTML). before_action :authorize on view_pulse; renders only visible projects; emits date provenance + visibility banner."
+  - name: PulseApiController
+    type: class
+    layer: adapter
+    dependencies: [MetricsSource, SettingsProvider, Clock, SnapshotStore, Pulse::Scoring]
+    description: "Rails controller for GET /pulse/portfolio.json + /pulse/projects/:id.json (read-only, Redmine REST API-key auth via accept_api_auth, view_pulse-gated, visibility-scoped, paginated, 404 on invisible)."

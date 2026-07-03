@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "redmine_pulse/portfolio.json",
+  "title": "redmine_pulse portfolio response",
+  "description": "GET /pulse/portfolio.json — ranked per-project health summaries. Read-only, view_pulse-gated, viewer-visibility-scoped.",
+  "type": "object",
+  "required": ["schema_version", "snapshot_computed_at", "projected_at", "projection", "lens", "default_lens", "pagination", "projects"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string" },
+    "snapshot_computed_at": { "$ref": "#/$defs/ts_computed", "description": "When the static aggregate snapshot was computed." },
+    "projected_at": { "$ref": "#/$defs/ts_computed", "description": "When the per-request time projection (staleness/momentum/sparkline) ran." },
+    "projection": { "$ref": "#/$defs/projection" },
+    "lens": { "$ref": "#/$defs/lens" },
+    "default_lens": { "$ref": "#/$defs/lens" },
+    "pagination": {
+      "type": "object",
+      "required": ["offset", "limit", "total"],
+      "additionalProperties": false,
+      "properties": {
+        "offset": { "type": "integer", "minimum": 0 },
+        "limit": { "type": "integer", "minimum": 1 },
+        "total": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "projects": { "type": "array", "items": { "$ref": "#/$defs/project_health" } }
+  },
+  "$defs": {
+    "lens": { "type": "string", "enum": ["health", "at_risk", "stale", "done", "blocked"] },
+    "projection": {
+      "type": "object",
+      "description": "The clock + config used for the time-derived projection, so clients can reconstruct it.",
+      "required": ["clock_today", "time_zone", "activity_window_days", "horizons"],
+      "additionalProperties": false,
+      "properties": {
+        "clock_today": { "type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "The injected Clock's 'today' (date-only) used for staleness/momentum." },
+        "time_zone": { "type": "string", "description": "IANA tz the window/day boundaries were computed in, e.g. 'Europe/Amsterdam'." },
+        "activity_window_days": { "type": "integer", "minimum": 1 },
+        "horizons": {
+          "type": "object",
+          "required": ["staleness", "risk_load", "blocked_load"],
+          "additionalProperties": false,
+          "properties": {
+            "staleness": { "type": "number" },
+            "risk_load": { "type": "number" },
+            "blocked_load": { "type": "number" }
+          }
+        }
+      }
+    },
+    "ts_computed": {
+      "type": "object", "required": ["at", "provenance"], "additionalProperties": false,
+      "properties": { "at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$" }, "provenance": { "const": "computed" } }
+    },
+    "ts_redmine": {
+      "type": "object", "required": ["at", "provenance"], "additionalProperties": false,
+      "properties": { "at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$" }, "provenance": { "const": "redmine_timestamp" } }
+    },
+    "ts_bucket": {
+      "type": "object", "required": ["at", "provenance"], "additionalProperties": false,
+      "properties": { "at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$" }, "provenance": { "const": "derived_bucket" } }
+    },
+    "signal": {
+      "type": "object",
+      "required": ["active", "raw_value", "n", "effective_weight", "contribution"],
+      "additionalProperties": false,
+      "properties": {
+        "active": { "type": "boolean", "description": "false when an enrichment mapping is absent; the entry is still present (not omitted), weight redistributed." },
+        "raw_value": { "type": ["number", "null"] },
+        "n": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "effective_weight": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "contribution": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "signal_set": {
+      "type": "object",
+      "description": "Exactly the five canonical signals, keyed by name (no dups, no omissions, no extras).",
+      "required": ["staleness", "progress", "momentum", "risk_load", "blocked_load"],
+      "additionalProperties": false,
+      "properties": {
+        "staleness": { "$ref": "#/$defs/signal" },
+        "progress": { "$ref": "#/$defs/signal" },
+        "momentum": { "$ref": "#/$defs/signal" },
+        "risk_load": { "$ref": "#/$defs/signal" },
+        "blocked_load": { "$ref": "#/$defs/signal" }
+      }
+    },
+    "sparkline_bucket": {
+      "type": "object",
+      "required": ["start", "end", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "$ref": "#/$defs/ts_bucket" },
+        "end": { "$ref": "#/$defs/ts_bucket" },
+        "value": { "type": "number" }
+      }
+    },
+    "project_health": {
+      "type": "object",
+      "required": ["project_id", "identifier", "name", "url", "health_score", "rag", "dominant_signal", "main_concern", "signal_completeness", "lens_keys", "signals", "last_activity", "sparkline"],
+      "additionalProperties": false,
+      "properties": {
+        "project_id": { "type": "integer" },
+        "identifier": { "type": "string" },
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "health_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+        "rag": { "type": "string", "enum": ["green", "amber", "red", "no_data"] },
+        "dominant_signal": { "type": ["string", "null"], "enum": ["staleness", "progress", "momentum", "risk_load", "blocked_load", "on_track", null] },
+        "main_concern": { "type": ["string", "null"], "description": "FR-PLB-15: already-localized dominant-signal label (single source: MainConcernLabels). null on the no-data path (mirrors dominant_signal nullability)." },
+        "signal_completeness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "lens_keys": {
+          "type": "object",
+          "description": "All five lens values are NULLABLE: a no-data project (zero scoreable issues, THAW-RA-001) emits null for every lens value alongside null health_score / dominant_signal and rag 'no_data'.",
+          "required": ["health", "at_risk", "stale", "done", "blocked"],
+          "additionalProperties": false,
+          "properties": {
+            "health": { "type": ["number", "null"] },
+            "at_risk": { "type": ["number", "null"] },
+            "stale": { "type": ["number", "null"] },
+            "done": { "type": ["number", "null"] },
+            "blocked": { "type": ["number", "null"] }
+          }
+        },
+        "signals": { "$ref": "#/$defs/signal_set" },
+        "last_activity": { "anyOf": [ { "$ref": "#/$defs/ts_redmine" }, { "type": "null" } ] },
+        "sparkline": { "type": "array", "items": { "$ref": "#/$defs/sparkline_bucket" } }
+      }
+    }
+  }
+}

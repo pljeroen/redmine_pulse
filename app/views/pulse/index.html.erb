@@ -1,0 +1,60 @@
+<%# Portfolio overview (HTML). Renders ONLY the precomputed HtmlPresenter view-model
+    (@view). No scoring/timeline/AR access here — COND-A4-001/002. %>
+<% content_for :header_tags do %>
+  <%= stylesheet_link_tag 'redmine_pulse', plugin: 'redmine_pulse' %>
+<% end %>
+
+<h2><%= t(:label_pulse_portfolio) %></h2>
+
+<p class="pulse-visibility-note"><%= @view.visibility_note %></p>
+
+<%# finding 4: the lens selector is a WORKING control — wrapped in a GET form that
+    re-requests with ?lens=, and an onchange that submits for no-extra-click UX. %>
+<form method="get" action="<%= url_for(controller: 'pulse', action: 'index') %>" class="pulse-lens-selector">
+  <label for="pulse-lens"><%= t(:label_pulse_lens) %>:</label>
+  <select id="pulse-lens" name="lens" onchange="this.form.submit()">
+    <% @view.lenses.each do |lens| %>
+      <option value="<%= lens %>" <%= 'selected' if lens == @view.lens %>><%= t("label_pulse_lens_#{lens}") %></option>
+    <% end %>
+  </select>
+  <noscript><button type="submit"><%= t(:label_pulse_apply_lens) %></button></noscript>
+</form>
+
+<% if @view.empty %>
+  <p class="pulse-empty nodata"><%= t(:label_pulse_empty_portfolio) %></p>
+<% else %>
+  <table class="list pulse-portfolio">
+    <thead>
+      <tr>
+        <th><%= t(:label_pulse) %></th>
+        <th><%= t(:label_pulse_health_score) %></th>
+        <th><%= t(:label_pulse_main_concern) %></th>
+        <th><%= t(:label_pulse_sparkline) %></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @view.rows.each do |row| %>
+        <tr>
+          <td>
+            <span class="pulse-rag pulse-rag-<%= row.rag_chip.state %>"
+                  aria-label="<%= row.rag_chip.aria_label %>"
+                  title="<%= row.rag_chip.aria_label %>"><%= row.rag_chip.word %></span>
+            <a href="<%= row.url %>"><%= row.name %></a>
+          </td>
+          <% if row.no_data %>
+            <td class="pulse-score pulse-no-data"><%= t(:label_pulse_no_data) %></td>
+            <td class="pulse-concern pulse-no-data">&mdash;</td>
+          <% else %>
+            <td class="pulse-score"><%= row.health_score %></td>
+            <td class="pulse-concern"><%= row.main_concern %></td>
+          <% end %>
+          <td class="pulse-sparkline">
+            <%= render partial: 'pulse/sparkline', locals: { buckets: row.sparkline } %>
+          </td>
+          <td class="pulse-computed"><%= row.computed_ago %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

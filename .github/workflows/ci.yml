@@ -1,0 +1,142 @@
+# redmine_pulse — Continuous Integration.
+#
+# SAFE-BY-DESIGN for public forks (the explicit threat model is a malicious fork
+# PR attempting secret exfiltration):
+#   * Triggers are MAINTAINER-ONLY: push (to master) + manual workflow_dispatch.
+#     There is NO pull_request trigger (and never the privileged fork-PR exploit
+#     variant), so a public fork PR runs NOTHING — no path exists for untrusted
+#     fork code to run in our Actions. CI still validates every commit to master.
+#     (Re-add PR-CI + "require approval for all external contributors" if wanted.)
+#   * Top-level permissions grant contents: read and nothing else. The default
+#     GITHUB_TOKEN is read-only; no elevated scope is requested anywhere.
+#   * ZERO repository secrets are referenced. A fork PR therefore has access to
+#     no secret material — there is nothing to exfiltrate.
+#   * Every third-party action is pinned to a full 40-hex commit SHA, so a
+#     compromised/moved tag cannot inject code into our pipeline.
+# The database credentials below are non-secret, service-local values for the
+# ephemeral CI database container — they are NOT GitHub secrets by design.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+# Least privilege: read-only default token, no write scope, for every job.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Fast lane: pure-domain suite. No DB, no Rails, no Redmine checkout. ──────
+  domain:
+    name: Domain suite (pure Ruby)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@4a9ddd6f338a97768b8006bf671dfbad383215f4 # v1.207.0
+        with:
+          ruby-version: '3.4'
+      - name: Run pure-domain suite
+        run: ruby -Itest -Ilib -e 'Dir["test/unit/domain/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
+
+  # ── Compatibility matrix: Ruby {3.2, 3.4} × DB {postgres, mysql} on 6.1.x. ──
+  harness:
+    name: Redmine 6.1.x · Ruby ${{ matrix.ruby }} · ${{ matrix.db }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ['3.2', '3.4']
+        db: [postgres, mysql]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: redmine
+          POSTGRES_PASSWORD: redmine
+          POSTGRES_DB: redmine_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U redmine"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: redmine
+          MYSQL_DATABASE: redmine_test
+          MYSQL_USER: redmine
+          MYSQL_PASSWORD: redmine
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uredmine -predmine"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          path: redmine_pulse
+
+      - name: Checkout Redmine 6.1.x (v6.1.2)
+        # Pin the IMMUTABLE 6.1.2 tag, never the moving 6.1-stable branch — the
+        # tested substrate must not change without a repo change (CI-A10-002).
+        run: git clone --depth 1 --branch 6.1.2 https://github.com/redmine/redmine.git redmine
+
+      - name: Link plugin into Redmine
+        run: |
+          mkdir -p redmine/plugins
+          cp -a redmine_pulse redmine/plugins/redmine_pulse
+
+      - name: Write database.yml for the ${{ matrix.db }} leg
+        run: |
+          if [ "${{ matrix.db }}" = "postgres" ]; then
+            cat > redmine/config/database.yml <<'YAML'
+          test:
+            adapter: postgresql
+            database: redmine_test
+            host: 127.0.0.1
+            port: 5432
+            username: redmine
+            password: redmine
+            encoding: utf8
+          YAML
+          else
+            cat > redmine/config/database.yml <<'YAML'
+          test:
+            adapter: mysql2
+            database: redmine_test
+            host: 127.0.0.1
+            port: 3306
+            username: redmine
+            password: redmine
+            encoding: utf8mb4
+          YAML
+          fi
+
+      - name: Set up Ruby ${{ matrix.ruby }}
+        uses: ruby/setup-ruby@4a9ddd6f338a97768b8006bf671dfbad383215f4 # v1.207.0
+        with:
+          ruby-version: ${{ matrix.ruby }}
+
+      - name: Install Redmine + plugin gems
+        working-directory: redmine
+        run: bundle install --jobs 4 --retry 3
+
+      - name: Run both test lanes via the host-neutral CI script
+        working-directory: redmine
+        env:
+          REDMINE_ROOT: ${{ github.workspace }}/redmine
+        run: bash "${GITHUB_WORKSPACE}/redmine_pulse/scripts/ci/run.sh"

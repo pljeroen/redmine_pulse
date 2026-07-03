@@ -1,0 +1,90 @@
+<%# Per-project health panel (HTML). Renders ONLY the precomputed HtmlPresenter
+    view-model (@view). No scoring/timeline/AR access here — COND-A4-001/002. %>
+<% content_for :header_tags do %>
+  <%= stylesheet_link_tag 'redmine_pulse', plugin: 'redmine_pulse' %>
+<% end %>
+
+<h2>
+  <span class="pulse-rag pulse-rag-<%= @view.rag_chip.state %>"
+        aria-label="<%= @view.rag_chip.aria_label %>"
+        title="<%= @view.rag_chip.aria_label %>"><%= @view.rag_chip.word %></span>
+  <%= @view.name %> &mdash; <%= t(:label_pulse) %>
+</h2>
+
+<p class="pulse-visibility-note"><%= @view.visibility_note %></p>
+
+<%# finding 5: a refresh control that POSTs to /pulse/refresh (CSRF-protected via
+    button_to's hidden token). Lets the operator recompute the cached snapshot. %>
+<div class="pulse-refresh">
+  <%= button_to t(:label_pulse_refresh),
+                { controller: 'pulse', action: 'refresh' },
+                method: :post,
+                params: { project_id: @view.identifier },
+                class: 'pulse-refresh-button' %>
+</div>
+
+<% if @view.no_data %>
+  <%# R-A no-data state: render a distinct "No data" indicator, never a numeric score
+      and never a nil crash. %>
+  <p class="pulse-meta pulse-no-data">
+    <span class="pulse-no-data-indicator"><%= @view.no_data_label %></span>
+  </p>
+<% else %>
+  <p class="pulse-meta">
+    <span class="pulse-score"><%= t(:label_pulse_health_score) %>: <%= @view.health_score %></span>
+    <span class="pulse-concern"><%= t(:label_pulse_main_concern) %>: <%= @view.main_concern %></span>
+    <span class="pulse-completeness"><%= t(:label_pulse_signal_completeness) %>: <%= @view.signal_completeness %></span>
+    <span class="pulse-computed"><%= @view.computed_ago %></span>
+  </p>
+
+  <table class="list pulse-signals">
+    <thead>
+      <tr>
+        <th><%= t(:label_pulse_signal) %></th>
+        <th><%= t(:label_pulse_value) %></th>
+        <th><%= t(:label_pulse_weight) %></th>
+        <th><%= t(:label_pulse_contribution) %></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @view.signal_rows.each do |sig| %>
+        <tr class="pulse-signal pulse-signal-<%= sig.key %> <%= sig.active ? 'active' : 'inactive' %>">
+          <td class="pulse-signal-key">
+            <%= sig.key %>
+            <% if sig.drill_url %><a class="pulse-drill" href="<%= sig.drill_url %>">&rarr;</a><% end %>
+          </td>
+          <% if sig.active %>
+            <td><%= sig.raw_value %></td>
+            <td><%= sig.effective_weight %></td>
+            <td><%= sig.contribution %></td>
+          <% else %>
+            <td class="pulse-enable-hint" colspan="3"><%= sig.enable_hint %></td>
+          <% end %>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
+
+<div class="pulse-sparkline">
+  <h3><%= t(:label_pulse_sparkline) %></h3>
+  <%= render partial: 'pulse/sparkline', locals: { buckets: @view.sparkline } %>
+</div>
+
+<div class="pulse-milestones">
+  <h3><%= t(:label_pulse_milestones) %></h3>
+  <% if @view.milestones.empty? %>
+    <p class="nodata"><%= t(:label_pulse_no_milestones) %></p>
+  <% else %>
+    <ul>
+      <% @view.milestones.each do |mk| %>
+        <li class="pulse-milestone"><%= mk[:name] %> &mdash; <%= mk[:due_date] %></li>
+      <% end %>
+    </ul>
+  <% end %>
+  <% if @view.gantt_url %>
+    <p class="pulse-gantt-link">
+      <a class="pulse-gantt" href="<%= @view.gantt_url %>"><%= t(:label_pulse_gantt_link) %></a>
+    </p>
+  <% end %>
+</div>

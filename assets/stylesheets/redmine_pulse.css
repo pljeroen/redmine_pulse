@@ -1,0 +1,109 @@
+/* redmine_pulse — portfolio / project-health cockpit for Redmine 6.x.
+ * Copyright (C) 2026 Jeroen
+ *
+ * This program is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free Software
+ * Foundation, either version 2 of the License, or (at your option) any later
+ * version. See <https://www.gnu.org/licenses/> (GPL-2.0).
+ *
+ * Hand-written, framework-free cockpit styling. The RAG chip carries BOTH a color
+ * (this file) AND a non-color textual cue + accessible label (rendered by the
+ * HtmlPresenter); color is an enhancement, never the only signal (WCAG 1.4.1).
+ */
+
+/* Left-align the portfolio's first column (the RAG chip + project title) so the chips
+   and titles form a neat left column. Redmine core centres every `table.list td`; this
+   overrides that for the name column only — the numeric columns stay centred. */
+.pulse-portfolio th:first-child,
+.pulse-portfolio td:first-child {
+  text-align: left;
+}
+
+/* ── RAG chips ──────────────────────────────────────────────────────────────── */
+.pulse-rag {
+  display: inline-block;
+  box-sizing: border-box;
+  /* Uniform chip width sized to the longest state word ("No data") + center the text,
+     so the project titles that follow the chip line up into a neat column. */
+  min-width: 5.5em;
+  padding: 0 0.45em;
+  border-radius: 0.25em;
+  font-weight: bold;
+  line-height: 1.5;
+  text-align: center;
+  color: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+}
+
+.pulse-rag-red {
+  background-color: #c1272d;
+}
+
+.pulse-rag-amber {
+  background-color: #d98a00;
+}
+
+.pulse-rag-green {
+  background-color: #2e8b57;
+}
+
+.pulse-rag-no_data {
+  background-color: #888;
+  color: #fff;
+  font-style: italic;
+}
+
+/* ── "main concern" label (secondary text beside the RAG chip) ──────────────── */
+.pulse-concern {
+  margin-left: 0.4em;
+  color: #777;
+  font-size: 0.85em;
+  font-style: italic;
+}
+
+/* project-list badge: separate the RAG chip from the project title on /projects.
+   Scoped to the project listing so the cockpit's own use of .pulse-rag is untouched. */
+ul.projects a.project + .pulse-rag {
+  margin-left: 0.5em;
+}
+
+/* ── sparkline (inline SVG + CSS-bar fallback) ──────────────────────────────── */
+.pulse-sparkline svg.pulse-spark-svg {
+  display: inline-block;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.pulse-sparkline .spark-bar {
+  display: inline-block;
+  width: 4px;
+  margin-right: 1px;
+  background-color: #4a86c7;
+  vertical-align: bottom;
+}
+
+.pulse-spark-empty {
+  color: #888;
+  font-style: italic;
+}
+
+/* ── lens selector + refresh control ────────────────────────────────────────── */
+.pulse-lens-selector,
+.pulse-refresh {
+  margin: 0.5em 0;
+}
+
+.pulse-visibility-note {
+  color: #555;
+  font-style: italic;
+}
+
+/* ── no-data state ──────────────────────────────────────────────────────────── */
+.pulse-no-data {
+  color: #888;
+  font-style: italic;
+}
+
+.pulse-signal.inactive {
+  color: #888;
+}

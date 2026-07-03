@@ -1,0 +1,15 @@
+# Ruby / Rails / Redmine plugin
+*.gem
+*.rbc
+/.bundle/
+/vendor/bundle
+/log/*
+/tmp/*
+.byebug_history
+coverage/
+/.idea/
+/.vscode/
+*.log
+
+# OS
+.DS_Store

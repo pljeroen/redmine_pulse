@@ -1,0 +1,136 @@
+# English locale (shipped in v1). Structure is ready for additional locales
+# (SOFT-I18N: all user-facing strings localizable via config/locales).
+en:
+  project_module_pulse: "Pulse"
+  label_pulse: "Pulse"
+  label_pulse_portfolio: "Portfolio health"
+
+  # ── controllers-api contract: the 5 NEW canonicalized keys (D-CA-OQ01/04) ────
+  label_pulse_visibility_note: "Health computed from issues visible to you."
+  label_pulse_rag_red: "Red"
+  label_pulse_rag_amber: "Amber"
+  label_pulse_rag_green: "Green"
+  label_pulse_rag_aria_label: "Project health: %{state}"
+
+  # ── R-A no-data state (THAW-RB-001) — a 0-issue project has nothing to score ──
+  label_pulse_rag_no_data: "No data"
+  label_pulse_no_data: "No data — no issues to score yet"
+  label_pulse_no_recent_activity: "No recent activity"
+
+  # ── additional user-facing strings used by the HTML views/controllers ────────
+  label_pulse_health_score: "Health score"
+  label_pulse_dominant_signal: "Dominant signal"
+  # R-A relabel: the portfolio "why" column reads "Main concern" (lens vocabulary),
+  # replacing the old "Dominant signal" wording. API field name stays dominant_signal.
+  label_pulse_main_concern: "Main concern"
+  label_pulse_apply_lens: "Apply lens"
+  label_pulse_signal_completeness: "Signal completeness"
+  label_pulse_lens: "Lens"
+  label_pulse_signal: "Signal"
+  label_pulse_contribution: "Contribution"
+  label_pulse_weight: "Effective weight"
+  label_pulse_value: "Value"
+  label_pulse_sparkline: "Recent activity"
+  label_pulse_milestones: "Upcoming milestones"
+  label_pulse_no_milestones: "No upcoming milestones."
+  label_pulse_gantt_link: "Open Gantt chart"
+  label_pulse_empty_portfolio: "No projects are visible to you yet."
+  label_pulse_refresh: "Refresh"
+  label_pulse_open_effort: "Open effort"
+
+  # Lens display names.
+  label_pulse_lens_health: "Health"
+  label_pulse_lens_at_risk: "At risk"
+  label_pulse_lens_stale: "Stale"
+  label_pulse_lens_done: "Done"
+  label_pulse_lens_blocked: "Blocked"
+
+  # Main-concern (lens vocabulary) labels for the severity-first dominant signal that
+  # has no direct lens key: momentum -> "Losing momentum", progress -> "Behind schedule"
+  # (staleness/risk_load/blocked_load reuse the lens labels above — Stale/At risk/Blocked).
+  label_pulse_concern_momentum: "Losing momentum"
+  label_pulse_concern_progress: "Behind schedule"
+  # momentum-broaden D2: shown as the main concern when the worst active signal is itself
+  # healthy (n >= 0.5) — there is no concern worth naming.
+  label_pulse_on_track: "On track"
+
+  pulse:
+    computed_ago: "computed %{n} %{unit} ago"
+    # Time-unit words for the "computed N <unit> ago" string (I18N-F6). The presenter
+    # resolves the unit through these keys so a translated locale emits a translated unit;
+    # the English values keep the rendered text identical ("computed 3 days ago").
+    unit_seconds: "seconds"
+    unit_minutes: "minutes"
+    unit_hours: "hours"
+    unit_days: "days"
+    # Singular forms, used when N == 1 ("computed 1 minute ago"). A translated locale
+    # MUST provide BOTH the plural (unit_*s) and singular (unit_*) forms — the presenter
+    # picks the singular key at N == 1 and the plural key otherwise; a missing key falls
+    # back to the English word.
+    unit_second: "second"
+    unit_minute: "minute"
+    unit_hour: "hour"
+    unit_day: "day"
+    refresh_done: "Pulse cache refreshed."
+    enable_hint_staleness: "inactive — staleness needs visible activity to compute"
+    enable_hint_progress: "inactive — map an effort/story-points field to enable progress"
+    enable_hint_momentum: "inactive — momentum needs visible activity to compute"
+    enable_hint_risk_load: "inactive — map a risk tracker to enable risk load"
+    enable_hint_blocked_load: "inactive — blocked load needs visible open issues"
+  pulse_enable_hint_generic: "inactive — map an enrichment field to enable"
+
+  # ── settings validation rejection (CA-23 / CA-A10-001) ───────────────────────
+  # Surfaced as flash[:error] when an out-of-bounds settings value is rejected (the
+  # prior valid value is kept; the invalid input is never persisted).
+  error_pulse_settings_rejected: "Some Pulse settings were out of range and were not saved (kept the previous value): %{fields}."
+
+  # ── settings partial (CA-23) ─────────────────────────────────────────────────
+  label_pulse_settings_enrichment: "Enrichment"
+  label_pulse_settings_weights: "Weights"
+  label_pulse_settings_thresholds: "Thresholds"
+  label_pulse_settings_windows: "Windows"
+  label_pulse_effort_field: "Effort / story-points field"
+  label_pulse_risk_trackers: "Risk trackers"
+  label_pulse_blocked_status: "Blocked status"
+  label_pulse_rag_green_min: "RAG green threshold"
+  label_pulse_rag_amber_min: "RAG amber threshold"
+  label_pulse_h_stale: "Staleness horizon (days)"
+  label_pulse_h_risk: "Risk horizon"
+  label_pulse_h_blocked: "Blocked horizon"
+  label_pulse_activity_window_days: "Activity window (days)"
+  label_pulse_weight_staleness: "Staleness weight"
+  label_pulse_weight_progress: "Progress weight"
+  label_pulse_weight_momentum: "Momentum weight"
+  label_pulse_weight_risk_load: "Risk load weight"
+  label_pulse_weight_blocked_load: "Blocked load weight"
+  label_pulse_momentum_activity_half: "Momentum activity for neutral"
+  label_pulse_momentum_direction_bias: "Momentum direction weight"
+  label_pulse_on_track_threshold: "On-track threshold"
+  label_pulse_snapshot_max_age_minutes: "Freshness cap (minutes)"
+
+  # ── settings help (E1): per-field inline help + per-group intros ─────────────
+  label_pulse_help_group_enrichment: "Optional mappings that turn on or refine signals. Leave them blank to score on standard Redmine fields only - Pulse never invents data; an unmapped signal is shown as inactive and its weight is shared across the active signals."
+  label_pulse_help_group_weights: "How much each of the five signals counts toward the health score. The five values must add up to 1.0. Leave every weight blank to use the shipped defaults. If a signal is inactive for a project, its weight is redistributed over the active ones. Tip: enter all five, or leave all five blank."
+  label_pulse_help_group_thresholds: "The score cut-offs (0-100) for the Red / Amber / Green health chip. Amber must be at or below Green."
+  label_pulse_help_group_windows: "Time horizons (in days) that decide how forgiving each signal is, plus the trailing window for momentum and the sparkline. Larger horizon = more forgiving."
+  label_pulse_help_effort_field: "Numeric ID of an issue custom field (e.g. story points) to use as 'effort' for the Progress signal. Must be an integer/float field. Blank = Progress counts issues (open vs total) instead. Default: blank."
+  # effort-field auto-detect (suggest-only): shown under the effort-field input when it is
+  # blank and Pulse finds numeric custom fields whose name looks like effort/story points.
+  label_pulse_effort_field_detected: "Detected numeric fields you could use as effort (enter one of these IDs above):"
+  label_pulse_help_risk_trackers: "Trackers whose open issues count as risk (weighted by priority). Selecting none turns the Risk-load signal off and shares its weight across the other signals. Default: none selected."
+  label_pulse_help_blocked_status: "Numeric ID of an issue status that means 'blocked' (e.g. On hold). Open issues in this status count toward the Blocked-load signal, on top of 'blocks'-relation blocking. Blank = relations only. Default: blank."
+  label_pulse_help_weight_staleness: "Weight of the Staleness signal (time since the last activity). The five weights must add up to 1.0. Default: 0.25."
+  label_pulse_help_weight_progress: "Weight of the Progress signal (share of work completed). Inactive when a project has no effort to measure, in which case its weight is shared out. The five weights must add up to 1.0. Default: 0.25."
+  label_pulse_help_weight_momentum: "Weight of the Momentum signal (recent activity - opens, closes, commits, comments - over the activity window, with a small net-completion bias). The five weights must add up to 1.0. Default: 0.20."
+  label_pulse_help_weight_risk_load: "Weight of the Risk-load signal (open issues in your mapped risk trackers). No effect until you map a risk tracker; its weight is then shared out. The five weights must add up to 1.0. Default: 0.15."
+  label_pulse_help_weight_blocked_load: "Weight of the Blocked-load signal (count of blocked open issues). The five weights must add up to 1.0. Default: 0.15."
+  label_pulse_help_rag_green_min: "Lowest health score (0-100) that still shows GREEN. Must be at or above the Amber threshold. Higher = stricter. Default: 67."
+  label_pulse_help_rag_amber_min: "Lowest health score (0-100) that still shows AMBER; below this is RED. Must be at or below the Green threshold. Default: 34."
+  label_pulse_help_h_stale: "Days of inactivity at which a project counts as fully stale. Lower = flags quiet projects sooner. Default: 180 days."
+  label_pulse_help_h_risk: "Risk threshold: the priority-weighted total of open risk-tracker issues at which Risk load hits zero. Lower = risk bites harder. Only used when a risk tracker is mapped. Default: 50."
+  label_pulse_help_h_blocked: "Number of blocked open issues at which the Blocked-load signal hits zero. Lower = blockers bite harder. Default: 20."
+  label_pulse_help_activity_window_days: "Trailing window in days for the Momentum signal and the activity sparkline. Narrower = more reactive; wider = steadier. Default: 30 days."
+  label_pulse_help_momentum_activity_half: "How much recent activity (opens, closes, commits, comments) in the activity window counts as neutral momentum (0.5). Lower = a project looks active with less traffic. Default: 8."
+  label_pulse_help_momentum_direction_bias: "How much net issue completion (closes minus opens) nudges momentum up or down, capped at ±this. 0 = ignore direction, score on activity alone. Range 0-0.5. Default: 0.15."
+  label_pulse_help_on_track_threshold: "When a project's worst signal is at or above this (0-1), its main concern reads \"On track\" instead of naming a signal. Higher = stricter (fewer projects read as on track). Default: 0.5."
+  label_pulse_help_snapshot_max_age_minutes: "How fresh the cockpit stays. The first time someone opens Pulse after a project's snapshot is older than this many minutes, it recomputes and its \"computed X ago\" resets. Lower = fresher but recomputes more often. 0 = only recompute when the underlying data changes. Default: 60."

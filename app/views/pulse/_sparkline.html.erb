@@ -1,0 +1,31 @@
+<%# Retrospective sparkline as an inline <svg> polyline + bars (finding 6). Driven by
+    the presenter's bucket values (each {start:, end:, value:}); state -> markup only,
+    no domain/AR logic (COND-A4-002). Accessible: role=img + a <title>. Degrades to a
+    "no activity" note when there is nothing to draw. %>
+<%
+  values   = Array(buckets).map { |b| b[:value].to_i }
+  max_val  = (values.max || 0)
+  width    = 120
+  height   = 24
+  n        = values.size
+  step     = n > 1 ? (width.to_f / (n - 1)) : width.to_f
+  bar_w    = n.positive? ? [(width.to_f / n) - 1, 1].max : width.to_f
+  scale    = ->(v) { max_val.zero? ? height : (height - (v.to_f / max_val * height)) }
+  points   = values.each_with_index.map { |v, i| "#{(i * step).round(1)},#{scale.call(v).round(1)}" }.join(' ')
+  caption  = t(:label_pulse_sparkline)
+%>
+<% if values.empty? || max_val.zero? %>
+  <span class="pulse-spark-empty" title="<%= caption %>"><%= t(:label_pulse_no_recent_activity) %></span>
+<% else %>
+  <svg class="pulse-spark-svg" width="<%= width %>" height="<%= height %>"
+       viewBox="0 0 <%= width %> <%= height %>" role="img"
+       aria-label="<%= caption %>" preserveAspectRatio="none">
+    <title><%= caption %></title>
+    <% values.each_with_index do |v, i| %>
+      <% bh = (v.to_f / max_val * height).round(1) %>
+      <rect class="spark-bar" x="<%= (i * (bar_w + 1)).round(1) %>" y="<%= (height - bh).round(1) %>"
+            width="<%= bar_w.round(1) %>" height="<%= bh %>"></rect>
+    <% end %>
+    <polyline fill="none" stroke="#2a6ab0" stroke-width="1" points="<%= points %>"></polyline>
+  </svg>
+<% end %>

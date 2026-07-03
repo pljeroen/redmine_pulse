@@ -1,0 +1,61 @@
+# Validating example for contracts/schemas/portfolio.json (rev 3).
+# (A) a red project with full enrichment (all 5 signals active), (B) a green project on
+# standard fields only (risk_load inactive -> present with active:false + nulls, weight
+# redistributed). Contributions are NON-NEGATIVE and active contributions round to
+# health_score (explainability, §4.2). Ranked by the default 'health' lens, worst-first.
+# Signals are keyed by canonical name; provenance is pinned per field; snapshot vs
+# projection timestamps are separate; projection clock/config is exposed.
+schema_version: "1.0"
+snapshot_computed_at: { at: "2026-06-20T03:25:00Z", provenance: "computed" }
+projected_at: { at: "2026-06-20T08:00:00Z", provenance: "computed" }
+projection:
+  clock_today: "2026-06-20"
+  time_zone: "Europe/Amsterdam"
+  activity_window_days: 30
+  horizons: { staleness: 180, risk_load: 50, blocked_load: 20 }
+lens: "health"
+default_lens: "health"
+pagination: { offset: 0, limit: 100, total: 2 }
+projects:
+  - project_id: 11
+    identifier: "kernel-aios"
+    name: "kernel-aios"
+    url: "/projects/kernel-aios/pulse"
+    health_score: 29          # round_half_up(4.17+7.5+8.5+3.0+6.0 = 29.17) — NEW momentum
+    rag: "red"
+    dominant_signal: "staleness"  # worst active n 0.167 < 0.5 => named (not on_track)
+    main_concern: "Stale"
+    signal_completeness: 1.0
+    lens_keys: { health: 29, at_risk: 41.83, stale: 150, done: 30.0, blocked: 12 }
+    signals:
+      staleness:    { active: true,  raw_value: 150.0, n: 0.167, effective_weight: 0.25, contribution: 4.17 }
+      progress:     { active: true,  raw_value: 0.30,  n: 0.30,  effective_weight: 0.25, contribution: 7.5 }
+      # momentum-broaden: raw_value=activity(opened6+closed2=8); base 8/16=0.5, dir -0.5, n 0.425.
+      momentum:     { active: true,  raw_value: 8.0,   n: 0.425, effective_weight: 0.20, contribution: 8.5 }
+      risk_load:    { active: true,  raw_value: 40.0,  n: 0.20,  effective_weight: 0.15, contribution: 3.0 }
+      blocked_load: { active: true,  raw_value: 12.0,  n: 0.40,  effective_weight: 0.15, contribution: 6.0 }
+    last_activity: { at: "2026-01-21T10:00:00Z", provenance: "redmine_timestamp" }
+    sparkline:
+      - { start: { at: "2026-06-06T00:00:00Z", provenance: "derived_bucket" }, end: { at: "2026-06-13T00:00:00Z", provenance: "derived_bucket" }, value: 0 }
+      - { start: { at: "2026-06-13T00:00:00Z", provenance: "derived_bucket" }, end: { at: "2026-06-20T00:00:00Z", provenance: "derived_bucket" }, value: 1 }
+  - project_id: 16
+    identifier: "pdfree"
+    name: "pdfree"
+    url: "/projects/pdfree/pulse"
+    health_score: 80          # round_half_up(26.14+23.53+13.78+16.76 = 80.22) — NEW momentum
+    rag: "green"
+    dominant_signal: "on_track"      # worst active n (momentum 0.586) >= 0.5 => on_track (D2)
+    main_concern: "On track"
+    signal_completeness: 0.8   # 4 of 5 active (risk_load unmapped)
+    lens_keys: { health: 80, at_risk: 4.15, stale: 20, done: 80.0, blocked: 1 }
+    signals:
+      staleness:    { active: true,  raw_value: 20.0, n: 0.889, effective_weight: 0.2941, contribution: 26.14 }
+      progress:     { active: true,  raw_value: 0.80, n: 0.80,  effective_weight: 0.2941, contribution: 23.53 }
+      # momentum-broaden: raw_value=activity(opened4+closed6=10); base 10/18=0.5556, dir 0.2, n 0.5856.
+      momentum:     { active: true,  raw_value: 10.0, n: 0.586, effective_weight: 0.2353, contribution: 13.78 }
+      risk_load:    { active: false, raw_value: null, n: null,  effective_weight: null,   contribution: null }
+      blocked_load: { active: true,  raw_value: 1.0,  n: 0.95,  effective_weight: 0.1765, contribution: 16.77 }
+    last_activity: { at: "2026-05-31T09:00:00Z", provenance: "redmine_timestamp" }
+    sparkline:
+      - { start: { at: "2026-06-06T00:00:00Z", provenance: "derived_bucket" }, end: { at: "2026-06-13T00:00:00Z", provenance: "derived_bucket" }, value: 3 }
+      - { start: { at: "2026-06-13T00:00:00Z", provenance: "derived_bucket" }, end: { at: "2026-06-20T00:00:00Z", provenance: "derived_bucket" }, value: 2 }

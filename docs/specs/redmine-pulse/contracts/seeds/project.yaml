@@ -1,0 +1,47 @@
+# Validating example for contracts/schemas/project.json (rev 3).
+# Per-project breakdown for project 11 (kernel-aios, red) — mirrors the portfolio seed's
+# project A, expanded with drill links, effective weights, thresholds, retrospective
+# sparkline, and a forward milestone (an operator-set Version due date, date-valued).
+# Signals keyed by canonical name; provenance pinned per field; snapshot vs projection
+# timestamps separate; projection clock/config exposed; forward axis non-empty because a
+# due date exists (it would be [] if none did — never invented).
+schema_version: "1.0"
+snapshot_computed_at: { at: "2026-06-20T03:25:00Z", provenance: "computed" }
+projected_at: { at: "2026-06-20T08:00:00Z", provenance: "computed" }
+projection:
+  clock_today: "2026-06-20"
+  time_zone: "Europe/Amsterdam"
+  activity_window_days: 30
+  horizons: { staleness: 180, risk_load: 50, blocked_load: 20 }
+visibility_note: "Health computed from issues visible to you."
+project:
+  project_id: 11
+  identifier: "kernel-aios"
+  name: "kernel-aios"
+  url: "/projects/kernel-aios/pulse"
+health_score: 29   # NEW momentum: round_half_up(4.17+7.5+8.5+3.0+6.0 = 29.17)
+rag: "red"
+dominant_signal: "staleness"  # worst active n 0.167 < 0.5 => named (not on_track)
+main_concern: "Stale"
+signal_completeness: 1.0
+lens_keys: { health: 29, at_risk: 41.83, stale: 150, done: 30.0, blocked: 12 }
+thresholds: { rag_green_min: 67, rag_amber_min: 34 }
+weights_effective:
+  staleness: 0.25
+  progress: 0.25
+  momentum: 0.20
+  risk_load: 0.15
+  blocked_load: 0.15
+signals:
+  staleness:    { active: true,  raw_value: 150.0, n: 0.167, effective_weight: 0.25, contribution: 4.17, drill_url: "/projects/kernel-aios/activity" }
+  progress:     { active: true,  raw_value: 0.30,  n: 0.30,  effective_weight: 0.25, contribution: 7.5,  drill_url: "/projects/kernel-aios/issues?set_filter=1&status_id=*" }
+  # momentum-broaden: raw_value=activity(opened6+closed2=8); base 8/16=0.5, dir -0.5, n 0.425.
+  momentum:     { active: true,  raw_value: 8.0,   n: 0.425, effective_weight: 0.20, contribution: 8.5,  drill_url: "/projects/kernel-aios/issues?set_filter=1&c[]=status&c[]=closed_on" }
+  risk_load:    { active: true,  raw_value: 40.0,  n: 0.20,  effective_weight: 0.15, contribution: 3.0,  drill_url: "/projects/kernel-aios/issues?set_filter=1&tracker_id=7&status_id=o" }
+  blocked_load: { active: true,  raw_value: 12.0,  n: 0.40,  effective_weight: 0.15, contribution: 6.0,  drill_url: "/projects/kernel-aios/issues?set_filter=1&status_id=o" }
+timeline:
+  retrospective:
+    - { start: { at: "2026-06-06T00:00:00Z", provenance: "derived_bucket" }, end: { at: "2026-06-13T00:00:00Z", provenance: "derived_bucket" }, value: 0 }
+    - { start: { at: "2026-06-13T00:00:00Z", provenance: "derived_bucket" }, end: { at: "2026-06-20T00:00:00Z", provenance: "derived_bucket" }, value: 1 }
+  forward:
+    - { version_id: 42, name: "v1.0", due_date: { date: "2026-09-30", provenance: "version_due_date" } }

@@ -1,0 +1,260 @@
+# frozen_string_literal: true
+
+# redmine_pulse — portfolio / project-health cockpit for Redmine 6.x.
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation, either version 2 of the License, or (at your option) any later
+# version. See <https://www.gnu.org/licenses/> (GPL-2.0).
+
+module Pulse
+  module Adapters
+    # SettingsSanitizer — validates an incoming plugin-settings hash to the EXACT
+    # ScoringConfig bounds (DG-07 / COND-CA-03 / FC-CA-30) and REJECTS invalid scalar
+    # values by keeping the previously-persisted value for that key (the invalid input
+    # is never persisted). It is pure Ruby (no Rails/AR) so it is unit-testable and so
+    # the admin POST path can sanitize before `Setting.plugin_redmine_pulse=` persists.
+    #
+    # Bounds enforced (read off the as-built ScoringConfig contract):
+    #   rag_green_min / rag_amber_min : Integer in [0,100], amber <= green
+    #   h_stale / h_risk / h_blocked  : Integer >= 1
+    #   activity_window_days          : Integer >= 1
+    #   weights                       : exactly the 5 signal keys, each finite
+    #                                   Numeric >= 0, summing to 1.0 (else dropped to
+    #                                   defaults — never a partial/invalid set)
+    #
+    # Returns [sanitized_hash, errors] where errors is an Array<String> of human keys
+    # that were rejected (empty == fully valid).
+    module SettingsSanitizer
+      WEIGHT_KEYS = %w[staleness progress momentum risk_load blocked_load].freeze
+      ALWAYS_ACTIVE = %w[staleness momentum blocked_load].freeze
+
+      module_function
+
+      # incoming: the candidate settings hash (string keys, string-ish values).
+      # previous: the currently-persisted settings hash (the fallback for rejects).
+      def sanitize(incoming, previous)
+        incoming = stringify(incoming)
+        previous = stringify(previous)
+        result = previous.dup
+        errors = []
+
+        %w[rag_green_min rag_amber_min].each do |k|
+          v = integer_in_range(incoming[k], 0, 100)
+          if v.nil?
+            errors << k
+          else
+            result[k] = v
+          end
+        end
+        # amber must be <= green for coherent bands.
+        if result['rag_amber_min'].to_i > result['rag_green_min'].to_i
+          errors << 'rag_amber_min'
+          result['rag_green_min'] = previous['rag_green_min']
+          result['rag_amber_min'] = previous['rag_amber_min']
+        end
+
+        %w[h_stale h_risk h_blocked activity_window_days].each do |k|
+          v = integer_at_least(incoming[k], 1)
+          if v.nil?
+            errors << k
+          else
+            result[k] = v
+          end
+        end
+
+        # Float-shaped momentum / on-track shape fields (promoted from domain constants).
+        # momentum_activity_half: strictly positive; momentum_direction_bias: [0,0.5];
+        # on_track_threshold: [0,1]. These are DEFAULTED fields: a BLANK/absent value means
+        # "use the shipped default" (mirrors RedmineSettingsProvider#float_setting and the
+        # weights sanitizer's blank => keep behaviour), so it is NOT an error — we leave the
+        # key unset (delete from result) so the provider's default applies at read time. A
+        # PRESENT-but-invalid value is STILL rejected: report + retain the prior value.
+        {
+          'momentum_activity_half' => ->(raw) { float_strictly_positive(raw) },
+          'momentum_direction_bias' => ->(raw) { float_in_range(raw, 0.0, 0.5) },
+          'on_track_threshold' => ->(raw) { float_in_range(raw, 0.0, 1.0) }
+        }.each do |k, validate|
+          raw = incoming[k]
+          if blank?(raw)
+            result.delete(k) # blank/absent => fall back to the shipped default at read time
+            next
+          end
+          v = validate.call(raw)
+          if v.nil?
+            errors << k # present but non-numeric / out-of-range => reject, keep prior value
+          else
+            result[k] = v
+          end
+        end
+
+        # CT-02 snapshot_max_age_minutes: OPERATIONAL cache freshness cap. Integer >= 0
+        # (0 is VALID = disabled). BLANK/absent => "use the shipped default" (delete the
+        # key so the provider default 60 applies at read time — mirrors the momentum/
+        # weights blank-tolerance), NOT an error. A PRESENT-but-invalid value (negative /
+        # non-numeric) is rejected: report + retain the prior value.
+        if blank?(incoming['snapshot_max_age_minutes'])
+          result.delete('snapshot_max_age_minutes')
+        else
+          v = integer_at_least(incoming['snapshot_max_age_minutes'], 0)
+          if v.nil?
+            errors << 'snapshot_max_age_minutes'
+          else
+            result['snapshot_max_age_minutes'] = v
+          end
+        end
+
+        # RT-07 (security-S3-defense): VALIDATE admin-set enrichment ids at save time —
+        # defense-in-depth, not passthrough. effort_field / blocked_status are single
+        # positive-integer ids; risk_trackers is a LIST of positive-integer ids. A BLANK/
+        # absent value means "unmapped => use the default" (delete the scalar key / empty
+        # list — mirrors the momentum/snapshot blank-tolerance), NOT an error. A PRESENT-
+        # but-INVALID scalar (non-integer / non-positive) is REJECTED: report + retain the
+        # prior value (never persist the garbage verbatim). For the multi-select tracker
+        # list we DROP any non-positive-integer element (keep the valid integer subset) so
+        # a stray non-integer id never survives.
+        %w[effort_field blocked_status].each do |k|
+          raw = incoming[k]
+          if blank?(raw)
+            result.delete(k) # blank/absent => unmapped, fall back to the default at read time
+            next
+          end
+          v = integer_at_least(raw, 1)
+          if v.nil?
+            errors << k # present but non-integer / non-positive => reject, keep prior value
+          else
+            result[k] = v
+          end
+        end
+        result['risk_trackers'] = normalize_trackers(incoming.fetch('risk_trackers', previous['risk_trackers']))
+
+        weights, weight_err = sanitize_weights(incoming['weights'], previous['weights'])
+        result['weights'] = weights
+        errors << 'weights' if weight_err
+
+        [result, errors]
+      end
+
+      # Blank == nil or an empty/whitespace-only string. Used to distinguish "field
+      # left untouched on an upgraded instance" (use default) from "present invalid value".
+      def blank?(raw)
+        raw.nil? || (raw.is_a?(String) && raw.strip.empty?)
+      end
+
+      def integer_in_range(raw, lo, hi)
+        i = strict_integer(raw)
+        return nil if i.nil?
+        return nil unless i.between?(lo, hi)
+
+        i
+      end
+
+      def integer_at_least(raw, min)
+        i = strict_integer(raw)
+        return nil if i.nil?
+        return nil if i < min
+
+        i
+      end
+
+      # Float in the inclusive [lo, hi] range; nil for non-numeric/blank/out-of-range.
+      def float_in_range(raw, lo, hi)
+        f = strict_float(raw)
+        return nil if f.nil?
+        return nil unless f.between?(lo, hi)
+
+        f
+      end
+
+      # Strictly-positive float (> 0); nil for non-numeric/blank/<= 0.
+      def float_strictly_positive(raw)
+        f = strict_float(raw)
+        return nil if f.nil?
+        return nil if f <= 0.0
+
+        f
+      end
+
+      # Strict: accepts an Integer or a String of digits only (optional leading sign).
+      # "0" is a valid integer (the >= checks reject it as out of range), but "abc" /
+      # "1.5" / "" / nil are not integers at all.
+      def strict_integer(raw)
+        return raw if raw.is_a?(Integer)
+        return nil if raw.nil?
+
+        s = raw.to_s.strip
+        return nil unless s.match?(/\A-?\d+\z/)
+
+        s.to_i
+      end
+
+      # weights: keep ONLY when the candidate forms a complete valid set; else fall
+      # back to previous (or {} => engine defaults). Returns [weights, had_error].
+      def sanitize_weights(raw, previous)
+        return [previous || {}, false] if raw.nil? || (raw.respond_to?(:empty?) && raw.empty?)
+        return [previous || {}, true] unless raw.is_a?(Hash)
+        # ALL-BLANK weights (every value nil/empty/whitespace) means "use the shipped
+        # defaults" — mirrors the nil/empty short-circuit above and the help text. A fresh/
+        # upgraded instance renders the 5 inputs blank, so "Apply" submits a hash of blank
+        # strings; that is NOT an error. A PARTIAL set falls through to the strict checks
+        # below and is still rejected (you can't persist an incomplete weight set).
+        return [previous || {}, false] if raw.values.all? { |v| blank?(v) }
+
+        candidate = {}
+        WEIGHT_KEYS.each do |k|
+          f = strict_float(raw[k] || raw[k.to_sym])
+          return [previous || {}, true] if f.nil? || f < 0.0
+
+          candidate[k] = f
+        end
+        return [previous || {}, true] unless raw_keys_exact?(raw)
+        return [previous || {}, true] if (candidate.values.sum - 1.0).abs >= 1e-9
+        return [previous || {}, true] if ALWAYS_ACTIVE.sum { |k| candidate[k] } <= 0.0
+
+        [candidate, false]
+      end
+
+      def raw_keys_exact?(raw)
+        raw.keys.map(&:to_s).sort == WEIGHT_KEYS.sort
+      end
+
+      def strict_float(raw)
+        f =
+          if raw.is_a?(Numeric)
+            raw.to_f
+          elsif raw.nil?
+            return nil
+          else
+            Float(raw.to_s.strip)
+          end
+        # A non-finite float (Infinity / -Infinity / NaN) is NEVER a valid setting: an
+        # overflow string like "1e309" yields Float::INFINITY WITHOUT Float() raising, and
+        # ScoringConfig would raise on read. Reject it here — the shared chokepoint — so
+        # float_in_range, float_strictly_positive AND sanitize_weights are all protected.
+        return nil unless f.finite?
+
+        f
+      rescue ArgumentError, TypeError
+        nil
+      end
+
+      # RT-07: normalize a multi-select tracker-id list. Strip blanks, then KEEP only
+      # strict positive-integer ids (drop any non-integer / non-positive element) so a
+      # stray non-integer id can never be persisted verbatim. Preserves the incoming
+      # string shape for valid ids (a Redmine multi-select posts string ids).
+      def normalize_trackers(raw)
+        Array(raw)
+          .map { |v| v.to_s.strip }
+          .reject(&:empty?)
+          .select { |s| !integer_at_least(s, 1).nil? }
+      end
+
+      def stringify(hash)
+        return {} unless hash.respond_to?(:each_pair) || hash.is_a?(Hash)
+
+        hash.each_with_object({}) { |(k, v), acc| acc[k.to_s] = v }
+      end
+    end
+  end
+end

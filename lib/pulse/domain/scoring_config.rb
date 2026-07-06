@@ -8,6 +8,7 @@
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
 require 'pulse/domain/signal_registry'
+require 'pulse/domain/weight_set'
 
 module Pulse
   module Domain
@@ -41,13 +42,20 @@ module Pulse
         weights = weights.nil? ? SignalRegistry.default_weights : weights
         # The enabled set is the DOMAIN of weights. An explicit enabled_signals: must
         # exactly cover dom(w) (checked in validate_weights!); nil => derive from weights.
+        # C3 (OBL-C3-01): base weight validation is delegated to a WeightSet constructed
+        # INTERNALLY — registered keys, finite real Numeric >= 0, at-least-one > 0, all
+        # fail-loud as ArgumentError — then ScoringConfig layers its OWN constraints
+        # (dom(w) == enabled set, Σ == 1.0, enabled ∩ always-active weight-sum > 0) on top.
+        # @weights is set from the WeightSet's plain frozen Hash so the PUBLIC #weights
+        # attr_reader keeps returning a plain frozen Hash, byte-identical to the input.
+        weight_set = base_weight_set!(weights)
         validate_weights!(weights, enabled_signals)
         validate_non_weight_fields!(rag_green_min, rag_amber_min,
                                     h_stale, h_risk, h_blocked, activity_window_days)
         validate_momentum_onctrack_fields!(momentum_activity_half,
                                            momentum_direction_bias, on_track_threshold)
 
-        @weights = weights.dup.freeze
+        @weights = weight_set.to_h
         @enabled_signals = weights.keys.freeze
         @rag_green_min = rag_green_min
         @rag_amber_min = rag_amber_min
@@ -63,6 +71,15 @@ module Pulse
       end
 
       private
+
+      # C3: construct a WeightSet from the incoming weights for base validation (registered
+      # keys, finite real Numeric >= 0, at-least-one > 0 — all ArgumentError). Its #to_h is
+      # a plain frozen Hash (dup.freeze of the input, insertion order preserved) that becomes
+      # @weights — so the public attr_reader stays a plain frozen Hash byte-identical to the
+      # input. A non-Hash input is surfaced by WeightSet as ArgumentError just as before.
+      def base_weight_set!(weights)
+        WeightSet.new(weights)
+      end
 
       # C1: the enabled set is the domain of weights. Weight keys must be a NON-EMPTY
       # subset of the registered signals; when an explicit enabled_signals is supplied it

@@ -8,6 +8,13 @@
 
 <p class="pulse-visibility-note"><%= @view.visibility_note %></p>
 
+<%# C4 (FC-C4-12 / FR-C4-09): a SURFACED dangling-fallback warning for the portfolio — shown
+    when a ?profile_id override referenced an unpublished profile (scoring fell back to the
+    system default for every project). Precomputed on @view (COND-A4-001). %>
+<% if @view.profile_warning %>
+  <div class="flash warning pulse-profile-warning" role="alert"><%= @view.profile_warning %></div>
+<% end %>
+
 <%# finding 4: the lens selector is a WORKING control — wrapped in a GET form that
     re-requests with ?lens=, and an onchange that submits for no-extra-click UX. %>
 <form method="get" action="<%= url_for(controller: 'pulse', action: 'index') %>" class="pulse-lens-selector">

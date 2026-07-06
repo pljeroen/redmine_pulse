@@ -104,6 +104,20 @@ module Pulse
         SettingsSanitizer.truthy?(settings['enable_coverage_gap'])
       end
 
+      # C4 (FR-C4-02/04) — the admin-defined scoring profiles + role bindings, in the shape
+      # RedmineProfileProvider consumes: { 'profiles' => {id => {name, weights, ...}},
+      # 'role_bindings' => {role_id => profile_id} }. Absent => an empty pair (the synthetic
+      # default needs no entry). Read-only passthrough of the sanitizer-validated sub-hash.
+      def pulse_profiles
+        raw = settings['pulse_profiles']
+        return { 'profiles' => {}, 'role_bindings' => {} } unless raw.is_a?(Hash)
+
+        {
+          'profiles' => raw['profiles'] || raw[:profiles] || {},
+          'role_bindings' => raw['role_bindings'] || raw[:role_bindings] || {}
+        }
+      end
+
       private
 
       def settings

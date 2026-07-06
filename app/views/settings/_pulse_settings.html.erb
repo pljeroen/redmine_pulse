@@ -86,6 +86,68 @@
   </p>
 </fieldset>
 
+<%# C4 (FR-C4-08): scoring-profile + role-binding management. Server-inline, no-JS, matching
+    the existing settings idiom. Each persisted profile renders a name + the 5 weight inputs;
+    one blank slot (__new__) lets the admin add one. The reserved "default" id is never an
+    editable admin profile (it is synthetic). SettingsSanitizer validates + drops invalid
+    entries at POST time; this view renders form state only (no scoring/AR logic). %>
+<% pulse_profiles = (settings['pulse_profiles'] || settings[:pulse_profiles] || {}) %>
+<% persisted_profiles = (pulse_profiles['profiles'] || pulse_profiles[:profiles] || {}) %>
+<% persisted_bindings = (pulse_profiles['role_bindings'] || pulse_profiles[:role_bindings] || {}) %>
+<% profile_weight_keys = %w[staleness progress momentum risk_load blocked_load] %>
+<fieldset class="box tabular pulse-settings-profiles">
+  <legend><%= t(:label_pulse_settings_profiles) %></legend>
+  <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_profiles) %></em></p>
+
+  <% profile_slots = persisted_profiles.to_a + [['__new__', {}]] %>
+  <% profile_slots.each do |pid, entry| %>
+    <% entry = (entry || {}) %>
+    <% is_new = (pid == '__new__') %>
+    <% pw = (entry['weights'] || entry[:weights] || {}) %>
+    <div class="pulse-profile-entry">
+      <p>
+        <label><%= t(:label_pulse_profile_id) %></label>
+        <% if is_new %>
+          <input type="text" name="settings[pulse_profiles][profiles][__new__][id]" value="" />
+        <% else %>
+          <input type="text" name="settings[pulse_profiles][profiles][<%= pid %>][id]" value="<%= pid %>" readonly="readonly" />
+        <% end %>
+      </p>
+      <p>
+        <label><%= t(:label_pulse_profile_name) %></label>
+        <input type="text" name="settings[pulse_profiles][profiles][<%= pid %>][name]"
+               value="<%= entry['name'] || entry[:name] %>" />
+      </p>
+      <% profile_weight_keys.each do |sig| %>
+        <p>
+          <label><%= t("label_pulse_weight_#{sig}") %></label>
+          <input type="text" name="settings[pulse_profiles][profiles][<%= pid %>][weights][<%= sig %>]"
+                 value="<%= pw[sig] || pw[sig.to_sym] %>" />
+        </p>
+      <% end %>
+    </div>
+  <% end %>
+  <p class="info pulse-profile-hint"><em class="info"><%= t(:label_pulse_profile_new) %></em></p>
+
+  <div class="pulse-role-bindings">
+    <p><strong><%= t(:label_pulse_role_bindings) %></strong></p>
+    <% binding_slots = persisted_bindings.to_a + [['__new__', '']] %>
+    <% binding_slots.each_with_index do |(rid, target), idx| %>
+      <% is_new = (rid == '__new__') %>
+      <% key = is_new ? "__new_#{idx}__" : rid %>
+      <p class="pulse-role-binding-entry">
+        <label><%= t(:label_pulse_role_binding_role_id) %></label>
+        <input type="text" name="settings[pulse_profiles][role_bindings_pairs][<%= key %>][role_id]"
+               value="<%= is_new ? '' : rid %>" />
+        <label><%= t(:label_pulse_role_binding_profile_id) %></label>
+        <input type="text" name="settings[pulse_profiles][role_bindings_pairs][<%= key %>][profile_id]"
+               value="<%= is_new ? '' : target %>" />
+      </p>
+    <% end %>
+    <p class="info"><em class="info"><%= t(:label_pulse_role_binding_new) %></em></p>
+  </div>
+</fieldset>
+
 <fieldset class="box tabular pulse-settings-thresholds">
   <legend><%= t(:label_pulse_settings_thresholds) %></legend>
   <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_thresholds) %></em></p>

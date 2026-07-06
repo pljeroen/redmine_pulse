@@ -58,10 +58,28 @@ class PulseBaseController < ApplicationController
     )
   end
 
+  # C4: the ProfileProvider resolves the active scoring profile per viewer (transient
+  # selection > role binding > system default). Injected into the engine so scoring is
+  # driven by the resolved profile's config and the cache is profile-partitioned.
+  def profile_provider
+    @profile_provider ||= Pulse::Adapters::RedmineProfileProvider.new(
+      settings_provider: settings_provider
+    )
+  end
+
   def engine
     @engine ||= Pulse::Adapters::PulseProjection::Engine.new(
       metrics_source: metrics_source, store: store,
-      settings_provider: settings_provider, clock: clock
+      settings_provider: settings_provider, clock: clock,
+      profile_provider: profile_provider
     )
+  end
+
+  # C4 (FC-C4-06): the canonical transient profile selection param is `profile_id` (the
+  # validated-intent name). `profile` is retained ONLY as a backward-compat alias for callers
+  # that predate the rename; `profile_id` wins when both are present. nil when neither is set
+  # (=> role-default / system-default resolution inside the provider).
+  def selected_profile_id
+    params[:profile_id].presence || params[:profile].presence
   end
 end

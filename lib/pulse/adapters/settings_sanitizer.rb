@@ -178,7 +178,122 @@ module Pulse
         result['weights'] = weights
         errors << 'weights' if weight_err
 
+        # FR-C4-02/04/09 / FC-C4-05, FC-C4-14 — additive pulse_profiles validation. Absent
+        # in the incoming hash => nothing added (the synthetic default needs no entry; the
+        # profiles-free result stays byte-identical to the pre-C4 sanitized value). Present
+        # => validate each profile + role-binding and REJECT invalid entries wholesale.
+        sanitize_pulse_profiles(incoming['pulse_profiles'], result, errors)
+
         [result, errors]
+      end
+
+      # FC-C4-14 — validate the additive pulse_profiles sub-hash IN PLACE on `result`.
+      # Only touches `result` when the admin actually supplied a pulse_profiles hash (else
+      # the profiles-free result is byte-unchanged; no synthetic key is injected). A profile
+      # entry: non-empty id (NOT the reserved "default"), non-empty name, per-field-bounded
+      # config (reusing the ScoringConfig weight bounds via validate_weight_set). A role
+      # binding: positive-integer role_id, profile_id in the defined set OR the reserved
+      # "default". ANY invalid entry is DROPPED entirely and 'pulse_profiles' is reported
+      # once (the invalid entry is never partially persisted).
+      def sanitize_pulse_profiles(raw, result, errors)
+        return unless raw.is_a?(Hash)
+
+        raw = stringify(raw)
+        had_error = false
+
+        clean_profiles = {}
+        (raw['profiles'] || {}).each do |outer_id, entry|
+          entry = stringify(entry) if entry.is_a?(Hash)
+          # The outer hash key is the profile id in the canonical shape. The no-JS settings
+          # form additionally carries an inner [id] field (so a blank "__new__" slot can name
+          # a fresh id) — prefer it when present and non-blank. An unfilled blank slot (no id
+          # + no name) is SILENTLY skipped (not an error): it is the empty "add" row.
+          inner_id = entry.is_a?(Hash) ? entry['id'] : nil
+          effective_id = (inner_id.nil? || inner_id.to_s.strip.empty?) ? outer_id.to_s : inner_id.to_s
+          next if empty_profile_slot?(effective_id, entry)
+
+          sanitized_profile = sanitize_profile_entry(effective_id, entry)
+          if sanitized_profile.nil?
+            had_error = true
+          else
+            clean_profiles[effective_id] = sanitized_profile
+          end
+        end
+
+        defined_ids = clean_profiles.keys
+        clean_bindings = {}
+        normalized_binding_pairs(raw).each do |rid, pid|
+          # An entirely blank binding row (no role_id + no profile_id) is the empty "add" slot
+          # — silently skipped, not an error.
+          next if blank?(rid) && blank?(pid)
+
+          if valid_role_binding?(rid, pid, defined_ids)
+            clean_bindings[rid.to_s] = pid.to_s
+          else
+            had_error = true
+          end
+        end
+
+        result['pulse_profiles'] = { 'profiles' => clean_profiles, 'role_bindings' => clean_bindings }
+        errors << 'pulse_profiles' if had_error
+      end
+
+      # A single admin profile entry -> a clean {'name', 'weights'} hash, or nil if invalid.
+      # id must be non-empty and NOT the reserved "default"; name non-empty; weights a valid
+      # complete set over the 5 default-on keys (Σ==1.0, always-active > 0). The config bounds
+      # are REUSED (validate_weight_set), never bypassed.
+      def sanitize_profile_entry(id, entry)
+        return nil if id.nil? || id.strip.empty?
+        return nil if id == 'default' # reserved id — never an admin profile (FC-C4-05)
+        return nil unless entry.is_a?(Hash)
+
+        entry = stringify(entry)
+        name = entry['name']
+        return nil if name.nil? || name.to_s.strip.empty?
+
+        weights, weight_err = validate_weight_set(entry['weights'], nil, DEFAULT_ON_KEYS)
+        return nil if weight_err
+
+        { 'name' => name.to_s, 'weights' => weights }
+      end
+
+      # True iff a profile slot is entirely empty (no id AND no name/weights) — the empty
+      # "add" row in the no-JS settings form, which is silently skipped rather than reported.
+      def empty_profile_slot?(effective_id, entry)
+        id_blank = effective_id.nil? || effective_id.to_s.strip.empty? || effective_id == '__new__'
+        return false unless id_blank
+        return true unless entry.is_a?(Hash)
+
+        name = entry['name']
+        weights = entry['weights']
+        (name.nil? || name.to_s.strip.empty?) &&
+          (weights.nil? || (weights.respond_to?(:empty?) && weights.empty?) ||
+           (weights.is_a?(Hash) && weights.values.all? { |v| blank?(v) }))
+      end
+
+      # Normalize role bindings to [ [role_id, profile_id], ... ] from EITHER shape:
+      #   * canonical: role_bindings => { role_id => profile_id }  (the chain-test shape);
+      #   * form:      role_bindings_pairs => { key => { role_id:, profile_id: } } (no-JS form,
+      #     so a dynamic new role_id is expressible as a value, not a static hash key).
+      def normalized_binding_pairs(raw)
+        pairs = (raw['role_bindings'] || {}).map { |rid, pid| [rid, pid] }
+        (raw['role_bindings_pairs'] || {}).each_value do |entry|
+          entry = stringify(entry) if entry.is_a?(Hash)
+          next unless entry.is_a?(Hash)
+
+          pairs << [entry['role_id'], entry['profile_id']]
+        end
+        pairs
+      end
+
+      # A role binding is valid iff role_id is a positive integer AND profile_id names a
+      # defined admin profile OR the reserved "default" (a valid binding TARGET, FC-C4-14 c).
+      def valid_role_binding?(role_id, profile_id, defined_ids)
+        rid = integer_at_least(role_id, 1)
+        return false if rid.nil?
+
+        pid = profile_id.to_s
+        pid == 'default' || defined_ids.include?(pid)
       end
 
       # Redmine checkbox / scalar truthiness: '1'/'true'/true are ON; nil/''/'0'/'false' OFF.

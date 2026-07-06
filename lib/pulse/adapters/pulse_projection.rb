@@ -38,47 +38,106 @@ module Pulse
         :project, :metrics, :health, :timeline, :config,
         :snapshot_computed_at, :projected_at, :last_activity_at, :clock,
         :risk_tracker_ids,
+        # C4: the resolved active profile (its config drives scoring), its display name, and
+        # the published set for the switcher. nil / empty for a default-only (pre-C4-shaped)
+        # projection so the presenter degrades gracefully.
+        :active_profile, :active_profile_name, :published_profiles,
+        # C4 (FC-C4-12 / FR-C4-09): the human-readable dangling-fallback warning surfaced by
+        # the ProfileProvider when an explicit / role-bound selection referenced a profile that
+        # is not published (scoring fell back to the system default). nil on a clean resolution.
+        :profile_warning,
         keyword_init: true
       )
 
       # The cache read-miss + per-request projection engine (composition-root helper).
+      #
+      # C4: an optional profile_provider resolves the ACTIVE profile per viewer (transient
+      # requested_id > role binding > system default). Its id folds into the SnapshotFingerprint
+      # (cache partition, FC-C4-08/09) and its config drives Scoring/Timeline (FC-C4-10SC).
+      # CRITICAL: visibility scoping (VisibilityContext / Issue.visible) stays PRE-profile — the
+      # profile changes ONLY weighting on the already-visibility-scoped metrics; it NEVER changes
+      # the visible issue set (INV-C4-PERM-UNCHANGED). When no profile_provider is injected the
+      # engine behaves exactly as pre-C4 (default config, no profile component in the fingerprint).
       class Engine
-        def initialize(metrics_source:, store:, settings_provider:, clock:)
+        def initialize(metrics_source:, store:, settings_provider:, clock:, profile_provider: nil)
           @metrics_source = metrics_source
           @store = store
           @settings_provider = settings_provider
           @clock = clock
+          @profile_provider = profile_provider
         end
 
-        # Compute one project's full projection through the cache. Returns Projection.
-        def project_projection(user, project)
+        # Compute one project's full projection through the cache. requested_id is the
+        # transient viewer selection (the ?profile query param; nil => role binding / default).
+        # Returns Projection scored under the RESOLVED profile's config, cached under a
+        # profile-partitioned fingerprint.
+        def project_projection(user, project, requested_id = nil)
+          active = resolve_profile(user, project, requested_id)
+          # Capture the dangling-fallback warning the provider set during this resolution (nil on
+          # a clean resolve) BEFORE any further provider call could reset it (FC-C4-12/FR-C4-09).
+          warning = profile_warning
+          config = active ? active.config : @settings_provider.scoring_config
+
           ctx_id = VisibilityContext.new(user, project).id
-          fingerprint = SnapshotFingerprint.new(user, project, settings_provider: @settings_provider).value
+          fingerprint = SnapshotFingerprint.new(
+            user, project, settings_provider: @settings_provider,
+            active_profile_id: active&.id
+          ).value
+          # The partition-scope for the RT-04 prune in the store: the RESOLVED active profile
+          # id, normalized so the reserved default/nil path collapses to '' (pre-C4 one-row-per-
+          # cell behavior). A NON-default profile scopes the prune to its own id so warming it
+          # never deletes another profile's row (INV-C4-CACHE-PARTITION / IT-C4-01(2)/(3)).
+          partition_profile_id = partition_profile_id(active)
 
           max_age = @settings_provider.snapshot_max_age_minutes
           row = @store.fetch_row(project.id, ctx_id, fingerprint)
           row = if row.nil?
-                  warm(user, project, ctx_id, fingerprint)
+                  warm(user, project, ctx_id, fingerprint, profile_id: partition_profile_id)
                 elsif age_stale?(row[:computed_at], max_age)
-                  refresh(user, project, ctx_id, fingerprint)
+                  refresh(user, project, ctx_id, fingerprint, profile_id: partition_profile_id)
                 else
                   row
                 end
 
-          build_projection(project, row[:payload], row[:computed_at])
+          build_projection(project, row[:payload], row[:computed_at],
+                            config: config, active_profile: active, profile_warning: warning)
         end
 
         # Compute every visible+permitted project's projection (portfolio set). The warm
         # path does ONE bulk snapshot SELECT for the whole portfolio (CA-30 SOFT-PERF),
         # falling back to a per-project warm only on a cache miss.
-        def portfolio_projections(user)
+        #
+        # C4 (OBL-C4-05): the portfolio is PROFILED exactly like the per-project show page.
+        # requested_id is the transient GLOBAL override (?profile_id) applying to every project;
+        # when absent, each project resolves its OWN active profile via the provider (the
+        # viewer's per-project role-default binding — Redmine roles are per-project — else the
+        # system default). The resolved profile's id folds into that project's SnapshotFingerprint
+        # AND scopes its RT-04 prune, so the portfolio's per-project snapshots are profile-
+        # partitioned with the SAME no-cross-serve guarantee as the show page.
+        def portfolio_projections(user, requested_id = nil)
           pids = @metrics_source.portfolio_project_ids(user)
           projects = Project.visible(user).where(id: pids).order(:id)
 
+          # Resolve each project's active profile up front (per-project role default, or the
+          # global override). Keyed by project.id so the fingerprint, prune-scope, and scoring
+          # config all read the SAME resolved profile below.
+          active_by_id = {}
+          config_by_id = {}
+          warning_by_id = {}
           keys = {}
           projects.each do |project|
+            active = resolve_profile(user, project, requested_id)
+            active_by_id[project.id] = active
+            # Capture THIS project's dangling-fallback warning (nil on a clean resolve) BEFORE the
+            # next iteration's resolve_profile resets the provider's @last_warning. Threaded into
+            # build_projection below so the presenter can surface it on the index (FC-C4-12/FR-C4-09).
+            warning_by_id[project.id] = profile_warning
+            config_by_id[project.id] = active ? active.config : @settings_provider.scoring_config
             ctx_id = VisibilityContext.new(user, project).id
-            fingerprint = SnapshotFingerprint.new(user, project, settings_provider: @settings_provider).value
+            fingerprint = SnapshotFingerprint.new(
+              user, project, settings_provider: @settings_provider,
+              active_profile_id: active&.id
+            ).value
             keys[project.id] = [project.id, ctx_id, fingerprint]
           end
 
@@ -87,19 +146,61 @@ module Pulse
 
           projects.map do |project|
             key = keys[project.id]
+            active = active_by_id[project.id]
+            partition_profile_id = partition_profile_id(active)
             row = rows[key]
             row = if row.nil?
-                    warm(user, project, key[1], key[2])
+                    warm(user, project, key[1], key[2], profile_id: partition_profile_id)
                   elsif age_stale?(row[:computed_at], max_age)
-                    refresh(user, project, key[1], key[2])
+                    refresh(user, project, key[1], key[2], profile_id: partition_profile_id)
                   else
                     row
                   end
-            build_projection(project, row[:payload], row[:computed_at])
+            build_projection(project, row[:payload], row[:computed_at],
+                             config: config_by_id[project.id], active_profile: active,
+                             profile_warning: warning_by_id[project.id])
           end
         end
 
         private
+
+        # Resolve the active profile for the viewer via the injected provider (nil when no
+        # provider is wired => default-config behavior, pre-C4). requested_id is the transient
+        # selection. A dangling id degrades to the default inside the provider (never raises).
+        def resolve_profile(user, project, requested_id)
+          return nil if @profile_provider.nil?
+
+          @profile_provider.resolve(user, project, requested_id)
+        end
+
+        # The dangling-fallback warning from the LAST provider #resolve (FC-C4-12 / FR-C4-09):
+        # a human-readable String when the just-resolved selection referenced an unpublished
+        # profile (scoring fell back to the system default), else nil. nil when no provider is
+        # wired or the provider does not expose #last_warning.
+        def profile_warning
+          return nil if @profile_provider.nil?
+          return nil unless @profile_provider.respond_to?(:last_warning)
+
+          @profile_provider.last_warning
+        end
+
+        # The store-partition id for the RT-04 prune scope: the resolved active profile's id,
+        # with the reserved-default and no-profile paths mapped to '' so a default-only cell
+        # collapses to a single row exactly as pre-C4 (mirrors SnapshotFingerprint's OMIT rule
+        # for RESERVED_DEFAULT_ID / nil — same partition dimension, expressed as a column).
+        def partition_profile_id(active)
+          id = active&.id
+          return '' if id.nil?
+          return '' if id.to_s == SnapshotFingerprint::RESERVED_DEFAULT_ID
+
+          id.to_s
+        end
+
+        def published_profiles
+          return nil if @profile_provider.nil?
+
+          @profile_provider.profiles
+        end
 
         # True iff the freshness cap is ON (> 0) AND the row is at least max_age minutes
         # old (inclusive at the boundary: exactly max_age => stale => refresh). Reads the
@@ -112,20 +213,21 @@ module Pulse
         # Age-refresh: rebuild the static payload and OVERWRITE the keyed row in place
         # (fresh computed_at), then read it back so the returned computed_at is the
         # persisted fresh instant. Mirrors #warm but takes the deliberate-overwrite path.
-        def refresh(user, project, ctx_id, fingerprint)
+        def refresh(user, project, ctx_id, fingerprint, profile_id: '')
           metrics = @metrics_source.metrics_for(user, project_ids: [project.id]).first
           payload = build_payload(metrics, user, project)
-          @store.refresh(project.id, ctx_id, fingerprint, payload, computed_at: @clock.now)
+          @store.refresh(project.id, ctx_id, fingerprint, payload,
+                         computed_at: @clock.now, profile_id: profile_id)
           @store.fetch_row(project.id, ctx_id, fingerprint) ||
             { payload: payload, computed_at: @clock.now }
         end
 
         # Cold-miss warm: compute the static aggregate, store it (idempotent), and read it
         # back so the returned computed_at is the persisted snapshot instant (FC-CA-15).
-        def warm(user, project, ctx_id, fingerprint)
+        def warm(user, project, ctx_id, fingerprint, profile_id: '')
           metrics = @metrics_source.metrics_for(user, project_ids: [project.id]).first
           payload = build_payload(metrics, user, project)
-          @store.store(project.id, ctx_id, fingerprint, payload)
+          @store.store(project.id, ctx_id, fingerprint, payload, profile_id: profile_id)
           @store.fetch_row(project.id, ctx_id, fingerprint) ||
             { payload: payload, computed_at: Time.now.utc }
         end
@@ -145,9 +247,10 @@ module Pulse
         # provenance; log the project_id + exception (class/message/backtrace head) so the
         # failure is diagnosable, then re-raise so observable behavior is UNCHANGED (the
         # request still 500s — this adds an audit line, it does not swallow the error).
-        def build_projection(project, payload, computed_at)
+        def build_projection(project, payload, computed_at, config: nil, active_profile: nil,
+                             profile_warning: nil)
           metrics = @store.deserialize_metrics(payload)
-          config = @settings_provider.scoring_config
+          config ||= @settings_provider.scoring_config
           health = Pulse::Domain::Scoring.score(metrics, @clock, config)
           timeline = Pulse::Domain::Timeline.build(metrics, @clock, config)
 
@@ -161,7 +264,11 @@ module Pulse
             projected_at: Time.now.utc,
             last_activity_at: parse_instant(payload['last_activity_at']),
             clock: @clock,
-            risk_tracker_ids: safe_risk_tracker_ids
+            risk_tracker_ids: safe_risk_tracker_ids,
+            active_profile: active_profile,
+            active_profile_name: active_profile&.name,
+            published_profiles: published_profiles,
+            profile_warning: profile_warning
           )
         rescue StandardError => e
           log_projection_error(project, e)

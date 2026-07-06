@@ -87,12 +87,15 @@ pulse_lib = File.expand_path('lib', __dir__)
 $LOAD_PATH.unshift(pulse_lib) unless $LOAD_PATH.include?(pulse_lib)
 
 require 'pulse/domain/scoring_config'
+require 'pulse/domain/scoring_profile'
 require 'pulse/domain/project_metrics'
 require 'pulse/ports/clock'
 require 'pulse/ports/metrics_source'
 require 'pulse/ports/settings_provider'
+require 'pulse/ports/profile_provider'
 require 'pulse/adapters/system_clock'
 require 'pulse/adapters/redmine_settings_provider'
+require 'pulse/adapters/redmine_profile_provider'
 require 'pulse/adapters/visibility_context'
 require 'pulse/adapters/snapshot_fingerprint'
 require 'pulse/adapters/redmine_metrics_source'

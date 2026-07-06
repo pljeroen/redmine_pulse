@@ -75,29 +75,46 @@ module Pulse
         end
       end
 
-      # store(project_id, visibility_context_id, fingerprint, payload) -> void
+      # store(project_id, visibility_context_id, fingerprint, payload, profile_id:) -> void
       # Idempotent insert-or-ignore on the unique cache key: a duplicate-key store is a
       # silent no-op (the concurrent cold-miss race converges to exactly one row,
       # FC-CA-06). Writes ONLY pulse_snapshots.
-      def store(project_id, visibility_context_id, fingerprint, payload, computed_at: Time.now.utc)
+      def store(project_id, visibility_context_id, fingerprint, payload,
+                computed_at: Time.now.utc, profile_id: '')
         now = computed_at
+        pid = profile_id.to_s
         # RT-04 (security-S2-dos): prune SUPERSEDED fingerprints. A changed fingerprint for the
-        # same (project_id, visibility_context_id) means the underlying data changed, so any row
+        # same (project_id, visibility_context_id) means the underlying DATA changed, so any row
         # under that cell carrying a DIFFERENT fingerprint is dead — it can never again be a valid
         # cache hit. Without this the cell accretes one dead row per data change (unbounded scan +
-        # memory on every warm fetch — an availability lever). We delete only the OTHER-fingerprint
-        # rows (the SAME-key re-store / #refresh path deletes nothing, so those stay one row), then
-        # create. Under a concurrent create of the same NEW key the create raises RecordNotUnique
-        # and is swallowed below, so the cell still converges to exactly one row. Writes ONLY
-        # pulse_snapshots (INV-READ-ONLY / FC-CA-13).
+        # memory on every warm fetch — an availability lever).
+        #
+        # C4 (INV-C4-CACHE-PARTITION / IT-C4-01): the prune is SCOPED to profile_id. Pre-C4 a
+        # (project, visibility_context) cell held at most ONE live fingerprint, so pruning every
+        # OTHER-fingerprint row was correct. With C4 the SAME cell legitimately holds one live row
+        # PER ACTIVE PROFILE (each a distinct fingerprint). An UNSCOPED prune would delete profile
+        # A's row when profile B is warmed under the same viewer — a cross-serve / cache-partition
+        # breach (A's row vanishes; a later A request misses and can even be served B's warmed row
+        # via the shared cell). Scoping to profile_id deletes only stale-DATA fingerprints WITHIN
+        # the SAME profile (RT-04's DoS bound preserved) while letting distinct profiles coexist.
+        # The reserved default/nil profile stores profile_id '' so a default-only install still
+        # collapses its cell to exactly one row (pre-C4 behavior unchanged).
+        #
+        # We delete only the OTHER-fingerprint rows for THIS profile (the SAME-key re-store /
+        # #refresh path deletes nothing, so those stay one row), then create. Under a concurrent
+        # create of the same NEW key the create raises RecordNotUnique and is swallowed below, so
+        # the cell still converges to exactly one row per profile. Writes ONLY pulse_snapshots
+        # (INV-READ-ONLY / FC-CA-13).
         PulseSnapshot
-          .where(project_id: project_id, visibility_context_id: visibility_context_id)
+          .where(project_id: project_id, visibility_context_id: visibility_context_id,
+                 profile_id: pid)
           .where.not(snapshot_fingerprint: fingerprint)
           .delete_all
         PulseSnapshot.create!(
           project_id: project_id,
           visibility_context_id: visibility_context_id,
           snapshot_fingerprint: fingerprint,
+          profile_id: pid,
           payload: JSON.generate(payload),
           computed_at: now,
           created_at: now
@@ -122,15 +139,21 @@ module Pulse
       # engine passes its INJECTED @clock.now so the persisted freshness instant is the
       # same clock the age-check reads (SystemClock#now == Time.now.utc in production, so
       # this is transparent there — it only matters under a test/fixed clock).
-      def refresh(project_id, visibility_context_id, fingerprint, payload, computed_at: Time.now.utc)
+      def refresh(project_id, visibility_context_id, fingerprint, payload,
+                  computed_at: Time.now.utc, profile_id: '')
         now = computed_at
+        # Update by the UNIQUE cache key (project, visibility_context, fingerprint); the
+        # fingerprint already folds the profile, so this touches exactly the one row for this
+        # profile+data. profile_id is threaded only for the create-fallback below (a row that
+        # somehow does not yet exist), so a freshly created row carries the right partition.
         updated = PulseSnapshot
                   .where(project_id: project_id,
                          visibility_context_id: visibility_context_id,
                          snapshot_fingerprint: fingerprint)
                   .update_all(payload: JSON.generate(payload), computed_at: now)
         if updated.zero?
-          store(project_id, visibility_context_id, fingerprint, payload, computed_at: now)
+          store(project_id, visibility_context_id, fingerprint, payload,
+                computed_at: now, profile_id: profile_id)
         end
         nil
       end

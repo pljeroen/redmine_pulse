@@ -611,4 +611,157 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     assert(response.body.include?(no_data_text) || response.body =~ /pulse-rag-no_data\b/,
            'the no-data panel must show a distinct "No data" state (R-A no-data)')
   end
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # C4 remediation (A9+A8 fix cycle) — the CONTROLLER-PATH gaps A10 flagged:
+  #   A10-C4-001: a dangling ?profile_id surfaces a visible fallback warning + scores
+  #               default (through the REAL controller -> provider -> engine -> view wiring).
+  #   A10-C4-002: the canonical selector param is ?profile_id (not ?profile).
+  #   A10-C4-003: the portfolio (index) is PROFILED per project — a ?profile_id override
+  #               reweights every project, and the per-project portfolio snapshots are
+  #               profile-partitioned (a distinct fingerprint row from the default one).
+  # ════════════════════════════════════════════════════════════════════════════
+
+  # Publish a scoring profile whose weights differ strongly from the global default so its
+  # score is observably distinct. Settings-hash write is test setup (FC-CA-11), not a GET body.
+  RISK_HEAVY_WEIGHTS = { 'staleness' => 0.10, 'progress' => 0.10, 'momentum' => 0.10,
+                         'risk_load' => 0.35, 'blocked_load' => 0.35 }.freeze
+
+  def publish_risk_heavy_profile!(role_binding: nil)
+    bindings = role_binding ? { role_binding[:role_id].to_s => role_binding[:profile_id] } : {}
+    pulse_settings!(
+      'enable_coverage_gap' => true, # populate open_issue_count so risk/blocked reweighting bites
+      'pulse_profiles' => {
+        'profiles' => { 'risk-heavy' => { 'name' => 'Risk Heavy', 'weights' => RISK_HEAVY_WEIGHTS } },
+        'role_bindings' => bindings
+      }
+    )
+  end
+
+  def distinct_snapshot_fingerprints(project)
+    ActiveRecord::Base.connection.select_value(
+      "SELECT COUNT(DISTINCT snapshot_fingerprint) FROM pulse_snapshots WHERE project_id = #{project.id.to_i}"
+    ).to_i
+  end
+
+  # ── A10-C4-001 + A10-C4-002: a dangling ?profile_id => 200 + visible warning + default score
+  def test_show_dangling_profile_id_renders_warning_and_falls_back_to_default
+    publish_risk_heavy_profile!
+    login_as(@user)
+
+    # A missing profile id through the CANONICAL ?profile_id param.
+    get "/projects/#{@project.identifier}/pulse", params: { profile_id: 'does-not-exist' }
+    assert_response :success, 'a dangling ?profile_id must still render (200), never crash'
+    # The surfaced dangling-fallback warning is visible (FC-C4-12 / FR-C4-09).
+    assert_select 'div.pulse-profile-warning', 1,
+                  'a dangling profile selection must surface a visible fallback warning'
+    assert_match(/not a published profile|system default/i, response.body,
+                 'the fallback warning text must be human-readable')
+    dangling_body = response.body
+
+    # Scores fell back to the SYSTEM DEFAULT: identical to a no-selection request (the default
+    # config), NOT the risk-heavy profile. Compare the rendered health score line.
+    get "/projects/#{@project.identifier}/pulse"
+    default_body = response.body
+    default_score = default_body[/pulse-score[^>]*>[^<]*?(\d+)/, 1]
+    dangling_score = dangling_body[/pulse-score[^>]*>[^<]*?(\d+)/, 1]
+    assert_equal default_score, dangling_score,
+                 'a dangling ?profile_id must score under the SYSTEM DEFAULT (same score as no selection)'
+  end
+
+  # ── A10-C4-002: the switcher emits name="profile_id" and ?profile_id selects the profile ──
+  def test_show_switcher_uses_canonical_profile_id_param
+    publish_risk_heavy_profile!
+    login_as(@user)
+    get "/projects/#{@project.identifier}/pulse"
+    assert_response :success
+    assert_select 'select[name="profile_id"]', 1,
+                  'the switcher <select> must emit the canonical name="profile_id"'
+
+    # A valid ?profile_id actually selects the profile (the "scored under" header names it).
+    get "/projects/#{@project.identifier}/pulse", params: { profile_id: 'risk-heavy' }
+    assert_response :success
+    assert_match(/Risk Heavy/, response.body,
+                 'a valid ?profile_id must resolve the named profile (scored-under header)')
+  end
+
+  # ── A10-C4-003: the portfolio scores under a ?profile_id override, partitioned per project ──
+  def test_index_profile_id_override_reprofiles_and_partitions_portfolio
+    publish_risk_heavy_profile!
+    login_as(@user)
+
+    # Warm the DEFAULT portfolio first (no selection) — one default-fingerprint row per project.
+    get '/pulse'
+    assert_response :success
+    default_fps = distinct_snapshot_fingerprints(@project)
+
+    # Now request the portfolio under the risk-heavy override — every project scores under it.
+    get '/pulse', params: { profile_id: 'risk-heavy' }
+    assert_response :success
+    # The override produced a DISTINCT per-project snapshot fingerprint (profile-partitioned):
+    # no cross-serve of the default row to the profiled request.
+    assert_operator distinct_snapshot_fingerprints(@project), :>, default_fps,
+                    'A10-C4-003: a ?profile_id override must warm a DISTINCT per-project ' \
+                    'snapshot fingerprint on the portfolio (profile-partitioned, no cross-serve)'
+  end
+
+  # ── A10-C4-003: a role-bound profile reprofiles the portfolio WITHOUT any ?profile_id ──
+  def test_index_role_bound_profile_partitions_portfolio_without_explicit_selection
+    publish_risk_heavy_profile!(role_binding: { role_id: @role.id, profile_id: 'risk-heavy' })
+    login_as(@user)
+    get '/pulse'
+    assert_response :success
+    # @user holds @role, bound to risk-heavy, so the portfolio's per-project snapshot is
+    # partitioned under risk-heavy (a NON-default fingerprint), not the default one.
+    #
+    # Prove partitioning: a request as a DIFFERENT user WITHOUT the binding warms the DEFAULT
+    # fingerprint, and the two must be distinct rows for the same project (no cross-serve).
+    default_role = create_role!(name: 'DefRole', issues_visibility: 'all',
+                                permissions: %i[view_issues view_pulse])
+    plain = create_user!(login: 'plainviewer')
+    add_member!(project: @project, principal: plain, role: default_role)
+    login_as(plain)
+    get '/pulse'
+    assert_response :success
+    assert_operator distinct_snapshot_fingerprints(@project), :>=, 2,
+                    'A10-C4-003: a role-bound viewer and a default viewer must occupy DISTINCT ' \
+                    'per-project portfolio snapshot fingerprints (per-project profile resolution)'
+  end
+
+  # ── A10-C4-001 (index path): a dangling ?profile_id => 200 + visible warning on the INDEX +
+  #    default score (mirrors the show-page dangling test on the portfolio/index page). ──
+  def test_index_dangling_profile_id_renders_warning_and_falls_back_to_default
+    publish_risk_heavy_profile!
+    login_as(@user)
+
+    # A missing profile id through the CANONICAL ?profile_id GLOBAL override on the portfolio.
+    get '/pulse', params: { profile_id: 'does-not-exist' }
+    assert_response :success, 'a dangling ?profile_id must still render the index (200), never crash'
+    # The surfaced dangling-fallback warning is VISIBLE on the index (FC-C4-12 / FR-C4-09).
+    assert_select 'div.pulse-profile-warning', 1,
+                  'a dangling profile selection must surface a visible fallback warning on the index'
+    assert_match(/not a published profile|system default/i, response.body,
+                 'the fallback warning text must be human-readable on the index')
+    dangling_body = response.body
+
+    # Scores fell back to the SYSTEM DEFAULT: identical to a no-selection portfolio request, NOT
+    # the risk-heavy profile. Compare the rendered portfolio health score for @project.
+    get '/pulse'
+    assert_response :success
+    default_body = response.body
+    default_score = portfolio_score_for(default_body, @project.identifier)
+    dangling_score = portfolio_score_for(dangling_body, @project.identifier)
+    assert_equal default_score, dangling_score,
+                 'a dangling ?profile_id must score the portfolio under the SYSTEM DEFAULT ' \
+                 '(same score as no selection)'
+  end
+
+  # The portfolio health score rendered for a given project identifier's row (the pulse-score
+  # cell), so the index dangling-fallback comparison reads the SAME project on both requests.
+  # Anchors on the row's project link (/projects/<identifier>/pulse), which the index emits.
+  def portfolio_score_for(body, identifier)
+    href = "/projects/#{identifier}/pulse"
+    row = body[%r{<tr\b(?:(?!</tr>).)*?#{Regexp.escape(href)}.*?</tr>}m] || body
+    row[/pulse-score[^>]*>[^<]*?(\d+)/, 1]
+  end
 end

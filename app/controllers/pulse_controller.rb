@@ -26,7 +26,10 @@ class PulseController < PulseBaseController
   # GET /pulse — portfolio overview (never 404/403 for selection; empty -> 200).
   def index
     lens = Pulse::Adapters::LensRanker.normalize_lens(params[:lens])
-    projections = engine.portfolio_projections(User.current)
+    # C4 (OBL-C4-05): ?profile_id is the transient GLOBAL override applying to EVERY project in
+    # the portfolio (each project otherwise resolves its own per-project role-default binding).
+    # A dangling id degrades to the system default inside the provider (surfaced as a banner).
+    projections = engine.portfolio_projections(User.current, selected_profile_id)
     ranked = Pulse::Adapters::LensRanker.rank(projections, lens)
     @view = Pulse::Adapters::HtmlPresenter.portfolio_view(ranked, lens: lens, now: Time.now.utc)
     render template: 'pulse/index'
@@ -39,7 +42,11 @@ class PulseController < PulseBaseController
 
     return unless authorize_pulse(project) # 403 already rendered when false
 
-    projection = engine.project_projection(User.current, project)
+    # C4: the transient profile selection (?profile_id=<id>) — a per-request override that
+    # beats the viewer's role binding (FC-C4-06 level 1). A dangling id degrades to the
+    # system default inside the provider (never a crash). Visibility scoping stays
+    # PRE-profile (INV-C4-PERM-UNCHANGED) — the profile only reweights visible metrics.
+    projection = engine.project_projection(User.current, project, selected_profile_id)
     @view = Pulse::Adapters::HtmlPresenter.panel_view(
       projection, now: Time.now.utc, gantt_url: gantt_url_for(project)
     )

@@ -84,6 +84,24 @@ en:
   # prior valid value is kept; the invalid input is never persisted).
   error_pulse_settings_rejected: "Some Pulse settings were out of range and were not saved (kept the previous value): %{fields}."
 
+  # ── scoring profiles (C4) ────────────────────────────────────────────────────
+  label_pulse_scored_under: "Scored under"
+  label_pulse_profile_switcher: "Scoring profile"
+  label_pulse_apply: "Apply"
+  # FC-C4-12 / FR-C4-09: the surfaced dangling-fallback warning + its subject fragments.
+  label_pulse_profile_subject_selected: "the selected profile"
+  label_pulse_profile_subject_role_bound: "the role-bound profile"
+  pulse_profile_dangling_warning: "%{subject} %{id} is not a published profile — falling back to the system default."
+  label_pulse_settings_profiles: "Scoring profiles"
+  label_pulse_help_group_profiles: "Publish named scoring profiles (id, display name, and per-signal weights) and bind them to roles. Viewers see the profile bound to their lowest-id role by default; the reserved \"default\" id always exists and mirrors the global weights above."
+  label_pulse_profile_id: "Profile id"
+  label_pulse_profile_name: "Display name"
+  label_pulse_profile_new: "Add profile"
+  label_pulse_role_bindings: "Role bindings"
+  label_pulse_role_binding_role_id: "Role id"
+  label_pulse_role_binding_profile_id: "Profile id (or \"default\")"
+  label_pulse_role_binding_new: "Add role binding"
+
   # ── settings partial (CA-23) ─────────────────────────────────────────────────
   label_pulse_settings_enrichment: "Enrichment"
   label_pulse_settings_weights: "Weights"

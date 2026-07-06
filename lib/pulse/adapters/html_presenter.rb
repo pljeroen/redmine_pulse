@@ -43,9 +43,12 @@ module Pulse
                                 :rag_chip, :dominant_signal, :main_concern, :computed_ago,
                                 :sparkline, :no_data, keyword_init: true)
 
-      # The whole portfolio overview view-model.
+      # The whole portfolio overview view-model. `profile_warning` carries the human-readable
+      # dangling-fallback warning (FC-C4-12 / FR-C4-09) when the viewer's ?profile_id selection
+      # referenced an unpublished profile (scoring fell back to the system default); nil / blank
+      # otherwise (no banner rendered).
       PortfolioView = Struct.new(:rows, :lens, :lenses, :default_lens, :visibility_note,
-                                 :empty, keyword_init: true)
+                                 :empty, :profile_warning, keyword_init: true)
 
       # The whole per-project panel view-model. `main_concern` is the lens-vocabulary
       # label for the severity-first dominant signal; `no_data` flags the 0-issue state
@@ -55,7 +58,13 @@ module Pulse
                              :dominant_signal, :main_concern, :signal_completeness,
                              :computed_ago, :signal_rows, :sparkline, :milestones,
                              :gantt_url, :visibility_note, :no_data, :no_data_label,
+                             :active_profile_name, :profile_options, :profile_warning,
                              keyword_init: true)
+
+      # C4 (FC-C4-17): one precomputed switcher option — plain presentation values (id/label/
+      # selected), NEVER a domain ScoringProfile object, so the ERB reads only presenter
+      # output (COND-A4-001). `value` == the profile id (the ?profile query param value).
+      ProfileOption = Struct.new(:value, :label, :selected, keyword_init: true)
 
       module_function
 
@@ -68,7 +77,8 @@ module Pulse
           lenses: LensRanker::LENSES,
           default_lens: LensRanker::DEFAULT_LENS,
           visibility_note: I18n.t(:label_pulse_visibility_note),
-          empty: rows.empty?
+          empty: rows.empty?,
+          profile_warning: first_profile_warning(ranked_projections)
         )
       end
 
@@ -113,8 +123,68 @@ module Pulse
           gantt_url: gantt_url,
           visibility_note: I18n.t(:label_pulse_visibility_note),
           no_data: no_data,
-          no_data_label: I18n.t(:label_pulse_no_data)
+          no_data_label: I18n.t(:label_pulse_no_data),
+          active_profile_name: active_profile_name(projection),
+          profile_options: profile_options(projection),
+          profile_warning: profile_warning(projection)
         )
+      end
+
+      # C4 (FC-C4-12 / FR-C4-09): the human-readable dangling-fallback warning for the panel,
+      # read off the precomputed projection.profile_warning (nil / blank => no banner). A
+      # pre-C4-shaped projection that carries no such field degrades to nil (no crash).
+      def profile_warning(projection)
+        return nil unless projection.respond_to?(:profile_warning)
+
+        w = projection.profile_warning
+        w.nil? || (w.respond_to?(:strip) && w.strip.empty?) ? nil : w
+      end
+
+      # The first non-blank per-project dangling-fallback warning across the portfolio (the
+      # ?profile_id override warning is identical for every project, so surfacing the first is
+      # sufficient for the portfolio banner). nil when no project carried a warning.
+      def first_profile_warning(projections)
+        projections.each do |p|
+          w = profile_warning(p)
+          return w unless w.nil?
+        end
+        nil
+      end
+
+      # C4 (FC-C4-17 a): the ACTIVE profile's display name for the "scored under: <name>"
+      # header. Reads the precomputed projection.active_profile_name (or the active_profile's
+      # name); nil when no profile context is present (default-only / pre-C4-shaped projection).
+      def active_profile_name(projection)
+        if projection.respond_to?(:active_profile_name) && projection.active_profile_name
+          return projection.active_profile_name
+        end
+        if projection.respond_to?(:active_profile) && projection.active_profile
+          return projection.active_profile.name
+        end
+
+        nil
+      end
+
+      # C4 (FC-C4-17 b): the switcher options — one PLAIN precomputed value per published
+      # profile (value == profile.id, label == profile.name, selected == it is the active
+      # profile). NEVER a domain ScoringProfile (COND-A4-001). Empty when the projection
+      # carries no published set (default-only / pre-C4-shaped projection).
+      def profile_options(projection)
+        return [] unless projection.respond_to?(:published_profiles)
+
+        published = projection.published_profiles
+        return [] if published.nil?
+
+        active_id = active_profile_id(projection)
+        published.map do |p|
+          ProfileOption.new(value: p.id, label: p.name, selected: p.id == active_id)
+        end
+      end
+
+      def active_profile_id(projection)
+        return nil unless projection.respond_to?(:active_profile) && projection.active_profile
+
+        projection.active_profile.id
       end
 
       # ── R-A "Main concern" lens-vocabulary mapping ──────────────────────────────

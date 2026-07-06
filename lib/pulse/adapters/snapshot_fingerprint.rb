@@ -28,17 +28,32 @@ module Pulse
     #   9. effort_field_visibility (S1; mapped effort field id + its per-user
     #      visibility to THIS requester on THIS project — catches a field-visibility
     #      revoke that degrades effort() while max(updated_on) is unmoved)
+    #  10. active_profile_id (C4; FC-C4-08/09) — the RESOLVED profile id, ALREADY
+    #      resolved by the controller/engine BEFORE the fingerprint is constructed (this
+    #      is a PURE input; the fingerprint does NOT resolve profiles internally — it holds
+    #      no provider dependency). THE SECURITY RULE (FC-C4-05B): for the reserved
+    #      "default" id OR nil the component is OMITTED entirely, so the fingerprint is
+    #      BYTE-IDENTICAL to the pre-C4 9-component hash (zero cache invalidation on
+    #      upgrade for default-only installs). A NON-default id folds in as a distinct
+    #      10th component => a distinct hash => the cache CANNOT cross-serve profile A's
+    #      snapshot for a profile-B request.
     #
     # Read-only: it only reads Redmine model state.
     class SnapshotFingerprint
+      RESERVED_DEFAULT_ID = 'default'
+
       # NOTE: NO clock parameter — Clock(today) is excluded by design (DEC-11).
-      def initialize(user, project, settings_provider:)
+      # active_profile_id is the RESOLVED profile id (a pure input); nil / "default" OMIT
+      # the profile component (FC-C4-05B / FC-C4-08).
+      def initialize(user, project, settings_provider:, active_profile_id: nil)
         @user = user
         @project = project
         @settings_provider = settings_provider
+        @active_profile_id = active_profile_id
       end
 
-      # -> String, hash over the 9 ordered components.
+      # -> String, hash over the 9 base components + the 10th (active_profile_id) ONLY when
+      # a non-default profile is active (FC-C4-05B: default/nil omits it => pre-C4 hash).
       def value
         Digest::SHA256.hexdigest(components.join("\n"))
       end
@@ -53,7 +68,7 @@ module Pulse
       private
 
       def components
-        [
+        base = [
           max_updated_on,
           visible_issue_count,
           latest_changeset_id,
@@ -64,6 +79,20 @@ module Pulse
           visibility_context_id,
           effort_field_visibility
         ]
+        # FC-C4-05B: OMIT the profile component for the reserved "default" id (or nil) so
+        # the joined component vector — and thus the hash — is BYTE-IDENTICAL to the pre-C4
+        # 9-component value. A non-default id folds in as a distinct 10th component.
+        base << @active_profile_id.to_s if profile_component?
+        base
+      end
+
+      # True iff a non-default, non-blank profile id is active (=> fold the 10th component).
+      def profile_component?
+        id = @active_profile_id
+        return false if id.nil?
+        return false if id.is_a?(String) && id.strip.empty?
+
+        id.to_s != RESERVED_DEFAULT_ID
       end
 
       # Component 9 (S1): '' (stable) when no effort field is mapped; otherwise

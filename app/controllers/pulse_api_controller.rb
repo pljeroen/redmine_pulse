@@ -40,7 +40,11 @@ class PulseApiController < PulseBaseController
     return if performed? # 422 already rendered
 
     lens = Pulse::Adapters::LensRanker.normalize_lens(params[:lens])
-    all = Pulse::Adapters::LensRanker.rank(engine.portfolio_projections(User.current), lens)
+    # C4 (OBL-C4-05): ?profile_id is the transient GLOBAL override applying to every project;
+    # absent, each project resolves its own per-project role-default binding.
+    all = Pulse::Adapters::LensRanker.rank(
+      engine.portfolio_projections(User.current, selected_profile_id), lens
+    )
     page = all.slice(offset, limit) || []
 
     payload = Pulse::Adapters::JsonSerializer.portfolio(
@@ -63,7 +67,9 @@ class PulseApiController < PulseBaseController
 
     return unless authorize_pulse(proj) # 403
 
-    projection = engine.project_projection(User.current, proj)
+    # C4: the transient profile selection (?profile_id=<id>) overrides the role binding for
+    # this request (FC-C4-06 level 1); a dangling id degrades to the default in the provider.
+    projection = engine.project_projection(User.current, proj, selected_profile_id)
     render json: Pulse::Adapters::JsonSerializer.project(projection)
   end
 

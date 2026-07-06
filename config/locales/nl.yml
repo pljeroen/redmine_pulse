@@ -65,6 +65,24 @@ nl:
 
   error_pulse_settings_rejected: "Sommige Pulse-instellingen vielen buiten het bereik en zijn niet opgeslagen (de vorige waarde is behouden): %{fields}."
 
+  # ── scoringprofielen (C4) ────────────────────────────────────────────────────
+  label_pulse_scored_under: "Gescoord onder"
+  label_pulse_profile_switcher: "Scoringprofiel"
+  label_pulse_apply: "Toepassen"
+  # FC-C4-12 / FR-C4-09: de getoonde terugval-waarschuwing + de onderwerpfragmenten.
+  label_pulse_profile_subject_selected: "het geselecteerde profiel"
+  label_pulse_profile_subject_role_bound: "het aan de rol gekoppelde profiel"
+  pulse_profile_dangling_warning: "%{subject} %{id} is geen gepubliceerd profiel — er wordt teruggevallen op het standaardprofiel."
+  label_pulse_settings_profiles: "Scoringprofielen"
+  label_pulse_help_group_profiles: "Publiceer benoemde scoringprofielen (id, weergavenaam en per-signaalgewichten) en koppel ze aan rollen. Kijkers zien standaard het profiel dat aan hun laagste rol-id is gekoppeld; het gereserveerde id \"default\" bestaat altijd en spiegelt de globale gewichten hierboven."
+  label_pulse_profile_id: "Profiel-id"
+  label_pulse_profile_name: "Weergavenaam"
+  label_pulse_profile_new: "Profiel toevoegen"
+  label_pulse_role_bindings: "Rolkoppelingen"
+  label_pulse_role_binding_role_id: "Rol-id"
+  label_pulse_role_binding_profile_id: "Profiel-id (of \"default\")"
+  label_pulse_role_binding_new: "Rolkoppeling toevoegen"
+
   label_pulse_settings_enrichment: "Verrijking"
   label_pulse_settings_weights: "Gewichten"
   label_pulse_settings_thresholds: "Drempels"

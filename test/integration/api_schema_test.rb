@@ -199,11 +199,17 @@ class ApiSchemaTest < ActionDispatch::IntegrationTest
     assert_match(/^\d{4}-\d{2}-\d{2}$/, proj['clock_today'], 'clock_today date-only')
   end
 
-  def test_domain_layer_unchanged_by_this_contract
-    # FC-CA-25: lib/pulse/domain/** is git-diff-unchanged by the controllers-api contract.
-    root = File.expand_path('../../..', File.expand_path(__FILE__))
-    diff = `cd #{root} && git diff --name-only HEAD -- lib/pulse/domain 2>/dev/null`.strip
-    assert_equal '', diff,
-                 "no lib/pulse/domain file may be modified by this contract (got: #{diff.inspect})"
-  end
+  # FC-CA-25 guard RESCOPED / DEPRECATED (A10 coverage-gap ruling: obsolete_recommend_rescope,
+  # c2_blocker:false). The former test_domain_layer_unchanged_by_this_contract asserted
+  # `git diff HEAD -- lib/pulse/domain` was empty. That was a CONTROLLERS-API-era guard proving
+  # a NON-domain contract left the domain untouched; it is a working-tree-STATE check (it passes
+  # only while the domain changes are uncommitted, and passes again after commit even if the
+  # domain changed) and it MISFIRES on every domain-EVOLVING roadmap contract. The roadmap
+  # contracts — starting with C1 (the N-signal registry) and continuing through C2 (coverage_gap)
+  # and onward — INTENTIONALLY evolve lib/pulse/domain, so a blanket "domain unchanged"
+  # working-tree assertion is obsolete. Domain-change discipline is now enforced per-contract by
+  # the TDDv6 governance (frozen canonical tests + golden default-off byte-identity gates +
+  # adversarial review), not by this cross-cutting git-diff guard. The still-valid ApiSchemaTest
+  # tests above (schema conformance, provenance, projection equality, visibility literal) are
+  # retained. Method removed deliberately rather than left as a permanent skip.
 end

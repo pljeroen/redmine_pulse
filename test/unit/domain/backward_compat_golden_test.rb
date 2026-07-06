@@ -34,8 +34,11 @@ class BackwardCompatGoldenTest < Minitest::Test
   # (SignalRegistry.keys as enabled set, SignalRegistry.default_weights as weights).
   # This is what makes the test RED before A9 wires the registry default path.
   def default_config
+    # C2 EVOLUTION: the default enabled set is the DEFAULT-ON keys (default_weights scopes to
+    # them, Σ==1.0). coverage_gap is registered but default_on:false, so the default-OFF
+    # golden path enables exactly the 5 default_on built-ins — dom(w) == default_on_keys.
     Pulse::Domain::ScoringConfig.new(
-      enabled_signals: Pulse::Domain::SignalRegistry.keys,
+      enabled_signals: Pulse::Domain::SignalRegistry.default_on_keys,
       weights: Pulse::Domain::SignalRegistry.default_weights
     )
   end

@@ -23,11 +23,11 @@ module Pulse
 
       attr_reader :project_id, :reference_date, :effort_open, :effort_total,
                   :risk_raw, :blocked_count, :risk_mapped, :effort_mapped,
-                  :event_series, :version_due_dates
+                  :event_series, :version_due_dates, :open_issue_count, :covered_sum
 
       def initialize(project_id:, reference_date:, effort_open:, effort_total:,
                      risk_raw:, blocked_count:, risk_mapped:, effort_mapped:,
-                     event_series:, version_due_dates:)
+                     event_series:, version_due_dates:, open_issue_count:, covered_sum:)
         validate_integer!(:project_id, project_id)
         validate_date!(:reference_date, reference_date)
         validate_non_negative_numeric!(:effort_open, effort_open)
@@ -38,6 +38,13 @@ module Pulse
         validate_boolean!(:effort_mapped, effort_mapped)
         validate_event_series!(event_series)
         validate_version_due_dates!(version_due_dates)
+        # C2 (FC-C2-08): open_issue_count is a non-negative Integer; covered_sum is a finite
+        # real Numeric with 0 <= covered_sum <= open_issue_count (the aggregate cannot exceed
+        # the count, since each per-issue coverage fraction is in [0,1]). Type/finiteness are
+        # checked BEFORE the range comparison (type-before-compare) so a Complex/NaN/Infinity
+        # covered_sum fails loud rather than leaking a NoMethodError / slipping past `<=`.
+        validate_non_negative_integer!(:open_issue_count, open_issue_count)
+        validate_covered_sum!(covered_sum, open_issue_count)
 
         @project_id = project_id
         @reference_date = reference_date
@@ -49,6 +56,8 @@ module Pulse
         @effort_mapped = effort_mapped
         @event_series = deep_freeze_entries(event_series)
         @version_due_dates = deep_freeze_entries(version_due_dates)
+        @open_issue_count = open_issue_count
+        @covered_sum = covered_sum
 
         freeze
       end
@@ -109,6 +118,22 @@ module Pulse
         return unless value < 0
 
         raise ArgumentError, "#{name} must be >= 0 (got #{value})"
+      end
+
+      # FC-C2-08: covered_sum is a finite real Numeric with 0 <= covered_sum <=
+      # open_issue_count. Type/finiteness are validated first (finite_real_numeric! rejects
+      # Complex/NaN/±Infinity/non-Numeric) so the `< 0` / `> open_issue_count` comparisons
+      # only ever see an ordered finite Numeric. The upper bound is open_issue_count because
+      # each per-issue coverage fraction is in [0,1], so their sum cannot exceed the count.
+      def validate_covered_sum!(value, open_issue_count)
+        finite_real_numeric!(:covered_sum, value)
+        if value < 0
+          raise ArgumentError, "covered_sum must be >= 0 (got #{value})"
+        end
+        return unless value > open_issue_count
+
+        raise ArgumentError,
+              "covered_sum must be <= open_issue_count (got #{value} > #{open_issue_count})"
       end
 
       def validate_boolean!(name, value)

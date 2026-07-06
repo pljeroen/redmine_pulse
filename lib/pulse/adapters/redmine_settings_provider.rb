@@ -8,6 +8,8 @@
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
 require 'digest'
+require 'pulse/domain/signal_registry'
+require 'pulse/adapters/settings_sanitizer'
 
 module Pulse
   module Adapters
@@ -25,6 +27,11 @@ module Pulse
       def initialize; end
 
       # -> Pulse::Domain::ScoringConfig (defaults when a value is absent/blank).
+      #
+      # A10-C2-001 (b): enable_coverage_gap is AUTHORITATIVE for the enabled signal set.
+      # weights_from resolves the persisted weights and then reconciles the coverage_gap key
+      # against the flag — coverage_gap present iff enabled — so the ScoringConfig enabled set
+      # (== dom(weights)) always tracks the flag, never the (possibly drifted) weight-hash keys.
       def scoring_config
         s = settings
         Pulse::Domain::ScoringConfig.new(
@@ -91,6 +98,12 @@ module Pulse
         raw.to_i
       end
 
+      # A10-C2-001 (b) — the enable_coverage_gap flag is AUTHORITATIVE for the enabled set.
+      # -> Boolean: true iff the optional coverage_gap signal is enabled in settings.
+      def coverage_gap_enabled?
+        SettingsSanitizer.truthy?(settings['enable_coverage_gap'])
+      end
+
       private
 
       def settings
@@ -116,16 +129,54 @@ module Pulse
 
       # Honour explicit weight overrides only when they form a complete, valid set;
       # otherwise fall through to the domain ScoringConfig defaults (nil => defaults).
+      #
+      # A10-C2-001 (b): after resolving the persisted weights, RECONCILE the coverage_gap key
+      # against the AUTHORITATIVE enable flag so the enabled set (dom of weights) tracks the
+      # flag, not the raw weight-hash keys:
+      #   * enabled + coverage_gap already present  => keep the persisted 6-key map as-is.
+      #   * enabled + coverage_gap absent           => synthesize it (add the registry default
+      #     weight + renormalize all 6 to Σ==1.0) so a persisted flag ALWAYS yields a 6-signal
+      #     enabled set, even if the weights hash drifted to 5 keys.
+      #   * disabled + coverage_gap present          => strip it + renormalize the 5 to Σ==1.0.
+      #   * disabled + coverage_gap absent (default) => byte-unchanged (nil => engine defaults).
       def weights_from(s)
         raw = s['weights']
-        return nil unless raw.is_a?(Hash) && raw.any?
-
-        symbolized = raw.each_with_object({}) do |(k, v), acc|
-          acc[k.to_sym] = v.is_a?(String) ? Float(v) : v
-        end
-        symbolized
+        base =
+          if raw.is_a?(Hash) && raw.any?
+            raw.each_with_object({}) do |(k, v), acc|
+              acc[k.to_sym] = v.is_a?(String) ? Float(v) : v
+            end
+          end
+        reconcile_coverage_gap(base, coverage_gap_enabled?)
       rescue ArgumentError, TypeError
         nil
+      end
+
+      # Reconcile the coverage_gap weight against the authoritative enable flag (see
+      # weights_from). `base` is the symbol-keyed persisted weights (or nil => defaults).
+      def reconcile_coverage_gap(base, enabled)
+        cg = :coverage_gap
+        if enabled
+          # A persisted enable flag ALWAYS ships a 6-key weights map (SettingsSanitizer), so
+          # `base` is normally the 6-key hash. Defensive: when base is nil/empty (weights hash
+          # drifted / absent), synthesize from the 5 default weights so the flag still yields a
+          # 6-signal enabled set.
+          base = Pulse::Domain::SignalRegistry.default_weights.dup if base.nil? || base.empty?
+          return base if base.key?(cg)
+
+          default_cg = Pulse::Domain::SignalRegistry.fetch(cg).default_weight
+          six = base.merge(cg => default_cg)
+          total = six.values.sum
+          six.transform_values { |w| w / total }
+        else
+          return base if base.nil? || !base.key?(cg)
+
+          remaining = base.reject { |k, _| k == cg }
+          total = remaining.values.sum
+          return base if total <= 0.0
+
+          remaining.transform_values { |w| w / total }
+        end
       end
 
       # Deterministic, order-independent canonical serialization for hashing.

@@ -39,7 +39,8 @@ class TimelineBucketTest < Minitest::Test
       effort_open: 0.0, effort_total: 0.0, risk_raw: 0.0,
       blocked_count: 0, risk_mapped: true, effort_mapped: true,
       event_series: event_series,
-      version_due_dates: version_due_dates
+      version_due_dates: version_due_dates,
+      open_issue_count: 0, covered_sum: 0.0 # C2 additive-required (inactive baseline)
     )
   end
 

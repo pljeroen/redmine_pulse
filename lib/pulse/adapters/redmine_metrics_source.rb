@@ -67,6 +67,7 @@ module Pulse
         visible = visible_issues(user, project)
         effort_open, effort_total, effort_mapped = effort(user, project, visible)
         risk_raw, risk_mapped = risk(visible)
+        open_issue_count, covered_sum = coverage_inputs(visible)  # 0/0.0 unless enabled
 
         Pulse::Domain::ProjectMetrics.new(
           project_id: project.id,
@@ -78,8 +79,53 @@ module Pulse
           risk_mapped: risk_mapped,
           effort_mapped: effort_mapped,
           event_series: event_series(user, project, visible),
-          version_due_dates: version_due_dates(project)
+          version_due_dates: version_due_dates(project),
+          open_issue_count: open_issue_count,
+          covered_sum: covered_sum
         )
+      end
+
+      # --- coverage inputs (FC-C2-12, FR-C2-02/03) -----------------------------
+      # Aggregate the coverage_gap signal inputs over ONLY the visible OPEN issues
+      # (the `visible` scope is already the requester's permission-safe set, so this is
+      # INV-VISIBILITY-safe). READ-ONLY — plucks fields, writes nothing (INV-READ-ONLY).
+      #   open_issue_count = count of visible OPEN issues
+      #   covered_sum      = Σ per-issue coverage fraction, where each issue's fraction is the
+      #                      mean over the 3 FIXED planning dimensions:
+      #                        has_estimate  = estimated_hours present AND > 0
+      #                        has_assignee  = assigned_to_id present
+      #                        has_schedule  = due_date present OR fixed_version_id present
+      #                      => fraction = (has_estimate + has_assignee + has_schedule) / 3.0
+      #
+      # A10-C2-003 (a): the 3 coverage COUNT queries run ONLY when coverage_gap is ENABLED.
+      # When the signal is off (the default) we return 0/0.0 WITHOUT touching the DB — saving the
+      # work AND keeping the ProjectMetrics coverage fields at their neutral defaults, so the
+      # default-OFF snapshot payload stays byte-identical to pre-C2 (the serializer omits the
+      # default 0/0.0). coverage_gap is inactive at 0/0.0 (FC-C2-02), so the default score is
+      # unaffected. The enable flag is read off the injected settings provider (authoritative).
+      def coverage_inputs(visible)
+        return [0, 0.0] unless coverage_gap_enabled?
+
+        rows = visible.open.pluck(:estimated_hours, :assigned_to_id, :due_date, :fixed_version_id)
+        covered = rows.sum do |estimated_hours, assigned_to_id, due_date, fixed_version_id|
+          has_estimate = !estimated_hours.nil? && estimated_hours.to_f > 0
+          has_assignee = !assigned_to_id.nil?
+          has_schedule = !due_date.nil? || !fixed_version_id.nil?
+          (bool_to_i(has_estimate) + bool_to_i(has_assignee) + bool_to_i(has_schedule)) / 3.0
+        end
+        [rows.size, covered.to_f]
+      end
+
+      def bool_to_i(flag)
+        flag ? 1 : 0
+      end
+
+      # A10-C2-003 (a): whether the optional coverage_gap signal is enabled (authoritative,
+      # off the injected settings provider). Defensive: a provider without the accessor (older
+      # test double) => false => no coverage gathering, no coverage payload (default-OFF).
+      def coverage_gap_enabled?
+        @settings_provider.respond_to?(:coverage_gap_enabled?) &&
+          @settings_provider.coverage_gap_enabled?
       end
 
       # The requester's visible issue set for the project (INV-PERMISSION-SAFE).

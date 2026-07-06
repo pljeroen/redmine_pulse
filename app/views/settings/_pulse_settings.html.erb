@@ -56,14 +56,19 @@
   </p>
 </fieldset>
 
+<% coverage_gap_enabled = %w[1 true yes on].include?(settings['enable_coverage_gap'].to_s.strip.downcase) %>
 <fieldset class="box tabular pulse-settings-weights">
   <legend><%= t(:label_pulse_settings_weights) %></legend>
   <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_weights) %></em></p>
-  <% [[:staleness, t(:label_pulse_weight_staleness)],
+  <%# C2 (FC-C2-16): the optional coverage_gap weight is appended to the loop ONLY when the
+      enable toggle is on — a CONDITIONAL weight input, never a speculative always-on control. %>
+  <% weight_signals = [[:staleness, t(:label_pulse_weight_staleness)],
       [:progress, t(:label_pulse_weight_progress)],
       [:momentum, t(:label_pulse_weight_momentum)],
       [:risk_load, t(:label_pulse_weight_risk_load)],
-      [:blocked_load, t(:label_pulse_weight_blocked_load)]].each do |sig, label| %>
+      [:blocked_load, t(:label_pulse_weight_blocked_load)]] %>
+  <% weight_signals += [[:coverage_gap, t(:label_pulse_weight_coverage_gap)]] if coverage_gap_enabled %>
+  <% weight_signals.each do |sig, label| %>
     <p>
       <label for="settings_weight_<%= sig %>"><%= label %></label>
       <input type="text" id="settings_weight_<%= sig %>" name="settings[weights][<%= sig %>]"
@@ -71,6 +76,14 @@
       <em class="info"><%= t("label_pulse_help_weight_#{sig}") %></em>
     </p>
   <% end %>
+
+  <p class="pulse-enable-coverage-gap">
+    <label for="settings_enable_coverage_gap"><%= t(:label_pulse_enable_coverage_gap) %></label>
+    <input type="hidden" name="settings[enable_coverage_gap]" value="0" />
+    <input type="checkbox" id="settings_enable_coverage_gap" name="settings[enable_coverage_gap]"
+           value="1" <%= 'checked' if coverage_gap_enabled %> />
+    <em class="info"><%= t(:label_pulse_help_enable_coverage_gap) %></em>
+  </p>
 </fieldset>
 
 <fieldset class="box tabular pulse-settings-thresholds">

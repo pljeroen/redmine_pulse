@@ -19,7 +19,10 @@ class ProjectMetricsTest < Minitest::Test
       risk_mapped: true,
       effort_mapped: true,
       event_series: [{ date: Date.new(2026, 6, 10), type: :issue_closed }],
-      version_due_dates: [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }]
+      version_due_dates: [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }],
+      # C2 additive-required coverage inputs (0/0.0 inactive baseline).
+      open_issue_count: 0,
+      covered_sum: 0.0
     }
     Pulse::Domain::ProjectMetrics.new(**defaults.merge(overrides))
   end

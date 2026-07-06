@@ -96,16 +96,20 @@ class DefaultConfigNoNewSettingsKeyTest < Minitest::Test
     refute_includes settings.keys, 'enabled_signals',
                     'the settings hash must carry no enabled_signals key after default build'
 
-    # The enabled set is resolved to the built-ins WITHOUT being persisted anywhere.
-    assert_equal Pulse::Domain::SignalRegistry.keys.sort, cfg.enabled_signals.sort,
-                 'default enabled set == the built-in registry keys (resolved, not persisted)'
+    # The enabled set is resolved to the DEFAULT-ON built-ins WITHOUT being persisted
+    # anywhere. C2 EVOLUTION: coverage_gap is registered but default_on:false, so the default
+    # enabled set is the 5 default_on keys (default_on_keys), NOT every registered key.
+    assert_equal Pulse::Domain::SignalRegistry.default_on_keys.sort, cfg.enabled_signals.sort,
+                 'default enabled set == the default_on registry keys (resolved, not persisted)'
   end
 
   # (c) the default enabled set is a COMPUTED value (registry-derived), not a settings key.
   def test_default_enabled_set_is_registry_resolved_not_a_settings_key
-    assert_equal Pulse::Domain::SignalRegistry.keys.sort,
+    # C2 EVOLUTION: default_enabled_keys resolves the DEFAULT-ON subset (== default_on_keys,
+    # the 5 built-ins); coverage_gap is registered but default_on:false.
+    assert_equal Pulse::Domain::SignalRegistry.default_on_keys.sort,
                  Pulse::Domain::SignalRegistry.default_enabled_keys.sort,
-                 'default_enabled_keys resolves the built-ins programmatically from the catalog'
+                 'default_enabled_keys resolves the default_on built-ins programmatically from the catalog'
     refute_includes valid_settings.keys, 'enabled_signals',
                     'no enabled_signals key exists in a canonical settings hash'
   end

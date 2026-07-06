@@ -20,13 +20,20 @@ module Pulse
     # results off the Projection. The view-model structs are NESTED so the file name
     # matches its single primary constant (Zeitwerk autoload-naming).
     module HtmlPresenter
-      SIGNAL_KEYS = %w[staleness progress momentum risk_load blocked_load].freeze
+      # C2 (FC-C2-15): coverage_gap is appended LAST. A row is rendered ONLY for the keys
+      # actually present in the breakdown (coverage_gap is absent on the default-OFF path, so
+      # the panel stays byte-identical), in this canonical order.
+      SIGNAL_KEYS = %w[staleness progress momentum risk_load blocked_load coverage_gap].freeze
+      COVERAGE_GAP_KEY = 'coverage_gap'
 
       # One RAG chip's precomputed accessible state (non-color cue + aria label).
       RagChip = Struct.new(:state, :word, :aria_label, keyword_init: true)
 
-      # One signal row for the panel (active or inactive-with-enable-hint).
-      SignalRow = Struct.new(:key, :active, :raw_value, :n, :effective_weight,
+      # One signal row for the panel (active or inactive-with-enable-hint). `label` is the
+      # localized display name for the signal column (A10-C2-004): coverage_gap shows the
+      # localized "Planning coverage" label; the 5 C1 signals keep their raw-key label text
+      # (byte-identical default panel).
+      SignalRow = Struct.new(:key, :label, :active, :raw_value, :n, :effective_weight,
                              :contribution, :enable_hint, :drill_url, keyword_init: true)
 
       # One project row for the portfolio overview. `main_concern` carries the
@@ -160,20 +167,48 @@ module Pulse
       # ── signal rows incl. inactive-with-enable-hint (CA-26 / FC-CA-26) ──────────
       def signal_rows(projection)
         by_key = projection.health.breakdown.to_h { |s| [s.key.to_s, s] }
-        SIGNAL_KEYS.map do |key|
+        # Render ONLY the keys present in the breakdown, in canonical order. coverage_gap is
+        # absent on the default-OFF path, so no coverage_gap row appears then (FC-C2-15) and
+        # the 5-row panel is byte-identical.
+        SIGNAL_KEYS.select { |key| by_key.key?(key) }.map do |key|
           s = by_key[key]
           SignalRow.new(
             key: key,
+            label: signal_label(key),
             active: s.active,
             # finding 3 (HTML side): round value / effective_weight / contribution for
             # DISPLAY only. The JSON serializer keeps emitting these verbatim (FC-CA-23).
-            raw_value: s.active ? display_round(s.raw_value) : nil,
+            # coverage_gap displays PLANNING COVERAGE = 100×(1−raw_value), NOT the raw gap
+            # fraction (FC-C2-15) — the row shows how planned the open work is.
+            raw_value: display_row_value(key, s),
             n: s.active ? display_round(s.n) : nil,
             effective_weight: s.active ? display_percent(s.effective_weight) : nil,
             contribution: s.active ? display_round(s.contribution) : nil,
             enable_hint: s.active ? nil : enable_hint(key),
             drill_url: s.active ? JsonSerializer.drill_url(projection, key, s) : nil
           )
+        end
+      end
+
+      # A10-C2-004: the localized signal-column display name. coverage_gap resolves the
+      # dedicated localized "Planning coverage" label (label_pulse_planning_coverage, defined
+      # in en.yml + nl.yml); the 5 C1 signals keep their raw-key text (default panel unchanged).
+      def signal_label(key)
+        return I18n.t(:label_pulse_planning_coverage) if key == COVERAGE_GAP_KEY
+
+        key
+      end
+
+      # The DISPLAYED value for a signal row. coverage_gap renders the planning-coverage
+      # percentage 100×(1−raw_value) (FC-C2-15); every other signal renders its rounded
+      # raw_value. Inactive => nil.
+      def display_row_value(key, signal)
+        return nil unless signal.active
+
+        if key == COVERAGE_GAP_KEY
+          display_round(100.0 * (1.0 - signal.raw_value))
+        else
+          display_round(signal.raw_value)
         end
       end
 

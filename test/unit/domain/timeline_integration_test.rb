@@ -48,7 +48,8 @@ class TimelineIntegrationTest < Minitest::Test
         { version_id: 9, name: 'GA',     due_date: TODAY + 14 },
         { version_id: 4, name: 'Beta',   due_date: TODAY - 3 },   # past-due, kept
         { version_id: 4 + 1, name: 'RC', due_date: TODAY + 14 }    # tie on due_date w/ v9
-      ]
+      ],
+      open_issue_count: 0, covered_sum: 0.0 # C2 additive-required (inactive baseline)
     )
   end
 

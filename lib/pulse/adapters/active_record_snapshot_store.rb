@@ -178,7 +178,7 @@ module Pulse
       # serialize_metrics(ProjectMetrics) -> Hash (JSON-safe; Dates -> ISO strings,
       # Symbols -> strings) suitable to pass to #store.
       def serialize_metrics(metrics)
-        {
+        payload = {
           'project_id' => metrics.project_id,
           'reference_date' => metrics.reference_date.iso8601,
           'effort_open' => metrics.effort_open,
@@ -194,6 +194,17 @@ module Pulse
             { 'version_id' => v[:version_id], 'name' => v[:name], 'due_date' => v[:due_date].iso8601 }
           end
         }
+        # C2 (FC-C2-08 / A10-C2-003 b): coverage_gap signal inputs. Plain Integer/Float —
+        # JSON-safe as-is. OMITTED when they are the neutral default (0 / 0.0) — i.e. on the
+        # default-OFF path where coverage gathering is skipped (redmine_metrics_source returns
+        # 0/0.0). So a default-OFF snapshot payload is BYTE-IDENTICAL to a pre-C2 payload
+        # (no coverage keys), and the deserializer's pre-C2 fallback (absent => 0/0.0) restores
+        # them losslessly. Only an ENABLED snapshot with real coverage data persists the fields.
+        unless metrics.open_issue_count.zero? && metrics.covered_sum.zero?
+          payload['open_issue_count'] = metrics.open_issue_count
+          payload['covered_sum'] = metrics.covered_sum
+        end
+        payload
       end
 
       # deserialize_metrics(Hash) -> Pulse::Domain::ProjectMetrics. Re-hydrates ISO
@@ -215,7 +226,14 @@ module Pulse
           end,
           version_due_dates: Array(hash['version_due_dates']).map do |v|
             { version_id: v['version_id'], name: v['name'], due_date: Date.iso8601(v['due_date']) }
-          end
+          end,
+          # C2 (FC-C2-08): coverage_gap inputs. PRE-C2 FALLBACK — a snapshot payload written
+          # before C2 lacks these keys; default open_issue_count:0 / covered_sum:0.0 places
+          # coverage_gap on the INACTIVE path so an old snapshot still deserializes and scores
+          # identically on the default-OFF (5-signal) path. `fetch` with a default preserves an
+          # explicit 0 while supplying the fallback only when the key is genuinely absent.
+          open_issue_count: hash.fetch('open_issue_count', 0),
+          covered_sum: (hash['covered_sum'].nil? ? 0.0 : hash['covered_sum'])
         )
       end
     end

@@ -30,7 +30,11 @@ class ValueObjectValidationTest < Minitest::Test
       risk_mapped: true,
       effort_mapped: true,
       event_series: [{ date: Date.new(2026, 6, 10), type: :issue_closed }],
-      version_due_dates: [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }]
+      version_due_dates: [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }],
+      # C2 additive-required coverage inputs. A non-zero pair exercises covered_sum
+      # validation on the happy path (0 <= covered_sum <= open_issue_count).
+      open_issue_count: 12,
+      covered_sum: 6.0
     }.merge(overrides)
   end
 

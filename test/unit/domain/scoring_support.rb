@@ -44,7 +44,11 @@ module ScoringSupport
       risk_mapped: true,
       effort_mapped: true,
       event_series: [],
-      version_due_dates: []
+      version_due_dates: [],
+      # C2 additive-required coverage inputs. The 0/0.0 baseline places coverage_gap on
+      # the INACTIVE path (FR-C2-04) so it never affects the pre-C2 five-signal score.
+      open_issue_count: 0,
+      covered_sum: 0.0
     }
     Pulse::Domain::ProjectMetrics.new(**defaults.merge(overrides))
   end

@@ -33,11 +33,30 @@ module Pulse
       # of risk_mapped, because risk_mapped is GLOBAL config (whether a risk tracker is
       # configured), not per-project data — keying no-data on it never fires for a genuinely
       # empty project in any instance with a risk tracker configured (aieyes-found escape).
-      def no_data?(metrics)
+      # FC-C2-09 (A10-C2-002): when coverage_gap is ENABLED and this project has scoreable
+      # coverage data (open_issue_count > 0), coverage_gap is an ACTIVE signal, so the project
+      # is NOT no-data — it has a real signal to score. Without this the four-conjunct
+      # short-circuit would return a no-data result BEFORE Signals.coverage_gap is dispatched,
+      # suppressing an enabled active signal. The guard is EXACT: when coverage_gap is disabled
+      # (the default), the clause never fires and no_data? is byte-identical to the C1 behavior
+      # (the golden gate's no-data cases are unaffected). config is nil-safe for legacy callers.
+      def no_data?(metrics, config = nil)
+        return false if coverage_gap_active?(metrics, config)
+
         metrics.effort_total == 0 &&
           metrics.event_series.empty? &&
           metrics.blocked_count == 0 &&
           metrics.risk_raw == 0
+      end
+
+      # coverage_gap is active for the no-data decision iff it is in the ENABLED set AND the
+      # project has open issues (the active-iff-open_issue_count>0 signal contract). A nil
+      # config (legacy call) or a disabled coverage_gap => false => no behavior change.
+      def coverage_gap_active?(metrics, config)
+        return false if config.nil?
+        return false unless config.enabled_signals.include?(:coverage_gap)
+
+        metrics.open_issue_count > 0
       end
 
       # No-data HealthResult: rag :no_data, nil health_score/dominant_signal, completeness
@@ -62,7 +81,7 @@ module Pulse
       end
 
       def score(metrics, clock, config)
-        return no_data_result(metrics, config) if no_data?(metrics)
+        return no_data_result(metrics, config) if no_data?(metrics, config)
 
         data = collect_data(metrics, clock, config)
 
@@ -77,6 +96,13 @@ module Pulse
           eff[d.key] = w
           contrib[d.key] = 100.0 * w * d.n
         end
+
+        # FC-C2-09 (e): the at_risk LENS effective weights normalize over the active set
+        # EXCLUDING coverage_gap, so enabling coverage_gap does NOT shift the at_risk lens
+        # (coverage_gap is at_risk?:false — it never enters the lens, and its weight must not
+        # enter the lens's normalization base either). On the default-OFF path coverage_gap is
+        # never active, so lens_eff == eff exactly and the byte-identical golden gate holds.
+        lens_eff = lens_effective_weights(active, config)
 
         score_raw = active.sum { |d| contrib[d.key] }
         health_score = [[round_half_up(score_raw), 0].max, 100].min
@@ -98,9 +124,24 @@ module Pulse
           dominant_signal: dominant_signal(active, config),
           signal_completeness: active.size / config.enabled_signals.size.to_f,
           breakdown: breakdown,
-          lens_keys: lens_keys(health_score, data, eff, metrics),
+          lens_keys: lens_keys(health_score, data, lens_eff, metrics),
           effort_open: metrics.effort_open
         )
+      end
+
+      # FC-C2-09 (e): effective weights for the at_risk LENS, normalized over the active set
+      # with coverage_gap EXCLUDED from the denominator (coverage_gap is at_risk?:false and
+      # must not perturb the lens). When coverage_gap is not active this equals the ordinary
+      # effective_weight map (byte-identical default-OFF path). Only the at_risk lens consumes
+      # these; the breakdown / health_score / contribution keep the full-active-set eff above.
+      def lens_effective_weights(active, config)
+        lens_active = active.reject { |d| d.key == :coverage_gap }
+        base = lens_active.sum { |d| config.weights[d.key] }
+        return {} if base <= 0.0
+
+        lens_active.each_with_object({}) do |d, acc|
+          acc[d.key] = config.weights[d.key] / base
+        end
       end
 
       # --- helpers -------------------------------------------------------------
@@ -129,6 +170,7 @@ module Pulse
         when :momentum     then Signals.momentum(metrics, clock, config)
         when :risk_load    then Signals.risk_load(metrics, config)
         when :blocked_load then Signals.blocked_load(metrics, config)
+        when :coverage_gap then Signals.coverage_gap(metrics, config)
         else
           raise ArgumentError, "unknown signal #{key.inspect}"
         end

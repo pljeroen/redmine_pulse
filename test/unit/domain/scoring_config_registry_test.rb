@@ -49,15 +49,19 @@ class ScoringConfigRegistryTest < Minitest::Test
 
   # === FC-C1-04: dom(w) == enabled set (exact cover) ==========================
   def test_registry_backed_default_via_enabled_kwarg
-    cfg = CFG.new(enabled_signals: R.keys, weights: R.default_weights)
+    # C2 EVOLUTION: default_weights scopes to the 5 default_on keys, so dom(w) ==
+    # default_on_keys (coverage_gap is registered but default_on:false, absent from the
+    # default weight map). Using R.keys (6) here would over-cover; default_on_keys is the
+    # exact cover of the default weight set.
+    cfg = CFG.new(enabled_signals: R.default_on_keys, weights: R.default_weights)
     assert_equal R.default_weights, cfg.weights
   end
 
   def test_weights_missing_an_enabled_key_raises
-    # declare 5 enabled, provide only 4 weights -> under-cover.
+    # declare the default-on set enabled, provide one fewer weight -> under-cover.
     w = default_weights
     w.delete(:blocked_load)
-    assert_raises(ArgumentError) { CFG.new(enabled_signals: R.keys, weights: w) }
+    assert_raises(ArgumentError) { CFG.new(enabled_signals: R.default_on_keys, weights: w) }
   end
 
   def test_weights_extra_key_not_in_enabled_raises

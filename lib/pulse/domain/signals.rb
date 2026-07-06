@@ -112,6 +112,25 @@ module Pulse
         n = clamp(1.0 - metrics.blocked_count / config.h_blocked.to_f, 0.0, 1.0)
         SignalDatum.new(key: :blocked_load, active: true, raw_value: metrics.blocked_count, n: n)
       end
+
+      # Coverage gap (FR-C2-03/04/06/08, FC-C2-01/02/03) — active iff open_issue_count > 0.
+      #   mean_cov  = covered_sum / open_issue_count.to_f   (the mean per-issue coverage
+      #               fraction; the adapter already aggregated the 3 fixed dimensions into
+      #               covered_sum, so the domain divides by the count only)
+      #   n         = clamp(mean_cov, 0.0, 1.0)   (unit interval; valid input never saturates)
+      #   raw_value = 1.0 - mean_cov              (the mean planning-GAP fraction)
+      # When open_issue_count == 0 the signal is INACTIVE (active:false, raw_value nil, n nil)
+      # — never divides by zero (FC-C2-02). The config is ACCEPTED but UNUSED: the 3 coverage
+      # dimensions are FIXED (FR-C2-08), so weights/other config keys never alter the result.
+      def coverage_gap(metrics, _config)
+        if metrics.open_issue_count > 0
+          mean_cov = metrics.covered_sum / metrics.open_issue_count.to_f
+          n = clamp(mean_cov, 0.0, 1.0)
+          SignalDatum.new(key: :coverage_gap, active: true, raw_value: 1.0 - mean_cov, n: n)
+        else
+          SignalDatum.new(key: :coverage_gap, active: false, raw_value: nil, n: nil)
+        end
+      end
     end
   end
 end

@@ -189,7 +189,9 @@ class SnapshotStoreTest < ActiveSupport::TestCase
       effort_open: 3, effort_total: 5, risk_raw: 0, blocked_count: 1,
       risk_mapped: false, effort_mapped: false,
       event_series: [{ date: Date.new(2026, 6, 5), type: :issue_created }],
-      version_due_dates: [{ version_id: 42, due_date: Date.new(2026, 9, 30), name: 'v1.0' }]
+      version_due_dates: [{ version_id: 42, due_date: Date.new(2026, 9, 30), name: 'v1.0' }],
+      # C2 additive-required coverage inputs — round-trip through serialize/deserialize.
+      open_issue_count: 4, covered_sum: 2.5
     )
     # The store/controller serialize+deserialize pair must re-hydrate Date strings to
     # Date and provenance/type strings to Symbols, or ProjectMetrics rejects them.

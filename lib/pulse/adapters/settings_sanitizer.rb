@@ -28,9 +28,19 @@ module Pulse
     # Returns [sanitized_hash, errors] where errors is an Array<String> of human keys
     # that were rejected (empty == fully valid).
     module SettingsSanitizer
-      # WEIGHT_KEYS / ALWAYS_ACTIVE are now SOURCED from the domain SignalRegistry (single
-      # source of truth) — string-keyed here because the settings hash uses string keys.
-      WEIGHT_KEYS = Pulse::Domain::SignalRegistry.keys.map(&:to_s).freeze
+      # WEIGHT_KEYS / ALWAYS_ACTIVE are SOURCED from the domain SignalRegistry (single source
+      # of truth) — string-keyed here because the settings hash uses string keys.
+      #
+      # FC-C2-14: the required weight-key set is a RUNTIME value derived from the incoming
+      # enable_coverage_gap flag combined with SignalRegistry.default_on_keys — NOT the static
+      # SignalRegistry.keys (which now includes the registered-but-default_on:false
+      # coverage_gap). The DEFAULT-ON keys are the 5 C1 built-ins; enabling coverage_gap adds
+      # its key to the required set. See weight_keys_for.
+      DEFAULT_ON_KEYS = Pulse::Domain::SignalRegistry.default_on_keys.map(&:to_s).freeze
+      COVERAGE_GAP_KEY = 'coverage_gap'
+      # Retained for readers that referenced the C1 constant name; equals the default-on set
+      # (the disabled/default required weight-key set).
+      WEIGHT_KEYS = DEFAULT_ON_KEYS
       ALWAYS_ACTIVE = Pulse::Domain::SignalRegistry.always_active_keys.map(&:to_s).freeze
 
       module_function
@@ -152,11 +162,31 @@ module Pulse
         end
         result['risk_trackers'] = normalize_trackers(incoming.fetch('risk_trackers', previous['risk_trackers']))
 
-        weights, weight_err = sanitize_weights(incoming['weights'], previous['weights'])
+        # FC-C2-14: enable_coverage_gap is AUTHORITATIVE for the weight-key set. When truthy the
+        # required set is the 6 keys {5 default_on + coverage_gap}; when falsy it is the 5
+        # default_on keys and coverage_gap is NEVER persisted (stripped on every path, incl. the
+        # invalid-weight fallback). The flag itself is persisted as a scalar settings key so the
+        # settings_version_hash moves on toggle (FC-C2-11); a falsy/blank incoming flag removes it.
+        enabled = truthy?(incoming['enable_coverage_gap'])
+        if enabled
+          result['enable_coverage_gap'] = '1'
+        else
+          result.delete('enable_coverage_gap')
+        end
+
+        weights, weight_err = sanitize_weights(incoming['weights'], previous['weights'], enabled)
         result['weights'] = weights
         errors << 'weights' if weight_err
 
         [result, errors]
+      end
+
+      # Redmine checkbox / scalar truthiness: '1'/'true'/true are ON; nil/''/'0'/'false' OFF.
+      def truthy?(raw)
+        return true if raw == true
+        return false if raw.nil? || raw == false
+
+        %w[1 true yes on].include?(raw.to_s.strip.downcase)
       end
 
       # Blank == nil or an empty/whitespace-only string. Used to distinguish "field
@@ -212,34 +242,133 @@ module Pulse
         s.to_i
       end
 
-      # weights: keep ONLY when the candidate forms a complete valid set; else fall
-      # back to previous (or {} => engine defaults). Returns [weights, had_error].
-      def sanitize_weights(raw, previous)
-        return [previous || {}, false] if raw.nil? || (raw.respond_to?(:empty?) && raw.empty?)
-        return [previous || {}, true] unless raw.is_a?(Hash)
-        # ALL-BLANK weights (every value nil/empty/whitespace) means "use the shipped
-        # defaults" — mirrors the nil/empty short-circuit above and the help text. A fresh/
-        # upgraded instance renders the 5 inputs blank, so "Apply" submits a hash of blank
-        # strings; that is NOT an error. A PARTIAL set falls through to the strict checks
-        # below and is still rejected (you can't persist an incomplete weight set).
-        return [previous || {}, false] if raw.values.all? { |v| blank?(v) }
+      # FC-C2-14: the required weight-key set is DERIVED from the enable flag — the 5
+      # default_on keys when disabled, or those 5 + coverage_gap when enabled. It is NEVER the
+      # static SignalRegistry.keys.
+      def weight_keys_for(enabled)
+        enabled ? (DEFAULT_ON_KEYS + [COVERAGE_GAP_KEY]) : DEFAULT_ON_KEYS
+      end
 
+      # weights: keep ONLY when the candidate forms a complete valid set for the enabled
+      # required key set; else fall back to previous (or {} => engine defaults). Returns
+      # [weights, had_error].
+      #
+      # FC-C2-14 INVARIANT: while DISABLED (enabled == false), coverage_gap MUST NEVER appear
+      # in the returned weights — on EVERY path, including the invalid-weight fallback. The
+      # enable flag is AUTHORITATIVE: a falsy flag over a previously-ENABLED (6-key) config
+      # strips coverage_gap and renormalizes the remaining 5 to Σ==1.0 (case c), regardless of
+      # what the incoming or previous weights still carry.
+      #
+      # A10-C2-001 (enable symmetry): the settings form ships only the 5 weight inputs while
+      # coverage_gap is off (the 6th input appears only once enabled), so the ENABLE POST
+      # normally arrives with a 5-key weights set. A raw 6-key rejection would leave the
+      # config at 5 signals (the "toggle ON but never scored" defect). So on ENABLE we SYNTHESIZE
+      # the 6-key map: accept a complete valid 6-key POST as-is (case b), else, when the incoming
+      # (or previous fallback) weights are the valid 5-key default_on set, add coverage_gap's
+      # default weight and RENORMALIZE all 6 to Σ==1.0 (reusing renormalize_on_toggle) — the
+      # symmetric inverse of the disable strip+renormalize.
+      def sanitize_weights(raw, previous, enabled)
+        required = weight_keys_for(enabled)
+
+        candidate, error =
+          if raw.nil? || (raw.respond_to?(:empty?) && raw.empty?)
+            [previous || {}, false]
+          elsif !raw.is_a?(Hash)
+            [previous || {}, true]
+          elsif raw.values.all? { |v| blank?(v) }
+            # ALL-BLANK => "use the shipped defaults" (mirrors the nil/empty short-circuit).
+            [previous || {}, false]
+          elsif enabled
+            validate_or_synthesize_enabled(raw, previous)
+          else
+            validate_weight_set(raw, previous, required)
+          end
+
+        # AUTHORITATIVE disable: whatever candidate we settled on, if it carries coverage_gap
+        # while disabled it MUST be dropped and the remaining weights renormalized to Σ==1.0
+        # (case c). This runs AFTER the required-set validation so a stale 6-key incoming set
+        # is still reported as an error (case d) while a previously-ENABLED fallback is
+        # corrected to the valid 5-key set here.
+        candidate = strip_coverage_gap_if_disabled(candidate, enabled)
+        [candidate, error]
+      end
+
+      # A10-C2-001 (a) — ENABLE-path weight resolution. Order:
+      #   1. A complete valid 6-key set (5 default_on + coverage_gap, Σ==1.0) => accept as-is
+      #      (case b: the operator edited the 6 weights after the input appeared).
+      #   2. Else, when the incoming weights are the valid 5-key default_on set (the ordinary
+      #      enable POST — the form still shows 5 inputs at enable time), SYNTHESIZE: add
+      #      coverage_gap's registry default weight and renormalize all 6 to Σ==1.0. Not an error.
+      #   3. Else fall back to synthesizing from the previous valid 5-key set (defensive: an
+      #      invalid incoming weights hash on enable still yields a valid 6-key config rather
+      #      than a 5-key config the enable flag would contradict), reporting the error.
+      # Returns [weights, had_error].
+      def validate_or_synthesize_enabled(raw, previous)
+        six = validate_weight_set(raw, previous, DEFAULT_ON_KEYS + [COVERAGE_GAP_KEY])
+        return six unless six.last # complete valid 6-key set (case b)
+
+        five, five_err = validate_weight_set(raw, previous, DEFAULT_ON_KEYS)
+        return [synthesize_coverage_gap(five), false] unless five_err
+
+        # Invalid incoming weights on enable: recover a valid 6-key config from `previous`
+        # rather than a 5-key config the enable flag would contradict. Prefer an already-valid
+        # 6-key previous set; else synthesize from a valid 5-key previous set; else engine
+        # defaults ({}). The error is reported either way (the incoming weights were rejected).
+        prev_six, prev_six_err = validate_weight_set(previous, previous,
+                                                     DEFAULT_ON_KEYS + [COVERAGE_GAP_KEY])
+        return [prev_six, true] unless prev_six_err
+
+        prev_five, prev_five_err = validate_weight_set(previous, previous, DEFAULT_ON_KEYS)
+        return [synthesize_coverage_gap(prev_five), true] unless prev_five_err
+
+        [{}, true]
+      end
+
+      # Add coverage_gap at its registry default weight to a valid 5-key default_on set and
+      # renormalize all 6 to Σ==1.0. Proportional: the 5 prior weights keep their pairwise
+      # ratios and coverage_gap takes its default share (the inverse of the disable strip).
+      def synthesize_coverage_gap(five)
+        default_cg = Pulse::Domain::SignalRegistry.fetch(COVERAGE_GAP_KEY.to_sym).default_weight
+        six = five.merge(COVERAGE_GAP_KEY => default_cg)
+        total = six.values.sum
+        six.transform_values { |w| w / total }
+      end
+
+      # Strictly validate `raw` against the `required` key set (each finite Numeric >= 0,
+      # keys EXACTLY the required set, Σ == 1.0, always-active subset > 0). On any failure the
+      # previous set is retained and the error flagged.
+      def validate_weight_set(raw, previous, required)
         candidate = {}
-        WEIGHT_KEYS.each do |k|
+        required.each do |k|
           f = strict_float(raw[k] || raw[k.to_sym])
           return [previous || {}, true] if f.nil? || f < 0.0
 
           candidate[k] = f
         end
-        return [previous || {}, true] unless raw_keys_exact?(raw)
+        return [previous || {}, true] unless raw_keys_exact?(raw, required)
         return [previous || {}, true] if (candidate.values.sum - 1.0).abs >= 1e-9
         return [previous || {}, true] if ALWAYS_ACTIVE.sum { |k| candidate[k] } <= 0.0
 
         [candidate, false]
       end
 
-      def raw_keys_exact?(raw)
-        raw.keys.map(&:to_s).sort == WEIGHT_KEYS.sort
+      # FC-C2-14 (c): while disabled, drop any coverage_gap weight and renormalize the
+      # remaining weights to Σ==1.0 (reusing the C1 proportional-renormalization rule
+      # renormalize_on_toggle / FC-C1-16). A no-op when enabled or when no coverage_gap key is
+      # present (the default-OFF path is byte-unchanged). A degenerate remaining-sum <= 0
+      # cannot occur here (the always-active subset guarantees a positive remainder), but is
+      # handled defensively by leaving the (coverage_gap-free) weights unrenormalized.
+      def strip_coverage_gap_if_disabled(weights, enabled)
+        return weights if enabled
+        return weights unless weights.keys.map(&:to_s).include?(COVERAGE_GAP_KEY)
+
+        renormalize_on_toggle(weights, COVERAGE_GAP_KEY)
+      rescue ArgumentError
+        weights.reject { |k, _| k.to_s == COVERAGE_GAP_KEY }
+      end
+
+      def raw_keys_exact?(raw, required)
+        raw.keys.map(&:to_s).sort == required.sort
       end
 
       def strict_float(raw)

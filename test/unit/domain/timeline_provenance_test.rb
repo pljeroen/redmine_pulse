@@ -49,7 +49,8 @@ class TimelineProvenanceTest < Minitest::Test
       version_due_dates: [
         { version_id: 3, name: 'Sprint 3', due_date: TODAY + 5 },
         { version_id: 7, name: 'Sprint 7', due_date: TODAY - 2 }
-      ]
+      ],
+      open_issue_count: 0, covered_sum: 0.0 # C2 additive-required (inactive baseline)
     )
     Pulse::Domain::Timeline.build(m, FixedClock.new(TODAY), Pulse::Domain::ScoringConfig.new)
   end

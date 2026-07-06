@@ -20,7 +20,10 @@ module Pulse
     # projected/estimated (INV-NO-INVENTED-DATES).
     module JsonSerializer
       SCHEMA_VERSION = '1.0'
-      SIGNAL_ORDER = %w[staleness progress momentum risk_load blocked_load].freeze
+      # C2 (FC-C2-15): coverage_gap appended LAST. An entry is emitted ONLY for the keys
+      # present in the breakdown — coverage_gap is absent on the default-OFF path, so the JSON
+      # payload stays byte-identical there.
+      SIGNAL_ORDER = %w[staleness progress momentum risk_load blocked_load coverage_gap].freeze
       VISIBILITY_NOTE = 'Health computed from issues visible to you.'
 
       module_function
@@ -144,7 +147,11 @@ module Pulse
       # (no re-round) from the domain SignalResult (FC-CA-23).
       def signal_set(projection, with_drill:)
         by_key = projection.health.breakdown.to_h { |s| [s.key.to_s, s] }
-        SIGNAL_ORDER.each_with_object({}) do |key, acc|
+        # Emit ONLY the signals present in the breakdown, in canonical order. coverage_gap is
+        # absent on the default-OFF path, so no 'coverage_gap' key appears then (FC-C2-15).
+        # raw_value stays the VERBATIM gap fraction (FC-CA-23 passthrough) — the planning-
+        # coverage transform is HTML-presentation-only.
+        SIGNAL_ORDER.select { |key| by_key.key?(key) }.each_with_object({}) do |key, acc|
           s = by_key[key]
           entry = {
             'active' => s.active,

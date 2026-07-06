@@ -13,17 +13,22 @@ require 'pulse/domain/signal_registry'
 class SignalRegistryTest < Minitest::Test
   R = Pulse::Domain::SignalRegistry
 
+  # C2 EVOLUTION: coverage_gap is now a registered (but default_on:false) signal, so the
+  # registry enumerates 6 keys. The 5 DEFAULT-ON built-ins are still the C1 set; the
+  # default_weights map still scopes to those 5 (FC-C2-06). BUILTINS = the 5 default_on.
   BUILTINS = %i[staleness progress momentum risk_load blocked_load].freeze
-  CANONICAL = %i[staleness progress momentum risk_load blocked_load].freeze
+  REGISTERED = %i[staleness progress momentum risk_load blocked_load coverage_gap].freeze
+  CANONICAL = %i[staleness progress momentum risk_load blocked_load coverage_gap].freeze
   ALWAYS_ACTIVE = %i[staleness momentum blocked_load].freeze
   AT_RISK = %i[risk_load blocked_load staleness].freeze
   DEFAULT_WEIGHTS = {
     staleness: 0.25, progress: 0.25, momentum: 0.20, risk_load: 0.15, blocked_load: 0.15
   }.freeze
 
-  # --- FC-C1-01: record totality (every field present + correctly typed) ------
-  def test_enumerates_exactly_the_five_builtins
-    assert_equal BUILTINS.sort, R.keys.sort, 'registry enumerates exactly the 5 built-in signal keys'
+  # --- FC-C1-01 / FC-C2-04: record totality (every field present + correctly typed) ---
+  def test_enumerates_the_registered_signals
+    assert_equal REGISTERED.sort, R.keys.sort,
+                 'registry enumerates the 5 built-ins + coverage_gap (C2 registration)'
   end
 
   def test_every_record_has_complete_typed_metadata
@@ -71,9 +76,12 @@ class SignalRegistryTest < Minitest::Test
     end
   end
 
-  def test_default_enabled_keys_are_the_five_builtins
-    assert_equal BUILTINS.sort, R.default_enabled_keys.sort,
-                 'default_enabled_keys == the 5 built-ins (C1 default-all pass-through)'
+  # C2 EVOLUTION: the DEFAULT-ON set (what a no-arg ScoringConfig enables) is now sourced
+  # from default_on_keys (FC-C2-06), which is exactly the 5 C1 built-ins — coverage_gap is
+  # registered but default_on:false, so it is NOT in the default-enabled set.
+  def test_default_on_keys_are_the_five_builtins
+    assert_equal BUILTINS.sort, R.default_on_keys.sort,
+                 'default_on_keys == the 5 built-ins (coverage_gap default_on:false excluded)'
   end
 
   # --- FC-C1-03: canonical_order is a TOTAL STRICT order ----------------------
@@ -86,7 +94,7 @@ class SignalRegistryTest < Minitest::Test
   def test_canonical_order_reproduces_pre_c1_sequence
     ordered = R.keys.sort_by { |k| R.fetch(k).canonical_order }
     assert_equal CANONICAL, ordered,
-                 'sorting by canonical_order yields the removed Scoring::CANONICAL_ORDER exactly'
+                 'sorting by canonical_order yields the C1 sequence + coverage_gap LAST (FC-C2-04)'
   end
 
   # A10-C1-006 (was: conditional 'if present'). UNCONDITIONAL — canonical_order_keys is
@@ -97,7 +105,7 @@ class SignalRegistryTest < Minitest::Test
     assert_respond_to R, :canonical_order_keys,
                       'canonical_order_keys is a required public helper (production reads it)'
     assert_equal CANONICAL, R.canonical_order_keys,
-                 'canonical_order_keys == the exact ordered 5 keys (canonical sequence)'
+                 'canonical_order_keys == the ordered 6 keys (C1 sequence + coverage_gap last)'
   end
 
   # --- N-generality: the catalog does not hardcode "5" ------------------------
@@ -107,10 +115,13 @@ class SignalRegistryTest < Minitest::Test
   # non-5 (enabled_count 3/4) behavior itself is proven by the enabled-subset scoring tests
   # (scoring_completeness_test / scoring_enabled_set_test); here we pin the ordering shape.
   def test_registry_count_is_derived_not_literal
-    assert_equal R.keys.size, R.default_weights.size,
-                 'default_weights covers exactly the enumerated keys (count derived from catalog)'
-    assert_equal R.keys.size, R.default_enabled_keys.size,
-                 'default_enabled_keys covers exactly the enumerated keys'
+    # C2 EVOLUTION: default_weights scopes to default_on:true (FC-C2-06), so it covers the
+    # DEFAULT-ON subset (5), while keys covers all REGISTERED signals (6). The catalog count
+    # is still DERIVED (not a literal), proven by canonical_order being the [0,N) index.
+    assert_equal R.default_on_keys.size, R.default_weights.size,
+                 'default_weights covers exactly the default_on keys (count derived, FC-C2-06)'
+    assert_operator R.keys.size, :>, R.default_on_keys.size,
+                    'registered keys (incl. coverage_gap) exceed the default_on subset'
 
     # canonical_order values are the 0-based positions of the keys: injective, total,
     # and exactly the contiguous range [0, N). This is stronger than size-equality — it

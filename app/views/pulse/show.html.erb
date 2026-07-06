@@ -50,7 +50,7 @@
       <% @view.signal_rows.each do |sig| %>
         <tr class="pulse-signal pulse-signal-<%= sig.key %> <%= sig.active ? 'active' : 'inactive' %>">
           <td class="pulse-signal-key">
-            <%= sig.key %>
+            <%= sig.label %>
             <% if sig.drill_url %><a class="pulse-drill" href="<%= sig.drill_url %>">&rarr;</a><% end %>
           </td>
           <% if sig.active %>

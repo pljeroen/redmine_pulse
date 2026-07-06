@@ -150,45 +150,58 @@ class StaticSourceGuardsTest < Minitest::Test
   # ScoringConfig). These are the ONLY input/select `name` keys the settings partial may
   # carry. The five weights live under settings[weights][<sig>]; the rest are top-level
   # settings[<key>] scalars. risk_trackers is an array param (settings[risk_trackers][]).
+  # CA-23 top-level fields + the C2-sanctioned coverage_gap enable toggle (FC-C2-16). The
+  # enable_coverage_gap control is now part of the allowed exact top-level field set.
   CA23_TOP_LEVEL_FIELDS = %w[
     effort_field risk_trackers blocked_status
     rag_green_min rag_amber_min
     h_stale h_risk h_blocked activity_window_days
     momentum_activity_half momentum_direction_bias on_track_threshold
     snapshot_max_age_minutes
+    enable_coverage_gap
   ].freeze
+  # The 5 C1 (default_on) weights plus coverage_gap, which is rendered ONLY behind the
+  # enable path (conditional weight input). The weight-loop signal set may therefore be the
+  # 5 default_on keys, or those 5 plus coverage_gap when the enable path is active.
   CA23_WEIGHT_KEYS = %w[staleness progress momentum risk_load blocked_load].freeze
+  CA23_WEIGHT_KEYS_ENABLED = (CA23_WEIGHT_KEYS + %w[coverage_gap]).freeze
 
+  # FC-C2-16 (thawed guard) — the settings partial may now render the sanctioned
+  # coverage_gap enable toggle + a CONDITIONAL coverage_gap weight input (behind the enable
+  # path), and NOTHING else speculative. The deliverables_field refute + the no-extra-
+  # speculative-control / exact-field-set guarantees stay INTACT and unweakened.
   def test_settings_partial_exposes_only_ca23_fields_no_deliverables
     src = read_or_flunk(SETTINGS_PARTIAL)
     refute_match(/deliverables_field/, src,
                  'settings partial must NOT render deliverables_field (DEC-12 / COND-CA-02)')
-    refute_match(/coverage_gap/, src,
-                 'settings partial must NOT render a coverage_gap control')
 
-    # ── CA-A10-005: EXACT field-set, not just presence. Parse every form-control
-    # `name="settings[...]"` attribute out of the rendered partial source and assert the
-    # set is EXACTLY the CA-23 allowed set — no extras (no deliverables_field/coverage_gap
-    # or ANY other speculative control). ──────────────────────────────────────────────
-    #
-    # Top-level keys: name="settings[<key>]" or name="settings[<key>][]" (array params).
+    # ── CA-A10-005 (+FC-C2-16): EXACT field-set. Parse every form-control
+    # `name="settings[...]"` attribute and assert the set is EXACTLY the CA-23 allowed set
+    # PLUS the sanctioned enable_coverage_gap — no OTHER speculative control. ────────────
     top_level = src.scan(/name="settings\[([a-z_]+)\](?:\[\])?"/).flatten.uniq
-    # Weight keys: name="settings[weights][<sig>]". The partial generates these in an ERB
-    # loop, so the literal `name` carries `<%= sig %>`; the concrete signal set is the loop
-    # driver array. Collect BOTH the literal weight-name presence and the driver signals.
     weight_name_present = src.match?(/name="settings\[weights\]\[(?:<%=\s*sig\s*%>|[a-z_]+)\]"/)
     loop_signals = src.scan(/\[:([a-z_]+),\s*t\(/).flatten.uniq # [[:staleness, t(...)], ...]
 
     expected_top = CA23_TOP_LEVEL_FIELDS.sort
     assert_equal expected_top, top_level.sort,
-                 "settings partial must expose EXACTLY the CA-23 top-level fields and NOTHING " \
-                 "else (CA-A10-005). got=#{top_level.sort.inspect} expected=#{expected_top.inspect}"
+                 "settings partial must expose EXACTLY the CA-23 top-level fields + the sanctioned " \
+                 "enable_coverage_gap and NOTHING else (FC-C2-16). got=#{top_level.sort.inspect} " \
+                 "expected=#{expected_top.inspect}"
 
     assert weight_name_present,
            'settings partial must render the per-signal weight inputs settings[weights][<sig>] (CA-23)'
-    assert_equal CA23_WEIGHT_KEYS.sort, loop_signals.sort,
-                 "settings partial weight inputs must cover EXACTLY the 5 ScoringConfig signals " \
-                 "and NOTHING else (CA-A10-005). got=#{loop_signals.sort.inspect}"
+    # The weight-loop signal set must be EITHER the 5 default_on keys, OR those 5 plus
+    # coverage_gap (the conditional weight behind the enable path) — and NOTHING else.
+    assert_includes [CA23_WEIGHT_KEYS.sort, CA23_WEIGHT_KEYS_ENABLED.sort], loop_signals.sort,
+                    "settings partial weight inputs must be the 5 default_on signals, or those 5 plus " \
+                    "coverage_gap (FC-C2-16) — and NOTHING else. got=#{loop_signals.sort.inspect}"
+    # Any coverage_gap control that IS present must be the sanctioned enable toggle and/or
+    # the conditional weight input — never a speculative coverage_gap control.
+    if src =~ /coverage_gap/
+      assert(top_level.include?('enable_coverage_gap') || loop_signals.include?('coverage_gap'),
+             'the ONLY sanctioned coverage_gap controls are settings[enable_coverage_gap] and the ' \
+             'conditional settings[weights][coverage_gap] weight input (FC-C2-16)')
+    end
   end
 
   # ───────────── D-CA-OQ02: risk_trackers multi-select, local select2 ─────────

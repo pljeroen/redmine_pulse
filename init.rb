@@ -39,7 +39,13 @@ Redmine::Plugin.register :redmine_pulse do
     'weights'              => {},   # per-signal weight overrides; empty => engine defaults
     'effort_field'         => '',   # OQ-2 — optional effort/story-points field mapping
     'risk_trackers'        => [],   # optional risk-tracker mapping
-    'blocked_status'       => ''    # optional blocked-status mapping
+    'blocked_status'       => '',   # optional blocked-status mapping
+    # alerting contract (C6 / FR-C6-06/08): two alert-OFF defaults so NO alert fires on
+    # install until the operator configures them. Both are consumed ONLY by the rake-task
+    # composition root (never the request cycle). nil = disabled (auto-subscribe off /
+    # score_delta off).
+    'pulse_alert_auto_subscribe_role_id' => nil, # Redmine role id to auto-subscribe (nil = off)
+    'pulse_alert_score_delta_threshold'  => nil  # min |Δscore| to fire score_delta (nil/0 = off)
     # COND-CA-02 / DEC-12: deliverables_field is REMOVED — it was a deferred feature
     # that never shipped, so the manifest must not advertise it (the settings partial
     # exposes only the CA-23 field set).
@@ -51,8 +57,13 @@ Redmine::Plugin.register :redmine_pulse do
   # controllers/views that satisfy it) so the plugin never advertises a route or
   # partial that 404s.
   project_module :pulse do
+    # C6 (FR-C6-08): :view_pulse EXPANDS additively to cover the pulse#watch/#unwatch
+    # health-watch toggle actions. These are member write-actions on the viewer's OWN
+    # subscription (a Watcher row), not a Redmine-domain write — read:true is retained
+    # because the permission still gates read visibility; the per-action authorize ladder
+    # enforces :view_pulse at request time, and the scan re-checks permission at send.
     permission :view_pulse,
-               { pulse: %i[index show refresh], pulse_api: %i[portfolio project],
+               { pulse: %i[index show refresh watch unwatch], pulse_api: %i[portfolio project],
                  pulse_views: %i[index new create show edit update destroy select] },
                read: true
     # C5: publishing public/role-scoped saved views is portfolio-wide config — a GLOBAL
@@ -131,6 +142,29 @@ require 'pulse/adapters/main_concern_labels'
 require 'pulse/adapters/json_serializer'
 require 'pulse/adapters/lens_ranker'
 require 'pulse/adapters/html_presenter'
+
+# alerting contract (C6): the pure alert domain + the alert ports/adapters + the two
+# task composition roots. These are reachable ONLY from lib/tasks/pulse.rake (the
+# scan_and_alert / recompute rake tasks) and the Watch-toggle controller action — NEVER
+# from the scoring request cycle (INV-ADDITIVE; the additive no-coupling grep confirms the
+# 7 alert symbols never appear under app/controllers, app/helpers, or served app/views).
+# The alert-state is a SEPARATE table (pulse_alert_states) from the pulse_snapshots cache.
+require 'pulse/domain/alert_event'
+require 'pulse/domain/alert_rules'
+require 'pulse/ports/alert_state_store'
+require 'pulse/ports/subscription_store'
+require 'pulse/ports/alert_delivery'
+require 'pulse/adapters/active_record_alert_state_store'
+require 'pulse/adapters/redmine_subscription_store'
+require 'pulse/adapters/redmine_alert_delivery'
+# Pulse::Mailer lives at lib/pulse/mailer.rb (path-matches its namespaced constant, so it
+# is Zeitwerk eager-load-safe under production — no ignore needed, unlike the top-level
+# hooks). It subclasses Redmine's ::Mailer base (loadable by plugin-init time). Its HTML +
+# text views live at app/views/pulse_mailer/ (resolved via the plugin's view path).
+require 'pulse/mailer'
+require 'pulse/tasks/canonical_scan'
+require 'pulse/tasks/recompute'
+require 'pulse/tasks/scan_and_alert'
 
 # project-list-badge contract (B2 server-inline, D-PLB-C04): the view hook that emits the
 # RAG-chip stylesheet, the badge JS asset, and the inlined viewer-scoped portfolio blob on
@@ -244,6 +278,17 @@ end
 # can never affect a real instance.
 if defined?(Rails) && Rails.env.test?
   require 'active_support/test_case'
+
+  # alerting contract (C6) — Minitest stubbing (test env ONLY). The C6 mailer / task suites
+  # (pulse_mailer_test, pulse_alert_tasks_test) exercise best-effort delivery via
+  # Pulse::Mailer.stub / Rails.stub, but Redmine 6.1.2's test_helper does not require
+  # minitest/mock, so Object#stub is otherwise undefined on the harness. Requiring it here
+  # (guarded to the test env) makes the frozen suites' stub calls resolve. Best-effort.
+  begin
+    require 'minitest/mock'
+  rescue LoadError
+    nil
+  end
 
   # JSON-Schema draft-07 support (test env ONLY). The frozen API schemas declare
   # "$schema": draft-07, but the bundled json-schema 6.2.0 ships validators only up to

@@ -60,6 +60,7 @@ module Pulse
                              :computed_ago, :signal_rows, :sparkline, :milestones,
                              :gantt_url, :visibility_note, :no_data, :no_data_label,
                              :active_profile_name, :profile_options, :profile_warning,
+                             :watching, :watch_offer,
                              keyword_init: true)
 
       # C4 (FC-C4-17): one precomputed switcher option — plain presentation values (id/label/
@@ -108,7 +109,12 @@ module Pulse
       # nil) supplied by the controller — the controller owns Redmine authorization
       # (User.current.allowed_to?(:view_gantt, project), which also covers the :gantt
       # module) and route generation, so the presenter stays free of Redmine auth/routing.
-      def panel_view(projection, now:, gantt_url: nil)
+      # `watching` / `watch_offer` (C6 / FR-C6-08) are precomputed scalars the controller
+      # supplies (the controller owns Redmine's subscription + logged-in state, exactly as it
+      # owns gantt_url auth): `watch_offer` is whether to render the toggle at all (a real
+      # logged-in user), `watching` its current on/off state. The presenter stays free of any
+      # Redmine AR/auth access (COND-A4-001).
+      def panel_view(projection, now:, gantt_url: nil, watching: false, watch_offer: false)
         h = projection.health
         no_data = h.dominant_signal.nil? && h.health_score.nil?
         PanelView.new(
@@ -130,7 +136,9 @@ module Pulse
           no_data_label: I18n.t(:label_pulse_no_data),
           active_profile_name: active_profile_name(projection),
           profile_options: profile_options(projection),
-          profile_warning: profile_warning(projection)
+          profile_warning: profile_warning(projection),
+          watching: watching,
+          watch_offer: watch_offer
         )
       end
 

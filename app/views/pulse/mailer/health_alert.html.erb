@@ -1,0 +1,31 @@
+<%#
+  redmine_pulse — health-alert email (HTML part). C6 / FC-C6-08.
+  Renders one project's health transition. No new SMTP config; uses the Redmine mailer
+  layout + existing config inherited by the pulse alert mailer.
+%>
+<h2><%= l(:label_pulse_health_alert, default: 'Pulse health alert') %></h2>
+
+<p>
+  <%= l(:label_pulse_alert_project, default: 'Project') %>:
+  <strong><%= @project_name %></strong>
+</p>
+
+<p>
+  <%= l("label_pulse_alert_event_#{@event.event_type}",
+        default: @event.event_type.to_s.tr('_', ' ')) %>
+  <% if @event.from && @event.to %>
+    — <code><%= @event.from %></code> &rarr; <code><%= @event.to %></code>
+  <% end %>
+</p>
+
+<% unless @event.score.nil? && @event.previous_score.nil? %>
+  <p>
+    <%= l(:label_pulse_alert_score, default: 'Health score') %>:
+    <%= @event.previous_score %> &rarr; <%= @event.score %>
+    <% unless @event.delta.nil? %>(&Delta; <%= @event.delta %>)<% end %>
+  </p>
+<% end %>
+
+<p style="color:#888;font-size:90%;">
+  <%= @event.occurred_at %>
+</p>

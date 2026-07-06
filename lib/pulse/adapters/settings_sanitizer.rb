@@ -178,6 +178,18 @@ module Pulse
         result['weights'] = weights
         errors << 'weights' if weight_err
 
+        # C6 (FR-C6-06/08) — two ADDITIVE alert settings keys, alert-OFF defaults:
+        #   pulse_alert_auto_subscribe_role_id : Integer >= 1, or nil (nil = disabled DEFAULT).
+        #     Present-but-invalid (non-integer / non-positive) => reject, keep prior value.
+        #     ABSENT => the key is not synthesized (additivity — a hash without it is untouched).
+        #     An EXPLICIT nil is accepted as the disabled state (stored as nil).
+        #   pulse_alert_score_delta_threshold  : Numeric >= 0 (0/nil = disabled DEFAULT).
+        #     Present-but-invalid (negative / non-numeric) => reject, keep prior value.
+        #     ABSENT => not synthesized. An EXPLICIT nil is accepted as disabled (stored nil).
+        # These are the ONLY C6 settings surface; both default OFF so no alert fires on install.
+        sanitize_alert_role_id(incoming, result, errors)
+        sanitize_alert_score_delta_threshold(incoming, result, errors)
+
         # FR-C4-02/04/09 / FC-C4-05, FC-C4-14 — additive pulse_profiles validation. Absent
         # in the incoming hash => nothing added (the synthetic default needs no entry; the
         # profiles-free result stays byte-identical to the pre-C4 sanitized value). Present
@@ -185,6 +197,75 @@ module Pulse
         sanitize_pulse_profiles(incoming['pulse_profiles'], result, errors)
 
         [result, errors]
+      end
+
+      # C6 auto-subscribe role id: Integer >= 1, explicit nil = disabled. Additive — the key
+      # is only touched when present in `incoming`. Present-but-invalid keeps the prior value
+      # and reports the key (existing guard pattern). 0 is NOT a valid role id (rejected).
+      def sanitize_alert_role_id(incoming, result, errors)
+        key = 'pulse_alert_auto_subscribe_role_id'
+        return unless incoming.key?(key)
+
+        raw = incoming[key]
+        if raw.nil? || (raw.is_a?(String) && raw.strip.empty?)
+          result[key] = nil # explicit nil / blank => auto-subscribe disabled (valid)
+          return
+        end
+
+        v = integer_at_least(raw, 1)
+        if v.nil?
+          errors << key # non-integer / non-positive => reject, keep prior value
+        else
+          result[key] = v
+        end
+      end
+
+      # C6 score_delta threshold N: Numeric >= 0 (0/nil = disabled). Additive — only touched
+      # when present. Present-but-invalid (negative / non-numeric) keeps the prior value and
+      # reports the key. 0 is VALID (disabled). An explicit nil/blank is accepted as disabled.
+      def sanitize_alert_score_delta_threshold(incoming, result, errors)
+        key = 'pulse_alert_score_delta_threshold'
+        return unless incoming.key?(key)
+
+        raw = incoming[key]
+        if raw.nil? || (raw.is_a?(String) && raw.strip.empty?)
+          result[key] = nil # explicit nil / blank => score_delta disabled (valid)
+          return
+        end
+
+        v = numeric_at_least(raw, 0)
+        if v.nil?
+          errors << key # negative / non-numeric => reject, keep prior value
+        else
+          result[key] = v
+        end
+      end
+
+      # A numeric (Integer or Float) value >= min, preserving the incoming numeric shape
+      # (Integer stays Integer so `15` round-trips as `15`, not `15.0`). nil for
+      # non-numeric / out-of-range. Used by the score_delta threshold validation.
+      def numeric_at_least(raw, min)
+        return nil if raw.nil?
+
+        n = raw.is_a?(Numeric) ? raw : parse_numeric_setting(raw)
+        return nil if n.nil?
+        return nil unless n.respond_to?(:finite?) ? n.finite? : true
+        return nil if n < min
+
+        n
+      end
+
+      # Parse a string that may be an Integer ("15") or a Float ("15.5"). Returns an Integer
+      # for an integral string and a Float for a fractional one; nil for non-numeric.
+      def parse_numeric_setting(raw)
+        s = raw.to_s.strip
+        return nil if s.empty?
+        return s.to_i if s.match?(/\A-?\d+\z/)
+
+        f = Float(s)
+        f.finite? ? f : nil
+      rescue ArgumentError, TypeError
+        nil
       end
 
       # FC-C4-14 — validate the additive pulse_profiles sub-hash IN PLACE on `result`.

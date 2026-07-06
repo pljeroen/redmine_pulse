@@ -29,7 +29,7 @@ module PulseAdapterTestSupport
         # is a GLOBAL permission — mirroring init.rb so the functional/integration suites see the
         # same permission surface.
         pm.permission :view_pulse,
-                      { pulse: %i[index show refresh], pulse_api: %i[portfolio project],
+                      { pulse: %i[index show refresh watch unwatch], pulse_api: %i[portfolio project],
                         pulse_views: %i[index new create show edit update destroy select] },
                       read: true
         pm.permission :manage_public_pulse_views,

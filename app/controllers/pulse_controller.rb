@@ -66,7 +66,10 @@ class PulseController < PulseBaseController
     # PRE-profile (INV-C4-PERM-UNCHANGED) — the profile only reweights visible metrics.
     projection = engine.project_projection(User.current, project, selected_profile_id)
     @view = Pulse::Adapters::HtmlPresenter.panel_view(
-      projection, now: Time.now.utc, gantt_url: gantt_url_for(project)
+      projection, now: Time.now.utc, gantt_url: gantt_url_for(project),
+      # C6 (FR-C6-08): the health-watch toggle state — offered only to a real logged-in
+      # user (anonymous cannot own a subscription), reflecting their current watch state.
+      watch_offer: User.current.logged?, watching: watching_health?(project)
     )
     render template: 'pulse/show'
   end
@@ -101,7 +104,69 @@ class PulseController < PulseBaseController
     redirect_to project_pulse_path(id: project.identifier)
   end
 
+  # The plugin-private polymorphic discriminator for the "Watch project health" opt-in — a
+  # bare Watcher string, deliberately NOT a real AR watchable (the row's #watchable is never
+  # dereferenced). It MUST equal the value the scan-side subscription reader keys on. Defined
+  # here (as a literal, not by referencing the alert adapter's constant) so the request-cycle
+  # code names NONE of the alert-pipeline symbols — the alert scan stays rake-only
+  # (INV-ADDITIVE / T1-ADD-03). The scan-side reader and this writer share the same literal by
+  # contract; the frozen recipient-permission suite covers that they agree.
+  PULSE_HEALTH_WATCHABLE = 'PulseHealth'
+
+  # POST /projects/:id/pulse/watch — the "Watch project health" opt-in (C6 / FR-C6-08).
+  # A logged-in, :view_pulse-holding viewer subscribes THEMSELVES to the project's health
+  # alerts by writing ONE plugin-private Watcher row (watchable_type PULSE_HEALTH_WATCHABLE,
+  # watchable_id = project.id). That row is exactly what the scan reads via subscribers_for.
+  # INV-ADDITIVE: this action writes a single subscription record and triggers NO scoring /
+  # alert scan — the scan is reachable ONLY from the rake composition root. Watcher is a
+  # plugin-agnostic membership table (NOT a Redmine scoring/alert domain model), so this stays
+  # a read-only-toward-scoring action.
+  def watch
+    toggle_health_watch(subscribe: true)
+  end
+
+  # POST /projects/:id/pulse/unwatch — the inverse opt-out (idempotent).
+  def unwatch
+    toggle_health_watch(subscribe: false)
+  end
+
   private
+
+  # Shared body for watch/unwatch: run the EXACT 404/403 visibility ladder (existence not
+  # leaked; module-off / no-view_pulse -> 403), require a real logged-in user (anonymous
+  # cannot own a subscription), toggle the subscription Watcher row, then redirect back to the
+  # panel. The write is confined to ONE plugin-private Watcher row — no scoring/alert symbol is
+  # named or invoked in the request cycle (INV-ADDITIVE).
+  def toggle_health_watch(subscribe:)
+    project = visible_project(params[:id])
+    return if project.nil? # 404 already rendered
+
+    return unless authorize_pulse(project) # 403 already rendered when false
+
+    if User.current.logged?
+      if subscribe
+        # Idempotent: the Watcher unique index on [user_id, watchable_type, watchable_id]
+        # makes a repeat a no-op.
+        Watcher.find_or_create_by!(watchable_type: PULSE_HEALTH_WATCHABLE,
+                                   watchable_id: project.id, user_id: User.current.id)
+      else
+        Watcher.where(watchable_type: PULSE_HEALTH_WATCHABLE, watchable_id: project.id,
+                      user_id: User.current.id).delete_all
+      end
+      flash[:notice] = I18n.t(subscribe ? :notice_pulse_health_watched : :notice_pulse_health_unwatched)
+    end
+    redirect_to project_pulse_path(id: project.identifier)
+  end
+
+  # Whether the current viewer holds an explicit "Watch project health" subscription on the
+  # project (the toggle state the panel renders). Read-only; a bare Watcher-row existence check
+  # keyed on the same plugin-private discriminator the scan reads.
+  def watching_health?(project)
+    return false unless User.current.logged?
+
+    Watcher.where(watchable_type: PULSE_HEALTH_WATCHABLE, watchable_id: project.id,
+                  user_id: User.current.id).exists?
+  end
 
   # ── C5 saved-view selection wiring (FC-C5-13/16/17) ─────────────────────────
 

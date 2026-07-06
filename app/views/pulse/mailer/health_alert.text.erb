@@ -1,0 +1,11 @@
+<%#
+  redmine_pulse — health-alert email (plain-text part). C6 / FC-C6-08.
+%><%= l(:label_pulse_health_alert, default: 'Pulse health alert') %>
+
+<%= l(:label_pulse_alert_project, default: 'Project') %>: <%= @project_name %>
+
+<%= l("label_pulse_alert_event_#{@event.event_type}", default: @event.event_type.to_s.tr('_', ' ')) %><% if @event.from && @event.to %> — <%= @event.from %> -> <%= @event.to %><% end %>
+<% unless @event.score.nil? && @event.previous_score.nil? %>
+<%= l(:label_pulse_alert_score, default: 'Health score') %>: <%= @event.previous_score %> -> <%= @event.score %><% unless @event.delta.nil? %> (delta <%= @event.delta %>)<% end %>
+<% end %>
+<%= @event.occurred_at %>

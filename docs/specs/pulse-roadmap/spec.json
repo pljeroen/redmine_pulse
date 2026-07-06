@@ -66,7 +66,7 @@
       "name": "scheduled recompute & alerting",
       "depends_on": ["C1"],
       "produces": "AlertEvent stream",
-      "summary": "rake recompute + scan_and_alert (cron, no worker); per-project alert-state; triggers = rag_transition/dominant_change/no_data_appeared/score_delta; recipients = view-permitted + subscribed (perm re-checked at send); mailer + in-app.",
+      "summary": "rake recompute + scan_and_alert (cron, no worker); per-project alert-state; triggers = rag_transition/dominant_change/no_data_appeared/score_delta; recipients = view-permitted + subscribed (perm re-checked at send); mailer (email) only — in-app DEFERRED (erratum 2026-07-06, C6/GQ-C6-INAPP: Redmine 6.x has no in-app facility per GF-C6-01; operator R-A email-only v1; AlertDelivery port retained for future in-app).",
       "requirements": ["FR-C6-01","FR-C6-02","FR-C6-03","FR-C6-04","FR-C6-05","FR-C6-06","FR-C6-07","FR-C6-08","FR-C6-09","FR-C6-10","FR-C6-11","FR-C6-12"],
       "tier1_musts": ["FR-C6-03","FR-C6-07"],
       "acceptance": ["AC-C6-01","AC-C6-02","AC-C6-03","AC-C6-04","AC-C6-05","AC-C6-06","AC-C6-07","AC-C6-08","AC-C6-09"]

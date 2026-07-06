@@ -45,7 +45,7 @@ independently shippable increment.
 | **C3** | `WeightSet` + declarative custom ranking lenses | C1 |
 | **C4** | Scoring profiles + per-viewer selection + cache-partition extension | C1 (shares VO with C3) |
 | **C5** | `pulse_views` config table + saved views | C3, C4 |
-| **C6** | Alert-event model + scheduled recompute/scan + mailer/in-app delivery + subscriptions | C1 |
+| **C6** | Alert-event model + scheduled recompute/scan + mailer (email) delivery + subscriptions <!-- erratum 2026-07-06 (C6/GQ-C6-INAPP): email-only v1; in-app DEFERRED (Redmine 6.x has no in-app facility — GF-C6-01) --> | C1 |
 | **C7** | Outbound webhook adapter (HMAC, SSRF guard, retry) | C6 |
 
 Build order: **C1 → {C2, C3, C6} → C4 → C5 → C7**. After C1, C2/C3/C6 are parallelizable;
@@ -416,8 +416,9 @@ is idiomatic. Two tasks: `redmine_pulse:recompute` (warm snapshots) and
 - **FR-C6-08 (MUST)** — Subscription model: explicit opt-in **"Watch project health"** per user
   per project (mirrors Redmine watchers), PLUS an admin setting to **auto-subscribe** members of
   a configured role (e.g. project managers).
-- **FR-C6-09 (MUST)** — Delivery via the Redmine mailer (ActionMailer/existing SMTP) and in-app
-  notification by default; channels are independent.
+- **FR-C6-09 (MUST)** — Delivery via the Redmine mailer (ActionMailer/existing SMTP). In-app
+  notification DEFERRED (Redmine 6.x has no in-app facility — GF-C6-01; GQ-C6-INAPP resolved
+  email-only v1, 2026-07-06). <!-- erratum 2026-07-06 (C6/GQ-C6-INAPP): operator-approved R-A email-only v1; in-app is a Rule-41 declared deferral, platform-blocked per GF-C6-01; AlertDelivery port retained for a future in-app adapter -->
 - **FR-C6-10 (MUST)** — `scan_and_alert` updates the alert-state **after** successful
   evaluation so each transition fires exactly once (a re-run with no change emits nothing).
 - **FR-C6-11 (SHOULD)** — `recompute` reuses the existing fingerprint/max-age cache mechanics.

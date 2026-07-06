@@ -51,6 +51,25 @@
                 class: 'pulse-refresh-button' %>
 </div>
 
+<%# C6 (FR-C6-08): the "Watch project health" opt-in toggle. Rendered ONLY for a real
+    logged-in viewer (watch_offer); a plain CSRF-protected POST to pulse#watch / #unwatch that
+    flips the viewer's own health-alert subscription. State is precomputed on @view
+    (COND-A4-001) — no AR/subscription access in this view. Clicking toggles the record the
+    scan reads; it starts NO scan (the scan is rake-only). %>
+<% if @view.watch_offer %>
+  <div class="pulse-watch">
+    <% if @view.watching %>
+      <%= button_to t(:label_pulse_unwatch_health),
+                    { controller: 'pulse', action: 'unwatch', id: @view.identifier },
+                    method: :post, class: 'pulse-unwatch-button' %>
+    <% else %>
+      <%= button_to t(:label_pulse_watch_health),
+                    { controller: 'pulse', action: 'watch', id: @view.identifier },
+                    method: :post, class: 'pulse-watch-button' %>
+    <% end %>
+  </div>
+<% end %>
+
 <% if @view.no_data %>
   <%# R-A no-data state: render a distinct "No data" indicator, never a numeric score
       and never a nil crash. %>

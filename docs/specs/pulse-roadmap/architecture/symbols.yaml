@@ -165,7 +165,11 @@ symbols:
     contract: C6
     status: new
     dependencies: [Pulse::Domain::AlertEvent]
-    note: Delivers an AlertEvent to a resolved recipient set (mailer + in-app).
+    note: >-
+      Delivers an AlertEvent to a resolved recipient set. v1 = email-only via Pulse::Mailer.
+      In-app is a declared deferral (Redmine 6.x has no in-app facility — GF-C6-01); the
+      AlertDelivery port is retained so a future in-app adapter plugs in without domain/port
+      change. # erratum 2026-07-06 (C6/GQ-C6-INAPP): was "(mailer + in-app)"; operator R-A email-only v1
   - name: Pulse::Adapters::ActiveRecordAlertStateStore
     type: class
     layer: adapter
@@ -192,7 +196,10 @@ symbols:
     contract: C6
     status: new
     dependencies: [Pulse::Ports::AlertDelivery, Pulse::Mailer]
-    note: ActionMailer + Redmine in-app notification delivery.
+    note: >-
+      v1 = email-only delivery via Pulse::Mailer (ActionMailer / existing Redmine SMTP).
+      In-app is a declared deferral (Redmine 6.x has no in-app notification facility —
+      GF-C6-01); no in-app delivery is implemented in v1. # erratum 2026-07-06 (C6/GQ-C6-INAPP): was "ActionMailer + Redmine in-app notification delivery"; operator R-A email-only v1
   - name: Pulse::Mailer
     type: class
     layer: adapter

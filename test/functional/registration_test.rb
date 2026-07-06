@@ -30,14 +30,16 @@ class RegistrationTest < ActiveSupport::TestCase
     assert_not_nil perm
     # actions is a flat list "controller/action"; assert the exact set. C5 (saved-views)
     # EXPANDS :view_pulse additively to cover the pulse_views CRUD + select actions
-    # (FC-C5-17 / INTEGRATION_MAP §7); the original pulse/pulse_api actions are unchanged.
-    expected = %w[pulse/index pulse/show pulse/refresh
+    # (FC-C5-17 / INTEGRATION_MAP §7); C6 (FR-C6-08) EXPANDS it additively again to cover the
+    # pulse/watch + pulse/unwatch health-watch opt-in toggle actions. The original
+    # pulse/pulse_api actions are unchanged.
+    expected = %w[pulse/index pulse/show pulse/refresh pulse/watch pulse/unwatch
                   pulse_api/portfolio pulse_api/project
                   pulse_views/index pulse_views/new pulse_views/create pulse_views/show
                   pulse_views/edit pulse_views/update pulse_views/destroy
                   pulse_views/select].sort
     assert_equal expected, perm.actions.sort,
-                 'BR-01 + C5: action map is the pulse/pulse_api set + the additive pulse_views actions'
+                 'BR-01 + C5 + C6: action map is the pulse/pulse_api set + the additive pulse_views + pulse watch/unwatch actions'
   end
 
   def test_view_pulse_belongs_to_pulse_project_module
@@ -120,15 +122,21 @@ class RegistrationTest < ActiveSupport::TestCase
                    { controller: 'pulse_api', action: 'project', id: 'abc', format: 'json' })
   end
 
-  def test_routes_file_declares_exactly_thirteen_routes
-    # Static: the plugin routes file declares exactly 13 route verbs (the original 5 +
-    # the 8 additive C5 /pulse/views* routes; FC-C5-17) and nothing else — no route to an
-    # unimplemented controller/action.
+  def test_routes_file_declares_exactly_fifteen_routes
+    # Static: the plugin routes file declares exactly 15 route verbs (the original 5 +
+    # the 8 additive C5 /pulse/views* routes; FC-C5-17 + the 2 additive C6 health-watch
+    # opt-in routes /projects/:id/pulse/{watch,unwatch}; FR-C6-08) and nothing else — no
+    # route to an unimplemented controller/action. C6 guard-evolution (+2), authorized by
+    # FR-C6-08 exactly as C5 authorized the +8 pulse_views widening: the "Watch project
+    # health" opt-in needs a member POST toggle, and Redmine's core WatchersController is not
+    # reusable (it requires a real Redmine::Acts::Watchable AR target and dereferences
+    # #watchable, which the plugin-private PulseHealth bare-string discriminator deliberately
+    # is not — see redmine_subscription_store.rb), so 2 pulse routes are added.
     path = File.expand_path('../../../config/routes.rb', File.expand_path(__FILE__))
     src = File.read(path)
     verbs = src.scan(/^\s*(get|post|put|patch|delete|match)\b/).flatten
-    assert_equal 13, verbs.size,
-                 "exactly 13 route declarations expected (5 original + 8 C5; got #{verbs.size}: #{verbs.inspect})"
+    assert_equal 15, verbs.size,
+                 "exactly 15 route declarations expected (5 original + 8 C5 + 2 C6; got #{verbs.size}: #{verbs.inspect})"
   end
 
   def test_no_stale_deliverables_or_coverage_gap_route

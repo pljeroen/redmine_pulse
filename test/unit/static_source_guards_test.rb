@@ -150,8 +150,14 @@ class StaticSourceGuardsTest < Minitest::Test
   # ScoringConfig). These are the ONLY input/select `name` keys the settings partial may
   # carry. The five weights live under settings[weights][<sig>]; the rest are top-level
   # settings[<key>] scalars. risk_trackers is an array param (settings[risk_trackers][]).
-  # CA-23 top-level fields + the C2-sanctioned coverage_gap enable toggle (FC-C2-16). The
-  # enable_coverage_gap control is now part of the allowed exact top-level field set.
+  # CA-23 top-level fields + the C2-sanctioned coverage_gap enable toggle (FC-C2-16) + the
+  # two C6 alert settings (FR-C6-08 auto-subscribe role + FR-C6-06 score_delta threshold).
+  # The enable_coverage_gap control and the two pulse_alert_* controls are part of the allowed
+  # exact top-level field set. C6 guard-evolution (same shape as the FC-C2-16 coverage_gap
+  # widening): the settings partial now exposes the alert opt-in surface FR-C6-08 requires; the
+  # SettingsSanitizer already validates both keys (settings_sanitizer_alert_keys_test, green),
+  # and the no-extra-speculative-control guarantee stays intact — only these two sanctioned
+  # keys are added.
   CA23_TOP_LEVEL_FIELDS = %w[
     effort_field risk_trackers blocked_status
     rag_green_min rag_amber_min
@@ -159,6 +165,7 @@ class StaticSourceGuardsTest < Minitest::Test
     momentum_activity_half momentum_direction_bias on_track_threshold
     snapshot_max_age_minutes
     enable_coverage_gap
+    pulse_alert_auto_subscribe_role_id pulse_alert_score_delta_threshold
   ].freeze
   # The 5 C1 (default_on) weights plus coverage_gap, which is rendered ONLY behind the
   # enable path (conditional weight input). The weight-loop signal set may therefore be the

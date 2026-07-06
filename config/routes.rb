@@ -34,3 +34,14 @@ post   '/pulse/views/:id/select', to: 'pulse_views#select', as: 'select_pulse_vi
 get    '/pulse/views/:id',      to: 'pulse_views#show',    as: 'pulse_view'
 patch  '/pulse/views/:id',      to: 'pulse_views#update'
 delete '/pulse/views/:id',      to: 'pulse_views#destroy'
+
+# alerting (C6 / FR-C6-08) — 2 additive "Watch project health" opt-in routes. A
+# logged-in user with :view_pulse on the project POSTs to toggle an explicit
+# health-watch subscription (the RedmineSubscriptionStore#watch!/#unwatch! record the
+# scan reads via subscribers_for). Both POST so button_to carries the CSRF token; the
+# actions re-run the EXACT 404/403 visibility ladder before writing. NO scoring/alert
+# SCAN runs in the request cycle (INV-ADDITIVE): the action only writes one Watcher row.
+#   POST /projects/:id/pulse/watch    -> pulse#watch    (subscribe to health alerts)
+#   POST /projects/:id/pulse/unwatch  -> pulse#unwatch  (unsubscribe)
+post '/projects/:id/pulse/watch',   to: 'pulse#watch',   as: 'project_pulse_watch'
+post '/projects/:id/pulse/unwatch', to: 'pulse#unwatch', as: 'project_pulse_unwatch'

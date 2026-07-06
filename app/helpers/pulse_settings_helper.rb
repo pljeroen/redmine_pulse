@@ -40,4 +40,13 @@ module PulseSettingsHelper
       .select { |cf| cf.name =~ EFFORT_FIELD_NAME_PATTERN }
       .map { |cf| [cf.name, cf.id.to_s] }
   end
+
+  # C6 (FR-C6-08): plain option data for the alert auto-subscribe role select — an ordered
+  # Array of [role_name, id_string] pairs for the GIVABLE (non-builtin) roles. The single
+  # Redmine AR query (Role.givable) lives HERE at the helper boundary, never in the ERB
+  # (COND-A4-002 / Rule 18); the settings partial consumes only the [name, id] pairs and
+  # prepends a blank option itself (blank = auto-subscribe disabled, the default OFF state).
+  def pulse_alert_role_options
+    Role.givable.map { |role| [role.name, role.id.to_s] }
+  end
 end

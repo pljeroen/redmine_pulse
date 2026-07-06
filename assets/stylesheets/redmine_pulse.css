@@ -106,3 +106,31 @@ ul.projects a.project + .pulse-rag {
 .pulse-signal.inactive {
   color: #888;
 }
+
+/* ── settings-page grouped-label float neutralizers ──────────────────────────
+   Redmine's `.tabular p label` floats EVERY settings label into a fixed ~200px
+   left column. A settings `<p>` that holds more than one control therefore stacks
+   its labels on top of each other. These two rules neutralize that float for the
+   grouped labels so the multi-control rows read as a legible inline list, while the
+   row's FIRST (unclassed) label keeps the normal floated grid position. */
+
+/* Event-filter row (C7 webhooks): the four event-type checkbox labels lay out as a
+   wrapped inline list in the field area instead of stacking in the grid column. */
+.pulse-settings-webhooks .pulse-webhook-event-filter {
+  float: none;
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 1em;
+  font-weight: normal;
+}
+
+/* Role-binding row (C4): the SECOND (profile_id) label sits inline next to its input
+   in the field area; the first (role_id) label stays the single floated grid label. */
+.pulse-settings-profiles .pulse-inline-label {
+  float: none;
+  width: auto;
+  display: inline-block;
+  margin: 0 0.4em 0 1em;
+  font-weight: normal;
+}

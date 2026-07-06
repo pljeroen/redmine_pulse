@@ -139,7 +139,12 @@
         <label><%= t(:label_pulse_role_binding_role_id) %></label>
         <input type="text" name="settings[pulse_profiles][role_bindings_pairs][<%= key %>][role_id]"
                value="<%= is_new ? '' : rid %>" />
-        <label><%= t(:label_pulse_role_binding_profile_id) %></label>
+        <%# The role_id label above is the single floated grid label for the row; the
+            profile_id label carries Redmine's built-in `inline` modifier (.tabular label.inline,
+            which sets margin-left:5px !important — beating core's .tabular.settings label
+            margin-left:-300px) so it sits inline in the field area instead of stacking in the
+            grid column. pulse-inline-label adds cosmetic spacing (redmine_pulse.css). %>
+        <label class="inline pulse-inline-label"><%= t(:label_pulse_role_binding_profile_id) %></label>
         <input type="text" name="settings[pulse_profiles][role_bindings_pairs][<%= key %>][profile_id]"
                value="<%= is_new ? '' : target %>" />
       </p>
@@ -258,7 +263,7 @@
       <p>
         <label><%= t(:label_pulse_webhook_event_filter) %></label>
         <% webhook_event_types.each do |et| %>
-          <label class="pulse-webhook-event-filter">
+          <label class="inline pulse-webhook-event-filter">
             <input type="checkbox" name="<%= base %>[event_filter][]" value="<%= et %>"
                    <%= 'checked' if ep_filter.include?(et) %> /> <%= et %>
           </label>

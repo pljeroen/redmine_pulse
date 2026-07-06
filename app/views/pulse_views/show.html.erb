@@ -1,0 +1,19 @@
+<% content_for :header_tags do %>
+  <%= stylesheet_link_tag 'redmine_pulse', plugin: 'redmine_pulse' %>
+<% end %>
+
+<h2><%= @view.name %></h2>
+
+<div class="box">
+  <p><strong><%= t(:label_pulse_view_visibility) %>:</strong> <%= @view.visibility %></p>
+  <p><strong><%= t(:label_pulse_view_scope) %>:</strong> <%= @view.project_scope %></p>
+  <p><strong><%= t(:label_pulse_view_lens) %>:</strong> <%= @view.lens_ref %></p>
+  <p><strong><%= t(:label_pulse_view_profile) %>:</strong> <%= @view.profile_ref %></p>
+</div>
+
+<p>
+  <%= button_to t(:label_pulse_view_select), select_pulse_view_path(@view), method: :post %>
+  <% unless @view.system_view? %>
+    <%= link_to t(:button_edit), edit_pulse_view_path(@view), class: 'icon icon-edit' %>
+  <% end %>
+</p>

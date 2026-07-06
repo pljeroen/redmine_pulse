@@ -1,0 +1,120 @@
+<%# Shared create/edit form for a saved view. Server-inline, no-JS (native <select>/<input>
+    controls), matching the project idiom (app/views/settings/_pulse_settings.html.erb). `@view`
+    is the PulseView being created/edited.
+
+    Publishing (visibility public/roles) is gated SERVER-SIDE by the GLOBAL
+    :manage_public_pulse_views permission — the form offers the options, the controller enforces
+    the gate. The role_ids / scope_params / sort / prefs controls below let a user AUTHOR every
+    in-scope entity-CRUD condition through the GUI (A10-C5-001 / Rule 40 completeness): a
+    role-scoped view (role_ids), a selected- or status-filtered project scope (scope_params), a
+    sort preference (sort), and threshold/column preferences (prefs). All controls are always
+    rendered (no-JS): the model persists role_ids only when visibility=='roles' and consults
+    scope_params only for the matching project_scope, so the extra inputs are inert unless
+    selected. Option lists come from PulseViewsHelper (Rule 18 — no AR query in the ERB). %>
+<%= error_messages_for @view if respond_to?(:error_messages_for) %>
+
+<div class="box tabular">
+  <p>
+    <label for="pulse_view_name"><%= t(:label_pulse_view_name) %></label>
+    <%= text_field_tag 'pulse_view[name]', @view.name, id: 'pulse_view_name' %>
+  </p>
+
+  <p>
+    <label for="pulse_view_visibility"><%= t(:label_pulse_view_visibility) %></label>
+    <%= select_tag 'pulse_view[visibility]',
+                   options_for_select(PulseView::VISIBILITIES, @view.visibility),
+                   id: 'pulse_view_visibility' %>
+    <em class="info"><%= t(:label_pulse_view_visibility_help) %></em>
+  </p>
+
+  <%# role_ids — used when visibility == 'roles'. A native multi-select of givable roles.
+      An empty selection with visibility=roles is rejected by the model validation
+      (role_ids_present_when_roles); the controller's publish gate still governs whether a
+      roles view may be published at all. %>
+  <p class="pulse-view-role-ids">
+    <label for="pulse_view_role_ids"><%= t(:label_pulse_view_roles) %></label>
+    <% selected_role_ids = @view.role_ids_array.map(&:to_s) %>
+    <select id="pulse_view_role_ids" name="pulse_view[role_ids][]" multiple="multiple" size="6">
+      <% pulse_view_role_options.each do |role_name, role_id| %>
+        <option value="<%= role_id %>" <%= 'selected' if selected_role_ids.include?(role_id) %>>
+          <%= role_name %>
+        </option>
+      <% end %>
+    </select>
+    <em class="info"><%= t(:label_pulse_view_roles_help) %></em>
+  </p>
+
+  <p>
+    <label for="pulse_view_project_scope"><%= t(:label_pulse_view_scope) %></label>
+    <%= select_tag 'pulse_view[project_scope]',
+                   options_for_select(PulseView::PROJECT_SCOPES, @view.project_scope),
+                   id: 'pulse_view_project_scope' %>
+    <em class="info"><%= t(:label_pulse_view_scope_help) %></em>
+  </p>
+
+  <%# scope_params[:project_ids] — used when project_scope == 'selected'. A native multi-select
+      of the CURRENT user's member projects (never enumerates projects the author cannot see). %>
+  <p class="pulse-view-scope-projects">
+    <label for="pulse_view_scope_project_ids"><%= t(:label_pulse_view_scope_projects) %></label>
+    <% selected_project_ids = pulse_view_selected_project_ids(@view) %>
+    <select id="pulse_view_scope_project_ids" name="pulse_view[scope_params][project_ids][]"
+            multiple="multiple" size="6">
+      <% pulse_view_project_options.each do |project_name, project_id| %>
+        <option value="<%= project_id %>" <%= 'selected' if selected_project_ids.include?(project_id) %>>
+          <%= project_name %>
+        </option>
+      <% end %>
+    </select>
+    <em class="info"><%= t(:label_pulse_view_scope_projects_help) %></em>
+  </p>
+
+  <%# scope_params[:status_id] — used when project_scope == 'status_filter'. %>
+  <p class="pulse-view-scope-status">
+    <label for="pulse_view_scope_status_id"><%= t(:label_pulse_view_scope_status) %></label>
+    <%= select_tag 'pulse_view[scope_params][status_id]',
+                   options_for_select(pulse_view_status_options, pulse_view_selected_status_id(@view)),
+                   include_blank: true, id: 'pulse_view_scope_status_id' %>
+    <em class="info"><%= t(:label_pulse_view_scope_status_help) %></em>
+  </p>
+
+  <p>
+    <label for="pulse_view_lens_ref"><%= t(:label_pulse_view_lens) %></label>
+    <%= select_tag 'pulse_view[lens_ref]',
+                   options_for_select(Pulse::Adapters::LensRanker::LENSES, @view.lens_ref),
+                   include_blank: true, id: 'pulse_view_lens_ref' %>
+  </p>
+
+  <p>
+    <label for="pulse_view_profile_ref"><%= t(:label_pulse_view_profile) %></label>
+    <%= text_field_tag 'pulse_view[profile_ref]', @view.profile_ref, id: 'pulse_view_profile_ref' %>
+  </p>
+
+  <%# sort — the saved-view lens/column sort preference (FR-C5-03). Persisted as a 2-element
+      Array [column, direction]; index 0 is the sort column, index 1 the direction. %>
+  <p>
+    <label for="pulse_view_sort_column"><%= t(:label_pulse_view_sort) %></label>
+    <%= select_tag 'pulse_view[sort][]',
+                   options_for_select(pulse_view_lens_options, pulse_view_sort_column(@view)),
+                   include_blank: true, id: 'pulse_view_sort_column' %>
+    <%= select_tag 'pulse_view[sort][]',
+                   options_for_select([['desc', 'desc'], ['asc', 'asc']], pulse_view_sort_direction(@view)),
+                   id: 'pulse_view_sort_direction' %>
+    <em class="info"><%= t(:label_pulse_view_sort_help) %></em>
+  </p>
+
+  <%# prefs — threshold / column preferences (FR-C5-03). Minimally the RAG green/amber
+      thresholds the cockpit reads; persisted as a Hash. Blank keeps the plugin defaults. %>
+  <p>
+    <label for="pulse_view_prefs_rag_green_min"><%= t(:label_pulse_view_prefs_rag_green_min) %></label>
+    <input type="number" id="pulse_view_prefs_rag_green_min"
+           name="pulse_view[prefs][rag_green_min]" min="0" max="100"
+           value="<%= pulse_view_pref(@view, :rag_green_min) %>" />
+    <em class="info"><%= t(:label_pulse_view_prefs_help) %></em>
+  </p>
+  <p>
+    <label for="pulse_view_prefs_rag_amber_min"><%= t(:label_pulse_view_prefs_rag_amber_min) %></label>
+    <input type="number" id="pulse_view_prefs_rag_amber_min"
+           name="pulse_view[prefs][rag_amber_min]" min="0" max="100"
+           value="<%= pulse_view_pref(@view, :rag_amber_min) %>" />
+  </p>
+</div>

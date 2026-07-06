@@ -52,8 +52,17 @@ Redmine::Plugin.register :redmine_pulse do
   # partial that 404s.
   project_module :pulse do
     permission :view_pulse,
-               { pulse: %i[index show refresh], pulse_api: %i[portfolio project] },
+               { pulse: %i[index show refresh], pulse_api: %i[portfolio project],
+                 pulse_views: %i[index new create show edit update destroy select] },
                read: true
+    # C5: publishing public/role-scoped saved views is portfolio-wide config — a GLOBAL
+    # permission (global: true), NOT per-project. The check everywhere is
+    # User.current.allowed_to?(:manage_public_pulse_views, nil, global: true). A holder on an
+    # unrelated project ONLY does not satisfy the global check (global-semantics falsifier).
+    permission :manage_public_pulse_views,
+               { pulse_views: %i[create update destroy] },
+               require: :loggedin,
+               global: true
   end
 
   # CA-02: a project-menu tab -> pulse#show, gated on the pulse module being enabled
@@ -107,6 +116,12 @@ require 'pulse/adapters/redmine_metrics_source'
 # after Rails/ActiveRecord is available (init.rb runs post-boot).
 require 'pulse/ports/snapshot_store'
 require 'pulse/adapters/active_record_snapshot_store'
+# saved-views (C5): the ViewStore port (stdlib-only) + the pulse_views-backed adapter, in the
+# established port->adapter order. The PulseView AR model + PulseViewsController are autoloaded
+# by Rails from app/models / app/controllers (top-level constants, path-matched — no explicit
+# require, consistent with PulseSnapshot / PulseController).
+require 'pulse/ports/view_store'
+require 'pulse/adapters/active_record_view_store'
 require 'pulse/adapters/settings_sanitizer'
 require 'pulse/adapters/pulse_projection'
 # FR-PLB-15: the SINGLE authoritative dominant_signal -> localized label mapping, reused

@@ -1,0 +1,10 @@
+<% content_for :header_tags do %>
+  <%= stylesheet_link_tag 'redmine_pulse', plugin: 'redmine_pulse' %>
+<% end %>
+
+<h2><%= t(:label_pulse_view_new) %></h2>
+
+<%= form_tag(pulse_views_path, method: :post) do %>
+  <%= render partial: 'pulse_views/form' %>
+  <p><%= submit_tag t(:button_create) %></p>
+<% end %>

@@ -46,9 +46,10 @@ module Pulse
       # The whole portfolio overview view-model. `profile_warning` carries the human-readable
       # dangling-fallback warning (FC-C4-12 / FR-C4-09) when the viewer's ?profile_id selection
       # referenced an unpublished profile (scoring fell back to the system default); nil / blank
-      # otherwise (no banner rendered).
+      # otherwise (no banner rendered). `lens_warning` (C5 / RC-C5-06) carries the analogous
+      # dangling-lens_ref warning when an active saved view's lens_ref referenced a removed lens.
       PortfolioView = Struct.new(:rows, :lens, :lenses, :default_lens, :visibility_note,
-                                 :empty, :profile_warning, keyword_init: true)
+                                 :empty, :profile_warning, :lens_warning, keyword_init: true)
 
       # The whole per-project panel view-model. `main_concern` is the lens-vocabulary
       # label for the severity-first dominant signal; `no_data` flags the 0-issue state
@@ -68,9 +69,11 @@ module Pulse
 
       module_function
 
-      # Build the portfolio overview view-model from ranked projections.
-      def portfolio_view(ranked_projections, lens:, now:)
+      # Build the portfolio overview view-model from ranked projections. `lens_warning` (C5) is
+      # an optional surfaced dangling-lens_ref warning; nil / blank => no banner rendered.
+      def portfolio_view(ranked_projections, lens:, now:, lens_warning: nil)
         rows = ranked_projections.map { |p| portfolio_row(p, now) }
+        w = lens_warning.nil? || (lens_warning.respond_to?(:strip) && lens_warning.strip.empty?) ? nil : lens_warning
         PortfolioView.new(
           rows: rows,
           lens: lens.to_s,
@@ -78,7 +81,8 @@ module Pulse
           default_lens: LensRanker::DEFAULT_LENS,
           visibility_note: I18n.t(:label_pulse_visibility_note),
           empty: rows.empty?,
-          profile_warning: first_profile_warning(ranked_projections)
+          profile_warning: first_profile_warning(ranked_projections),
+          lens_warning: w
         )
       end
 

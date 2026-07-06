@@ -25,13 +25,31 @@ class PulseController < PulseBaseController
 
   # GET /pulse — portfolio overview (never 404/403 for selection; empty -> 200).
   def index
-    lens = Pulse::Adapters::LensRanker.normalize_lens(params[:lens])
-    # C4 (OBL-C4-05): ?profile_id is the transient GLOBAL override applying to EVERY project in
-    # the portfolio (each project otherwise resolves its own per-project role-default binding).
+    active = active_pulse_view # C5: the selected saved view (visible-only) or nil (pre-C5 path)
+
+    # C5 (FC-C5-13/16/17): an active view drives the lens (surfacing a dangling-lens_ref
+    # warning); with no active view the lens comes from params[:lens] exactly as pre-C5.
+    if active&.lens_ref
+      lens, lens_warning = Pulse::Adapters::LensRanker.normalize_lens_with_warning(active.lens_ref)
+    else
+      lens = Pulse::Adapters::LensRanker.normalize_lens(params[:lens])
+      lens_warning = nil
+    end
+
+    # C5 (FC-C5-13): an active view's profile_ref is the effective selected_profile_id fed into
+    # the resolve path (the requested_id — landing C4's deferred FR-C4-03); else the params path.
     # A dangling id degrades to the system default inside the provider (surfaced as a banner).
-    projections = engine.portfolio_projections(User.current, selected_profile_id)
+    profile_id = active&.profile_ref.presence || selected_profile_id
+    projections = engine.portfolio_projections(User.current, profile_id)
+
+    # C5 (FC-C5-13): project_scope pre-filters the portfolio before ranking (a new pre-filter
+    # step; the engine internals are untouched). 'selected' -> scope_params[:project_ids].
+    projections = apply_view_scope(projections, active)
+
     ranked = Pulse::Adapters::LensRanker.rank(projections, lens)
-    @view = Pulse::Adapters::HtmlPresenter.portfolio_view(ranked, lens: lens, now: Time.now.utc)
+    @view = Pulse::Adapters::HtmlPresenter.portfolio_view(
+      ranked, lens: lens, now: Time.now.utc, lens_warning: lens_warning
+    )
     render template: 'pulse/index'
   end
 
@@ -84,6 +102,71 @@ class PulseController < PulseBaseController
   end
 
   private
+
+  # ── C5 saved-view selection wiring (FC-C5-13/16/17) ─────────────────────────
+
+  # The active saved view for this request, resolved THROUGH the ViewStore visibility gate
+  # (session[:active_pulse_view_id]). Returns nil when no view is selected OR the referenced
+  # view is no longer visible to the viewer — in which case the cockpit behaves EXACTLY as
+  # pre-C5 (additive-compat, FC-C5-17). Never raises.
+  def active_pulse_view
+    id = session[:active_pulse_view_id]
+    return nil if id.nil?
+
+    view_store.find_visible(id, User.current)
+  rescue ActiveRecord::RecordNotFound
+    nil
+  end
+
+  # Pre-filter the ranked-input projections by the active view's project_scope (FC-C5-13). This
+  # is a controller-side pre-filter — the engine internals are untouched. It only ever NARROWS
+  # the already-visibility-scoped portfolio; it NEVER widens the visible project set (visibility
+  # stays PRE-scope). 'all' / no active view -> no change.
+  #   'selected'      -> keep only scope_params[:project_ids].
+  #   'status_filter' -> keep only projects whose PROJECT status (Project#status:
+  #                      STATUS_ACTIVE=1 / STATUS_CLOSED=5 / STATUS_ARCHIVED=9) equals the view's
+  #                      stored scope_params[:status_id] (FR-C5-01). A blank/unset status filter
+  #                      leaves the portfolio unchanged (no coherent narrowing target).
+  def apply_view_scope(projections, active)
+    return projections if active.nil?
+
+    case active.project_scope
+    when 'selected'
+      apply_selected_scope(projections, active)
+    when 'status_filter'
+      apply_status_filter_scope(projections, active)
+    else
+      projections
+    end
+  end
+
+  # 'selected' -> intersect the (already-visible) portfolio with scope_params[:project_ids].
+  # A submitted id for a project the viewer cannot see cannot widen the set: the projection
+  # list is already visibility-scoped, so a non-visible id simply matches nothing.
+  def apply_selected_scope(projections, active)
+    ids = Array((active.scope_params || {})['project_ids'] ||
+                (active.scope_params || {})[:project_ids]).map(&:to_i)
+    return projections if ids.empty?
+
+    projections.select { |p| ids.include?(p.project.id) }
+  end
+
+  # 'status_filter' -> keep only projects whose Project#status matches the view's stored status.
+  # Narrows only: the projection list is already visibility-scoped, so this can never surface a
+  # project the viewer cannot see. A blank/unparseable status leaves the portfolio unchanged.
+  def apply_status_filter_scope(projections, active)
+    raw = (active.scope_params || {})['status_id'] || (active.scope_params || {})[:status_id]
+    status = raw.to_s.strip
+    return projections if status.empty?
+
+    status = status.to_i
+    projections.select { |p| p.project.status == status }
+  end
+
+  # The composition-root ViewStore adapter (config store for pulse_views; never pulse_snapshots).
+  def view_store
+    @view_store ||= Pulse::Adapters::ActiveRecordViewStore.new
+  end
 
   # ── the EXACT 404/403 ladder (FC-CA-02 D1..D4) ──────────────────────────────
 

@@ -14,16 +14,28 @@ module PulseAdapterTestSupport
   # MS-04/MS-05/FC-04/FC-05 reference these; init.rb registers them later with the
   # controllers. Re-registration is idempotent (guarded on AccessControl state).
   def self.ensure_pulse_permission!
+    # init.rb registers the full C5 permission surface (:view_pulse expanded to the
+    # pulse_views actions + the GLOBAL :manage_public_pulse_views) at plugin load, before any
+    # test runs on the harness — so this early-return normally fires and we never
+    # double-register (AccessControl#permission does NOT dedupe; a re-map would duplicate the
+    # entry). We only register from scratch if :view_pulse is entirely absent (a lane where
+    # init.rb's registration did not run).
     return if Redmine::AccessControl.permissions.map(&:name).include?(:view_pulse)
 
     Redmine::AccessControl.map do |map|
       map.project_module :pulse do |pm|
-        # BR-01 (controllers-api): the action map MUST include :refresh so the
-        # test-env registration matches init.rb's real registration
-        # ({ pulse: [:index, :show, :refresh], pulse_api: [:portfolio, :project] }).
+        # BR-01 (controllers-api): the action map MUST include :refresh to match init.rb.
+        # C5: :view_pulse covers the pulse_views CRUD + select actions; :manage_public_pulse_views
+        # is a GLOBAL permission — mirroring init.rb so the functional/integration suites see the
+        # same permission surface.
         pm.permission :view_pulse,
-                      { pulse: %i[index show refresh], pulse_api: %i[portfolio project] },
+                      { pulse: %i[index show refresh], pulse_api: %i[portfolio project],
+                        pulse_views: %i[index new create show edit update destroy select] },
                       read: true
+        pm.permission :manage_public_pulse_views,
+                      { pulse_views: %i[create update destroy] },
+                      require: :loggedin,
+                      global: true
       end
     end
   end

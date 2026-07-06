@@ -15,6 +15,13 @@
   <div class="flash warning pulse-profile-warning" role="alert"><%= @view.profile_warning %></div>
 <% end %>
 
+<%# C5 (RC-C5-06 / FC-C5-16): a SURFACED dangling-lens_ref warning — shown when an active saved
+    view's lens_ref referenced a removed/unknown lens (the cockpit fell back to the default lens).
+    Precomputed on @view (COND-A4-001). %>
+<% if @view.respond_to?(:lens_warning) && @view.lens_warning %>
+  <div class="flash warning pulse-lens-warning" role="alert"><%= @view.lens_warning %></div>
+<% end %>
+
 <%# finding 4: the lens selector is a WORKING control — wrapped in a GET form that
     re-requests with ?lens=, and an onchange that submits for no-extra-click UX. %>
 <form method="get" action="<%= url_for(controller: 'pulse', action: 'index') %>" class="pulse-lens-selector">

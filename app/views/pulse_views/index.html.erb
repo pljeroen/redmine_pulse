@@ -1,0 +1,45 @@
+<%# Saved views — list ONLY the views visible to the caller (@views, already visibility-scoped
+    through the ViewStore port; the controller never leaks a non-visible view here). Server-inline,
+    no-JS, matching the project idiom. %>
+<% content_for :header_tags do %>
+  <%= stylesheet_link_tag 'redmine_pulse', plugin: 'redmine_pulse' %>
+<% end %>
+
+<div class="contextual">
+  <%= link_to t(:label_pulse_view_new), new_pulse_view_path, class: 'icon icon-add' %>
+</div>
+
+<h2><%= t(:label_pulse_views) %></h2>
+
+<% if @views.empty? %>
+  <p class="nodata"><%= t(:label_pulse_views_empty) %></p>
+<% else %>
+  <table class="list pulse-views">
+    <thead>
+      <tr>
+        <th><%= t(:label_pulse_view_name) %></th>
+        <th><%= t(:label_pulse_view_visibility) %></th>
+        <th><%= t(:label_pulse_view_lens) %></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @views.each do |v| %>
+        <tr>
+          <td><%= v.name %></td>
+          <td><%= v.visibility %></td>
+          <td><%= v.lens_ref %></td>
+          <td>
+            <%= button_to t(:label_pulse_view_select), select_pulse_view_path(v),
+                          method: :post, class: 'pulse-view-select' %>
+            <% unless v.system_view? %>
+              <%= link_to t(:button_edit), edit_pulse_view_path(v), class: 'icon icon-edit' %>
+              <%= link_to t(:button_delete), pulse_view_path(v), method: :delete,
+                          data: { confirm: t(:text_are_you_sure) }, class: 'icon icon-del' %>
+            <% end %>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

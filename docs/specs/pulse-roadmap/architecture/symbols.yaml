@@ -122,13 +122,13 @@ symbols:
     status: new
     dependencies: []
     note: ActiveRecord model for the pulse_views config table (name, owner, visibility, scope, lens_ref, profile_ref, sort, prefs).
-  - name: Pulse::ViewsController
+  - name: PulseViewsController  # erratum 2026-07-06 (C5/RISK-C5-05): top-level to avoid Zeitwerk path->constant crash
     type: class
     layer: adapter
     contract: C5
     status: new
     dependencies: [Pulse::Ports::ViewStore]
-    note: CRUD for views; enforces visibility + :manage_public_pulse_views; .json re-checks permission.
+    note: CRUD for views; enforces visibility + :manage_public_pulse_views (global permission); .json re-checks permission. Top-level constant at app/controllers/pulse_views_controller.rb — NOT Pulse::ViewsController (Zeitwerk path->constant convention matches PulseController/PulseApiController).
 
   # ---- C6: alerting (domain + ports + adapters) ----
   - name: Pulse::Domain::AlertEvent

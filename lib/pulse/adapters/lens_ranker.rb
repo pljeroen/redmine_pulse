@@ -37,6 +37,41 @@ module Pulse
         LENSES.include?(s) ? s : DEFAULT_LENS
       end
 
+      # normalize_lens_with_warning(raw) -> [normalized_lens, warning_or_nil]
+      #
+      # C5 (RC-C5-06 / FC-C5-16): the dangling-lens_ref case must degrade to the default lens
+      # WITH a surfaced warning — the silent default alone (normalize_lens) is not sufficient
+      # for a saved view whose lens_ref points at a removed user-authored lens. This is a pure,
+      # stateless companion to normalize_lens (no module-level mutable state — consistent with
+      # the no-data ranking module's purity):
+      #   * a KNOWN lens key         -> [key, nil]
+      #   * a nil / blank lens        -> [DEFAULT_LENS, nil]   ("no explicit lens", not dangling)
+      #   * an UNKNOWN (dangling) key -> [DEFAULT_LENS, "<human-readable warning naming the key>"]
+      def normalize_lens_with_warning(raw)
+        s = raw.to_s.strip
+        return [DEFAULT_LENS, nil] if s.empty?            # no explicit lens — not dangling
+        return [s, nil] if LENSES.include?(s)             # a known lens — no warning
+
+        [DEFAULT_LENS, dangling_lens_warning(s)]          # a removed/unknown key — warn
+      end
+
+      # The human-readable, LOCALIZED dangling-lens warning (RC-C5-06). Names the dangling key so
+      # the operator can diagnose it; falls back to the English default when I18n is unavailable so
+      # the warning is ALWAYS a non-empty readable String (the presenter renders it verbatim).
+      def dangling_lens_warning(key)
+        if defined?(I18n) && I18n.respond_to?(:t)
+          I18n.t(:pulse_lens_dangling_warning, lens: key.inspect,
+                                               default: default_lens_warning(key))
+        else
+          default_lens_warning(key)
+        end
+      end
+
+      def default_lens_warning(key)
+        "redmine_pulse: #{key.inspect} is not a known lens — " \
+          'falling back to the default (health) lens'
+      end
+
       # projections: Array<PulseProjection::Projection>. Returns a NEW ordered
       # array; inputs are not mutated and scores are untouched.
       def rank(projections, lens)

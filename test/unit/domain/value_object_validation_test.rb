@@ -14,7 +14,9 @@ require 'pulse/domain/scoring'
 #
 #   A10-002  ProjectMetrics full FR-01 field validation (ArgumentError)
 #   A10-001  ProjectMetrics deep immutability (defensive copy + deep freeze)
-#   A10-003  ScoringConfig exact five-key weight set (ArgumentError)
+#   A10-003  ScoringConfig weight-set validity — C1-generalized (DEC-01): the enabled
+#            set is dom(weights); a non-empty registered SUBSET summing to 1.0 with a
+#            positive always-active intersection is valid (FC-C1-04/07/08).
 class ValueObjectValidationTest < Minitest::Test
   # ---- builders -----------------------------------------------------------
   def valid_metrics_args(**overrides)
@@ -273,20 +275,49 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   # =====================================================================
-  # A10-003 — ScoringConfig exact five-key weight set.
-  # FR-39: weights must contain EXACTLY [:staleness,:progress,:momentum,
-  # :risk_load,:blocked_load], each Numeric. Missing/extra/nil/non-numeric fail loud.
+  # A10-003 (C1-GENERALIZED, DEC-01) — ScoringConfig weight-set validity.
+  # PRE-C1 this pinned "weights must contain EXACTLY the 5 signal keys". Under C1
+  # (DEC-01, FC-C1-02/03/04/08) the ENABLED set is the DOMAIN of weights: a NON-EMPTY
+  # SUBSET of the REGISTERED signals is VALID, provided the weights sum to 1.0 (±1e-9)
+  # and the enabled ∩ always-active weight-sum is > 0. So a proper subset no longer
+  # fails loud. The still-invalid cases are: empty weights; an UNREGISTERED key; a
+  # sum != 1.0; and a subset whose always-active intersection weight-sum is 0.
   # =====================================================================
 
-  def test_rejects_weights_missing_a_signal_key
-    # No :blocked_load, but the remaining four sum to 1.0 — must still fail loud,
-    # because the missing key currently crashes Scoring.score with a TypeError.
-    w = { staleness: 0.30, progress: 0.30, momentum: 0.25, risk_load: 0.15 }
+  def test_accepts_valid_subset_of_registered_signals
+    # C1 (FC-C1-04): a 3-signal subset (all registered, sum 1.0, includes always-active
+    # staleness/momentum/blocked_load) is VALID — it does NOT raise. The enabled set is
+    # dom(weights); construction succeeds and enabled_signals == the weight keys.
+    w = { staleness: 0.5, momentum: 0.25, blocked_load: 0.25 }
+    assert_in_delta 1.0, w.values.sum, 1e-9
+    cfg = Pulse::Domain::ScoringConfig.new(weights: w)
+    assert_equal %i[staleness momentum blocked_load].sort, cfg.enabled_signals.sort,
+                 'enabled_signals == dom(weights) for a valid subset (FC-C1-04)'
+  end
+
+  def test_rejects_empty_weights
+    # FC-C1-04: an EMPTY weights hash is not a valid (non-empty) enabled set.
+    assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(weights: {}) }
+  end
+
+  def test_rejects_weights_subset_summing_not_to_one
+    # FC-C1-07: a subset that does NOT sum to 1.0 (±1e-9) still fails loud.
+    w = { staleness: 0.30, progress: 0.30, momentum: 0.25 } # Σ 0.85 != 1.0
+    refute_in_delta 1.0, w.values.sum, 1e-9
+    assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(weights: w) }
+  end
+
+  def test_rejects_subset_with_zero_always_active_weight
+    # FC-C1-08 (generalized RC-07): an enabled subset {progress, risk_load} whose
+    # always-active intersection is EMPTY (weight-sum 0) still fails loud — otherwise
+    # the active set could be empty and completeness divide-by-zero.
+    w = { progress: 0.5, risk_load: 0.5 } # neither is always-active
     assert_in_delta 1.0, w.values.sum, 1e-9
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(weights: w) }
   end
 
   def test_rejects_weights_with_extra_bogus_key
+    # FC-C1-04: an UNREGISTERED weight key (not in the SignalRegistry) still fails loud.
     w = valid_weights.merge(bogus: 0.0)
     assert_in_delta 1.0, w.values.select { |v| v }.sum, 1e-9
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(weights: w) }

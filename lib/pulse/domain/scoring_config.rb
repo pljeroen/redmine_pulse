@@ -7,26 +7,19 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
+require 'pulse/domain/signal_registry'
+
 module Pulse
   module Domain
     # Immutable scoring configuration value object. Weights, RAG thresholds, signal
     # horizons and the activity window. Fails loud (ArgumentError) on invalid weights.
+    #
+    # C1 generalization: the ENABLED signal set is the DOMAIN of `weights`. Weight keys
+    # must be a non-empty subset of the SignalRegistry-registered signals; validation
+    # generalizes from "exactly the 5 REQUIRED keys" to "dom(w) == enabled set, each a
+    # finite real Numeric >= 0, Σ == 1.0, and Σ over the enabled ∩ always-active subset
+    # > 0". The default (no-arg) construction resolves the built-ins from the registry.
     class ScoringConfig
-      DEFAULT_WEIGHTS = {
-        staleness: 0.25,
-        progress: 0.25,
-        momentum: 0.20,
-        risk_load: 0.15,
-        blocked_load: 0.15
-      }.freeze
-
-      # The always-active subset whose weight-sum must be > 0 (RC-07 / FR-39b):
-      # without it a fully-degraded project could have an empty active set.
-      ALWAYS_ACTIVE_KEYS = %i[staleness momentum blocked_load].freeze
-
-      # FR-39: weights must contain EXACTLY these five signal keys, each Numeric.
-      REQUIRED_WEIGHT_KEYS = %i[staleness progress momentum risk_load blocked_load].freeze
-
       # momentum-broaden / on-track shape defaults, now promoted to settings. These
       # are the single source of truth for the shipped values (8.0 / 0.15 / 0.5);
       # the adapters and init.rb defaults mirror them.
@@ -34,23 +27,28 @@ module Pulse
       DEFAULT_MOMENTUM_DIRECTION_BIAS = 0.15
       DEFAULT_ON_TRACK_THRESHOLD = 0.5
 
-      attr_reader :weights, :rag_green_min, :rag_amber_min,
+      attr_reader :weights, :enabled_signals, :rag_green_min, :rag_amber_min,
                   :h_stale, :h_risk, :h_blocked, :activity_window_days,
                   :momentum_activity_half, :momentum_direction_bias, :on_track_threshold
 
-      def initialize(weights: nil, rag_green_min: 67, rag_amber_min: 34,
+      def initialize(weights: nil, enabled_signals: nil, rag_green_min: 67, rag_amber_min: 34,
                      h_stale: 180, h_risk: 50, h_blocked: 20, activity_window_days: 30,
                      momentum_activity_half: DEFAULT_MOMENTUM_ACTIVITY_HALF,
                      momentum_direction_bias: DEFAULT_MOMENTUM_DIRECTION_BIAS,
                      on_track_threshold: DEFAULT_ON_TRACK_THRESHOLD)
-        weights = weights.nil? ? DEFAULT_WEIGHTS : weights
-        validate_weights!(weights)
+        # Default (no-arg) construction resolves the built-ins from the registry: the
+        # 5-signal enabled set with today's default weights (the C1 default-all path).
+        weights = weights.nil? ? SignalRegistry.default_weights : weights
+        # The enabled set is the DOMAIN of weights. An explicit enabled_signals: must
+        # exactly cover dom(w) (checked in validate_weights!); nil => derive from weights.
+        validate_weights!(weights, enabled_signals)
         validate_non_weight_fields!(rag_green_min, rag_amber_min,
                                     h_stale, h_risk, h_blocked, activity_window_days)
         validate_momentum_onctrack_fields!(momentum_activity_half,
                                            momentum_direction_bias, on_track_threshold)
 
         @weights = weights.dup.freeze
+        @enabled_signals = weights.keys.freeze
         @rag_green_min = rag_green_min
         @rag_amber_min = rag_amber_min
         @h_stale = h_stale
@@ -66,21 +64,38 @@ module Pulse
 
       private
 
-      def validate_weight_keys!(weights)
+      # C1: the enabled set is the domain of weights. Weight keys must be a NON-EMPTY
+      # subset of the registered signals; when an explicit enabled_signals is supplied it
+      # must EXACTLY cover dom(w) (no under-cover / over-cover). Each weight is then
+      # type/finiteness-checked BEFORE any sum so NaN/Inf/Complex/String/nil fail loud.
+      def validate_weight_keys!(weights, enabled_signals)
         unless weights.is_a?(Hash)
           raise ArgumentError, "weights must be a Hash (got #{weights.class})"
         end
 
-        actual = weights.keys.sort
-        expected = REQUIRED_WEIGHT_KEYS.sort
-        unless actual == expected
-          raise ArgumentError,
-                "weights must contain exactly #{REQUIRED_WEIGHT_KEYS.inspect} (got #{weights.keys.inspect})"
+        if weights.empty?
+          raise ArgumentError, 'weights must be a non-empty subset of the registered signals'
         end
 
-        REQUIRED_WEIGHT_KEYS.each do |key|
-          finite_real_numeric!(key, weights[key])
+        # Every weight key must be a registered signal.
+        weights.keys.each do |key|
+          unless SignalRegistry.registered?(key)
+            raise ArgumentError,
+                  "weight key #{key.inspect} is not a registered signal " \
+                  "(registered: #{SignalRegistry.keys.inspect})"
+          end
         end
+
+        # If enabled_signals is given, dom(w) must exactly equal the enabled set.
+        unless enabled_signals.nil?
+          if weights.keys.sort != enabled_signals.map(&:to_sym).uniq.sort
+            raise ArgumentError,
+                  "weights domain must exactly cover enabled_signals " \
+                  "(enabled=#{enabled_signals.inspect}, weight keys=#{weights.keys.inspect})"
+          end
+        end
+
+        weights.each_key { |key| finite_real_numeric!(key, weights[key]) }
       end
 
       # Central guard: a weight must be a finite, real, ordered Numeric — an
@@ -181,11 +196,11 @@ module Pulse
         end
       end
 
-      def validate_weights!(weights)
-        # FR-39: exactly the five signal keys, each Numeric — checked BEFORE summing
-        # so a missing/extra/nil/non-numeric weight fails loud with ArgumentError
-        # rather than leaking a TypeError downstream in Scoring.score.
-        validate_weight_keys!(weights)
+      def validate_weights!(weights, enabled_signals)
+        # C1: subset of registered signals, non-empty, dom(w) == enabled set, each a
+        # finite real Numeric — checked BEFORE summing so a nil/non-numeric/NaN/Inf/
+        # Complex weight fails loud with ArgumentError rather than leaking a TypeError.
+        validate_weight_keys!(weights, enabled_signals)
 
         # FR-39a: weight-sum must be 1.0 within 1e-9.
         if (weights.values.sum - 1.0).abs >= 1e-9
@@ -195,10 +210,13 @@ module Pulse
         if weights.values.any? { |w| w < 0.0 }
           raise ArgumentError, 'weights must all be >= 0.0'
         end
-        # FR-39b / RC-07: always-active subset weight-sum must be > 0.
-        subset = ALWAYS_ACTIVE_KEYS.sum { |k| weights[k] || 0.0 }
+        # FR-39b / RC-07 (generalized): the ENABLED ∩ always-active subset weight-sum must
+        # be > 0, so a non-empty active set is guaranteed. Drives off the registry's
+        # always_active flags restricted to the enabled set (dom of weights).
+        subset = weights.sum { |k, w| SignalRegistry.fetch(k).always_active? ? w : 0.0 }
         if subset <= 0.0
-          raise ArgumentError, 'always-active subset {staleness,momentum,blocked_load} weight-sum must be > 0 (RC-07)'
+          raise ArgumentError,
+                'enabled ∩ always-active subset weight-sum must be > 0 (generalized RC-07)'
         end
       end
     end

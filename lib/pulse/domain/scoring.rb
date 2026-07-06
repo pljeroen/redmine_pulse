@@ -10,14 +10,12 @@
 require 'pulse/domain/signals'
 require 'pulse/domain/signal_result'
 require 'pulse/domain/health_result'
+require 'pulse/domain/signal_registry'
 
 module Pulse
   module Domain
     # Pure composite scoring + lens computation. Reads `today` ONLY via clock.today.
     module Scoring
-      CANONICAL_ORDER = %i[staleness progress momentum risk_load blocked_load].freeze
-      # at_risk lens enrichment subset (FR-26).
-      AT_RISK_KEYS = %i[risk_load blocked_load staleness].freeze
       # Distinct RAG band for a project with zero scoreable data (THAW-RA-001).
       NO_DATA_RAG = :no_data
 
@@ -43,16 +41,18 @@ module Pulse
       end
 
       # No-data HealthResult: rag :no_data, nil health_score/dominant_signal, completeness
-      # 0.0, 5 inactive SignalResults in canonical order, the 5 lens keys all nil, and the
-      # effort_open passthrough (THAW-RA-001). Carries no Date field (FC-31).
-      def no_data_result(metrics)
+      # 0.0, one inactive SignalResult per ENABLED signal in canonical order, the 5 lens
+      # keys all nil, and the effort_open passthrough (THAW-RA-001). Carries no Date field
+      # (FC-31). The breakdown key-set/length tracks the config's enabled set (default 5);
+      # on the default config this reproduces the pre-C1 five-row canonical sequence exactly.
+      def no_data_result(metrics, config)
         HealthResult.new(
           project_id: metrics.project_id,
           health_score: nil,
           rag: NO_DATA_RAG,
           dominant_signal: nil,
           signal_completeness: 0.0,
-          breakdown: CANONICAL_ORDER.map do |key|
+          breakdown: enabled_in_canonical_order(config).map do |key|
             SignalResult.new(key: key, active: false, raw_value: nil, n: nil,
                              effective_weight: nil, contribution: nil)
           end,
@@ -62,7 +62,7 @@ module Pulse
       end
 
       def score(metrics, clock, config)
-        return no_data_result(metrics) if no_data?(metrics)
+        return no_data_result(metrics, config) if no_data?(metrics)
 
         data = collect_data(metrics, clock, config)
 
@@ -96,7 +96,7 @@ module Pulse
           health_score: health_score,
           rag: rag_band(health_score, config),
           dominant_signal: dominant_signal(active, config),
-          signal_completeness: active.size / 5.0,
+          signal_completeness: active.size / config.enabled_signals.size.to_f,
           breakdown: breakdown,
           lens_keys: lens_keys(health_score, data, eff, metrics),
           effort_open: metrics.effort_open
@@ -105,14 +105,33 @@ module Pulse
 
       # --- helpers -------------------------------------------------------------
 
+      # Compute ONLY the enabled signals, emitted in the registry's canonical order
+      # restricted to the enabled set. On the default 5-signal set this reproduces the
+      # pre-C1 fixed sequence [staleness, progress, momentum, risk_load, blocked_load]
+      # exactly (same methods, same order) so the byte-identical golden gate holds.
       def collect_data(metrics, clock, config)
-        [
-          Signals.staleness(metrics, clock, config),
-          Signals.progress(metrics, config),
-          Signals.momentum(metrics, clock, config),
-          Signals.risk_load(metrics, config),
-          Signals.blocked_load(metrics, config)
-        ]
+        enabled = enabled_in_canonical_order(config)
+        enabled.map { |key| compute_signal(key, metrics, clock, config) }
+      end
+
+      # The config's enabled set (dom of weights) in the registry's canonical order.
+      def enabled_in_canonical_order(config)
+        enabled = config.enabled_signals
+        SignalRegistry.canonical_order_keys.select { |k| enabled.include?(k) }
+      end
+
+      # Dispatch a single signal computation by key. Isolates the per-signal argument
+      # shape (some take the clock) behind one call site keyed off the registry.
+      def compute_signal(key, metrics, clock, config)
+        case key
+        when :staleness    then Signals.staleness(metrics, clock, config)
+        when :progress     then Signals.progress(metrics, config)
+        when :momentum     then Signals.momentum(metrics, clock, config)
+        when :risk_load    then Signals.risk_load(metrics, config)
+        when :blocked_load then Signals.blocked_load(metrics, config)
+        else
+          raise ArgumentError, "unknown signal #{key.inspect}"
+        end
       end
 
       def rag_band(score, config)
@@ -132,8 +151,9 @@ module Pulse
       def dominant_signal(active, config)
         best_key = nil
         best_n = nil
-        # iterate in canonical order so equal-n ties resolve to the earliest signal.
-        CANONICAL_ORDER.each do |key|
+        # iterate in the registry's canonical order (restricted to active, i.e. the
+        # enabled ∩ active set) so equal-n ties resolve to the earliest canonical signal.
+        SignalRegistry.canonical_order_keys.each do |key|
           d = active.find { |x| x.key == key }
           next unless d
 
@@ -153,18 +173,36 @@ module Pulse
         staleness = data.find { |d| d.key == :staleness }
         progress = data.find { |d| d.key == :progress }
 
-        at_risk = AT_RISK_KEYS.sum do |key|
+        # at_risk lens enrichment (FR-26): sum eff*(1-n) over the at_risk signals that
+        # are ENABLED (present in data) AND active. The at_risk subset is sourced from
+        # the registry; iterated in the pinned pre-C1 sequence [risk_load, blocked_load,
+        # staleness] so the Float summation order (hence the byte-identical golden gate)
+        # is preserved exactly.
+        at_risk = at_risk_sum_keys.sum do |key|
           d = data.find { |x| x.key == key }
           d&.active ? eff[key] * (1.0 - d.n) : 0.0
         end
 
+        # staleness/progress may be DISABLED (absent from data) under a non-default
+        # enabled set — a disabled signal contributes nil to its lens (no data to show).
         {
           health: health_score,
           at_risk: 100.0 * at_risk,
-          stale: staleness.raw_value,
-          done: progress.active ? progress.raw_value * 100.0 : nil,
+          stale: staleness&.raw_value,
+          done: progress&.active ? progress.raw_value * 100.0 : nil,
           blocked: metrics.blocked_count
         }
+      end
+
+      # The at_risk subset (from the registry) in the FIXED pre-C1 summation order.
+      # SignalRegistry.at_risk_keys is the source of truth for MEMBERSHIP; this pins the
+      # ORDER of accumulation to the historical sequence so the golden gate stays exact.
+      PRE_C1_AT_RISK_ORDER = %i[risk_load blocked_load staleness].freeze
+
+      def at_risk_sum_keys
+        members = SignalRegistry.at_risk_keys
+        PRE_C1_AT_RISK_ORDER.select { |k| members.include?(k) } +
+          members.reject { |k| PRE_C1_AT_RISK_ORDER.include?(k) }
       end
     end
   end

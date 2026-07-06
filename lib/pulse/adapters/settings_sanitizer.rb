@@ -7,6 +7,8 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
+require 'pulse/domain/signal_registry'
+
 module Pulse
   module Adapters
     # SettingsSanitizer — validates an incoming plugin-settings hash to the EXACT
@@ -26,10 +28,32 @@ module Pulse
     # Returns [sanitized_hash, errors] where errors is an Array<String> of human keys
     # that were rejected (empty == fully valid).
     module SettingsSanitizer
-      WEIGHT_KEYS = %w[staleness progress momentum risk_load blocked_load].freeze
-      ALWAYS_ACTIVE = %w[staleness momentum blocked_load].freeze
+      # WEIGHT_KEYS / ALWAYS_ACTIVE are now SOURCED from the domain SignalRegistry (single
+      # source of truth) — string-keyed here because the settings hash uses string keys.
+      WEIGHT_KEYS = Pulse::Domain::SignalRegistry.keys.map(&:to_s).freeze
+      ALWAYS_ACTIVE = Pulse::Domain::SignalRegistry.always_active_keys.map(&:to_s).freeze
 
       module_function
+
+      # IT-C1-05 / FR-C1-09 — adapter-layer proportional renormalization on a signal
+      # toggle. When `disable` is removed from the enabled set, the remaining weights are
+      # rescaled proportionally so they sum to 1.0 and every pairwise ratio is preserved:
+      #   w_i_new = w_i_old / Σ_{remaining} w_j_old
+      # This is a WRITE-PATH (adapter) behavior, distinct from the pure-domain VO strictness
+      # — the domain VO never renormalizes; it only validates. Accepts string- or
+      # symbol-keyed weights; returns a new hash keyed as the input was, with `disable`
+      # dropped. Raises ArgumentError if the remaining weights sum to <= 0 (no proportion
+      # to preserve).
+      def renormalize_on_toggle(weights, disable)
+        disabled = disable.to_s
+        remaining = weights.reject { |k, _| k.to_s == disabled }
+        total = remaining.values.sum
+        raise ArgumentError, 'cannot renormalize: remaining weight-sum <= 0' if total <= 0.0
+
+        remaining.each_with_object({}) do |(k, w), acc|
+          acc[k] = w / total
+        end
+      end
 
       # incoming: the candidate settings hash (string keys, string-ish values).
       # previous: the currently-persisted settings hash (the fallback for rejects).

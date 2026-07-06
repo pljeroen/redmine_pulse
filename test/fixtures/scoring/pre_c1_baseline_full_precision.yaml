@@ -1,0 +1,591 @@
+---
+meta:
+  purpose: FULL-PRECISION pre-C1 default-output baseline for FR-C1-08 / FC-C1-13 byte-identical
+    golden gate (A-DATA-01).
+  captured_from: CURRENT (pre-C1) Pulse::Domain::Scoring.score with DEFAULT ScoringConfig.
+  clock_today: '2026-06-20'
+  precision_note: Float fields serialized via Ruby Float#to_s (shortest round-trippable
+    string). Reparsing yields bit-identical Floats -> the gate asserts EXACT == (no
+    epsilon), DISTINCT from the display-rounded golden_portfolio.yaml.
+  ruby_version: 3.4.8
+cases:
+  kernel_aios_all_active_red:
+    inputs:
+      project_id: 11
+      days_stale: 150
+      effort_open: 7.0
+      effort_total: 10.0
+      risk_raw: 40.0
+      blocked_count: 12
+      risk_mapped: true
+      effort_mapped: true
+      opened: 6
+      closed: 2
+      commented: 0
+      commits: 0
+    expected:
+      project_id: 11
+      health_score: 29
+      rag: red
+      dominant_signal: staleness
+      signal_completeness: '1.0'
+      effort_open: '7.0'
+      lens_keys:
+        health: 29
+        at_risk: '41.833333333333336'
+        stale: 150
+        done: '30.000000000000004'
+        blocked: 12
+      breakdown:
+      - key: staleness
+        active: true
+        raw_value: 150
+        "n": '0.16666666666666663'
+        effective_weight: '0.25'
+        contribution: '4.166666666666666'
+      - key: progress
+        active: true
+        raw_value: '0.30000000000000004'
+        "n": '0.30000000000000004'
+        effective_weight: '0.25'
+        contribution: '7.500000000000001'
+      - key: momentum
+        active: true
+        raw_value: 8
+        "n": '0.425'
+        effective_weight: '0.2'
+        contribution: '8.5'
+      - key: risk_load
+        active: true
+        raw_value: '40.0'
+        "n": '0.19999999999999996'
+        effective_weight: '0.15'
+        contribution: '2.999999999999999'
+      - key: blocked_load
+        active: true
+        raw_value: 12
+        "n": '0.4'
+        effective_weight: '0.15'
+        contribution: '6.0'
+  pdfree_risk_unmapped_green_ontrack:
+    inputs:
+      project_id: 16
+      days_stale: 20
+      effort_open: 2.0
+      effort_total: 10.0
+      risk_raw: 0.0
+      blocked_count: 1
+      risk_mapped: false
+      effort_mapped: true
+      opened: 4
+      closed: 6
+      commented: 0
+      commits: 0
+    expected:
+      project_id: 16
+      health_score: 80
+      rag: green
+      dominant_signal: on_track
+      signal_completeness: '0.8'
+      effort_open: '2.0'
+      lens_keys:
+        health: 80
+        at_risk: '4.150326797385624'
+        stale: 20
+        done: '80.0'
+        blocked: 1
+      breakdown:
+      - key: staleness
+        active: true
+        raw_value: 20
+        "n": '0.8888888888888888'
+        effective_weight: '0.29411764705882354'
+        contribution: '26.143790849673202'
+      - key: progress
+        active: true
+        raw_value: '0.8'
+        "n": '0.8'
+        effective_weight: '0.29411764705882354'
+        contribution: '23.529411764705884'
+      - key: momentum
+        active: true
+        raw_value: 10
+        "n": '0.5855555555555556'
+        effective_weight: '0.23529411764705885'
+        contribution: '13.77777777777778'
+      - key: risk_load
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: blocked_load
+        active: true
+        raw_value: 1
+        "n": '0.95'
+        effective_weight: '0.17647058823529413'
+        contribution: '16.764705882352942'
+  progress_inactive_no_effort:
+    inputs:
+      project_id: 20
+      days_stale: 10
+      effort_open: 0.0
+      effort_total: 0.0
+      risk_raw: 5.0
+      blocked_count: 2
+      risk_mapped: true
+      effort_mapped: false
+      opened: 1
+      closed: 3
+      commented: 0
+      commits: 0
+    expected:
+      project_id: 20
+      health_score: 78
+      rag: green
+      dominant_signal: momentum
+      signal_completeness: '0.8'
+      effort_open: '0.0'
+      lens_keys:
+        health: 78
+        at_risk: '5.851851851851851'
+        stale: 10
+        done:
+        blocked: 2
+      breakdown:
+      - key: staleness
+        active: true
+        raw_value: 10
+        "n": '0.9444444444444444'
+        effective_weight: '0.3333333333333333'
+        contribution: '31.481481481481477'
+      - key: progress
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: momentum
+        active: true
+        raw_value: 4
+        "n": '0.4083333333333333'
+        effective_weight: '0.26666666666666666'
+        contribution: '10.88888888888889'
+      - key: risk_load
+        active: true
+        raw_value: '5.0'
+        "n": '0.9'
+        effective_weight: '0.19999999999999998'
+        contribution: '18.0'
+      - key: blocked_load
+        active: true
+        raw_value: 2
+        "n": '0.9'
+        effective_weight: '0.19999999999999998'
+        contribution: '18.0'
+  no_data_empty:
+    inputs:
+      project_id: 30
+      days_stale: 0
+      effort_open: 0.0
+      effort_total: 0.0
+      risk_raw: 0.0
+      blocked_count: 0
+      risk_mapped: true
+      effort_mapped: true
+      opened: 0
+      closed: 0
+      commented: 0
+      commits: 0
+    expected:
+      project_id: 30
+      health_score:
+      rag: no_data
+      dominant_signal:
+      signal_completeness: '0.0'
+      effort_open: '0.0'
+      lens_keys:
+        health:
+        at_risk:
+        stale:
+        done:
+        blocked:
+      breakdown:
+      - key: staleness
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: progress
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: momentum
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: risk_load
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: blocked_load
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+  no_data_empty_risk_unmapped:
+    inputs:
+      project_id: 31
+      days_stale: 5
+      effort_open: 0.0
+      effort_total: 0.0
+      risk_raw: 0.0
+      blocked_count: 0
+      risk_mapped: false
+      effort_mapped: false
+      opened: 0
+      closed: 0
+      commented: 0
+      commits: 0
+    expected:
+      project_id: 31
+      health_score:
+      rag: no_data
+      dominant_signal:
+      signal_completeness: '0.0'
+      effort_open: '0.0'
+      lens_keys:
+        health:
+        at_risk:
+        stale:
+        done:
+        blocked:
+      breakdown:
+      - key: staleness
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: progress
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: momentum
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: risk_load
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+      - key: blocked_load
+        active: false
+        raw_value:
+        "n":
+        effective_weight:
+        contribution:
+  on_track_all_healthy_green:
+    inputs:
+      project_id: 40
+      days_stale: 5
+      effort_open: 1.0
+      effort_total: 10.0
+      risk_raw: 2.0
+      blocked_count: 0
+      risk_mapped: true
+      effort_mapped: true
+      opened: 2
+      closed: 20
+      commented: 0
+      commits: 0
+    expected:
+      project_id: 40
+      health_score: 93
+      rag: green
+      dominant_signal: on_track
+      signal_completeness: '1.0'
+      effort_open: '1.0'
+      lens_keys:
+        health: 93
+        at_risk: '1.2944444444444452'
+        stale: 5
+        done: '90.0'
+        blocked: 0
+      breakdown:
+      - key: staleness
+        active: true
+        raw_value: 5
+        "n": '0.9722222222222222'
+        effective_weight: '0.25'
+        contribution: '24.305555555555554'
+      - key: progress
+        active: true
+        raw_value: '0.9'
+        "n": '0.9'
+        effective_weight: '0.25'
+        contribution: '22.5'
+      - key: momentum
+        active: true
+        raw_value: 22
+        "n": '0.856060606060606'
+        effective_weight: '0.2'
+        contribution: '17.121212121212118'
+      - key: risk_load
+        active: true
+        raw_value: '2.0'
+        "n": '0.96'
+        effective_weight: '0.15'
+        contribution: '14.399999999999999'
+      - key: blocked_load
+        active: true
+        raw_value: 0
+        "n": '1.0'
+        effective_weight: '0.15'
+        contribution: '15.0'
+  risk_mapped_zero_risk:
+    inputs:
+      project_id: 41
+      days_stale: 60
+      effort_open: 4.0
+      effort_total: 8.0
+      risk_raw: 0.0
+      blocked_count: 3
+      risk_mapped: true
+      effort_mapped: true
+      opened: 3
+      closed: 3
+      commented: 0
+      commits: 0
+    expected:
+      project_id: 41
+      health_score: 65
+      rag: amber
+      dominant_signal: momentum
+      signal_completeness: '1.0'
+      effort_open: '4.0'
+      lens_keys:
+        health: 65
+        at_risk: '10.583333333333332'
+        stale: 60
+        done: '50.0'
+        blocked: 3
+      breakdown:
+      - key: staleness
+        active: true
+        raw_value: 60
+        "n": '0.6666666666666667'
+        effective_weight: '0.25'
+        contribution: '16.666666666666668'
+      - key: progress
+        active: true
+        raw_value: '0.5'
+        "n": '0.5'
+        effective_weight: '0.25'
+        contribution: '12.5'
+      - key: momentum
+        active: true
+        raw_value: 6
+        "n": '0.42857142857142855'
+        effective_weight: '0.2'
+        contribution: '8.571428571428571'
+      - key: risk_load
+        active: true
+        raw_value: '0.0'
+        "n": '1.0'
+        effective_weight: '0.15'
+        contribution: '15.0'
+      - key: blocked_load
+        active: true
+        raw_value: 3
+        "n": '0.85'
+        effective_weight: '0.15'
+        contribution: '12.75'
+  amber_band_mid:
+    inputs:
+      project_id: 42
+      days_stale: 90
+      effort_open: 5.0
+      effort_total: 10.0
+      risk_raw: 20.0
+      blocked_count: 6
+      risk_mapped: true
+      effort_mapped: true
+      opened: 5
+      closed: 5
+      commented: 3
+      commits: 0
+    expected:
+      project_id: 42
+      health_score: 57
+      rag: amber
+      dominant_signal: on_track
+      signal_completeness: '1.0'
+      effort_open: '5.0'
+      lens_keys:
+        health: 57
+        at_risk: '23.0'
+        stale: 90
+        done: '50.0'
+        blocked: 6
+      breakdown:
+      - key: staleness
+        active: true
+        raw_value: 90
+        "n": '0.5'
+        effective_weight: '0.25'
+        contribution: '12.5'
+      - key: progress
+        active: true
+        raw_value: '0.5'
+        "n": '0.5'
+        effective_weight: '0.25'
+        contribution: '12.5'
+      - key: momentum
+        active: true
+        raw_value: 13
+        "n": '0.6190476190476191'
+        effective_weight: '0.2'
+        contribution: '12.380952380952381'
+      - key: risk_load
+        active: true
+        raw_value: '20.0'
+        "n": '0.6'
+        effective_weight: '0.15'
+        contribution: '9.0'
+      - key: blocked_load
+        active: true
+        raw_value: 6
+        "n": '0.7'
+        effective_weight: '0.15'
+        contribution: '10.5'
+  tie_equal_min_n:
+    inputs:
+      project_id: 43
+      days_stale: 108
+      effort_open: 6.0
+      effort_total: 10.0
+      risk_raw: 30.0
+      blocked_count: 12
+      risk_mapped: true
+      effort_mapped: true
+      opened: 4
+      closed: 4
+      commented: 0
+      commits: 0
+    expected:
+      project_id: 43
+      health_score: 42
+      rag: amber
+      dominant_signal: staleness
+      signal_completeness: '1.0'
+      effort_open: '6.0'
+      lens_keys:
+        health: 42
+        at_risk: '32.99999999999999'
+        stale: 108
+        done: '40.0'
+        blocked: 12
+      breakdown:
+      - key: staleness
+        active: true
+        raw_value: 108
+        "n": '0.4'
+        effective_weight: '0.25'
+        contribution: '10.0'
+      - key: progress
+        active: true
+        raw_value: '0.4'
+        "n": '0.4'
+        effective_weight: '0.25'
+        contribution: '10.0'
+      - key: momentum
+        active: true
+        raw_value: 8
+        "n": '0.5'
+        effective_weight: '0.2'
+        contribution: '10.0'
+      - key: risk_load
+        active: true
+        raw_value: '30.0'
+        "n": '0.4'
+        effective_weight: '0.15'
+        contribution: '6.0'
+      - key: blocked_load
+        active: true
+        raw_value: 12
+        "n": '0.4'
+        effective_weight: '0.15'
+        contribution: '6.0'
+  high_activity_commits:
+    inputs:
+      project_id: 44
+      days_stale: 30
+      effort_open: 3.0
+      effort_total: 12.0
+      risk_raw: 10.0
+      blocked_count: 4
+      risk_mapped: true
+      effort_mapped: true
+      opened: 2
+      closed: 8
+      commented: 5
+      commits: 10
+    expected:
+      project_id: 44
+      health_score: 81
+      rag: green
+      dominant_signal: on_track
+      signal_completeness: '1.0'
+      effort_open: '3.0'
+      lens_keys:
+        health: 81
+        at_risk: '10.166666666666664'
+        stale: 30
+        done: '75.0'
+        blocked: 4
+      breakdown:
+      - key: staleness
+        active: true
+        raw_value: 30
+        "n": '0.8333333333333334'
+        effective_weight: '0.25'
+        contribution: '20.833333333333336'
+      - key: progress
+        active: true
+        raw_value: '0.75'
+        "n": '0.75'
+        effective_weight: '0.25'
+        contribution: '18.75'
+      - key: momentum
+        active: true
+        raw_value: 25
+        "n": '0.8475757575757575'
+        effective_weight: '0.2'
+        contribution: '16.95151515151515'
+      - key: risk_load
+        active: true
+        raw_value: '10.0'
+        "n": '0.8'
+        effective_weight: '0.15'
+        contribution: '12.0'
+      - key: blocked_load
+        active: true
+        raw_value: 4
+        "n": '0.8'
+        effective_weight: '0.15'
+        contribution: '12.0'

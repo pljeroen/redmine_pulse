@@ -109,10 +109,10 @@ class SettingsHelpTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = response.body
     [
-      'Pulse never invents data',  # enrichment intro
+      'standard Redmine data',     # enrichment intro (scores on standard Redmine data alone)
       'must add up to 1.0',        # weights intro
-      'health chip',               # thresholds intro (Red / Amber / Green health chip)
-      'more forgiving'             # windows intro (larger horizon = more forgiving)
+      'health chips',              # thresholds intro (Red, Amber and Green health chips)
+      'quiet, risky or blocked'    # windows intro (how quickly a project is flagged)
     ].each do |phrase|
       assert_includes body, phrase,
                       "settings page must render the group intro phrase #{phrase.inspect} (E1)"

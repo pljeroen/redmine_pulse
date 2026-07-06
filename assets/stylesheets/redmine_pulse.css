@@ -107,6 +107,27 @@ ul.projects a.project + .pulse-rag {
   color: #888;
 }
 
+/* ── settings self-service copy (E1) ─────────────────────────────────────────
+   A muted, slightly-indented intro block so a non-technical manager reads the
+   "works out of the box, leave blank" reassurance without it shouting like a
+   banner. The top overview sits above the first fieldset; the per-section intros
+   render as .info prose right under each <legend>. */
+.pulse-settings-overview {
+  margin: 0 0 1em;
+  padding: 0.6em 0.9em;
+  border-left: 3px solid #bfc9d4;
+  background: #f6f8fa;
+  color: #444;
+  border-radius: 3px;
+}
+.pulse-settings-overview p {
+  margin: 0;
+}
+.pulse-group-intro {
+  margin-top: -0.2em;
+  margin-bottom: 0.8em;
+}
+
 /* ── settings-page grouped-label float neutralizers ──────────────────────────
    Redmine's `.tabular p label` floats EVERY settings label into a fixed ~200px
    left column. A settings `<p>` that holds more than one control therefore stacks

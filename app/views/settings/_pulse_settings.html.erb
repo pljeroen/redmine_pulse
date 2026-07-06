@@ -12,6 +12,14 @@
 <% weights = (settings['weights'] || settings[:weights] || {}) %>
 <% selected_trackers = Array(settings['risk_trackers'] || settings[:risk_trackers]).map(&:to_s) %>
 
+<%# E1 (self-service overhaul): a plain-language overview banner so a non-technical
+    project manager understands, before touching anything, that Pulse works out of the box
+    and every field below is optional. Prose <div>, not a settings <p>/<label> (keeps the
+    T-01 grid-level-label guard green). %>
+<div class="pulse-settings-overview">
+  <p><%= t(:label_pulse_settings_overview) %></p>
+</div>
+
 <fieldset class="box tabular pulse-settings-enrichment">
   <legend><%= t(:label_pulse_settings_enrichment) %></legend>
   <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_enrichment) %></em></p>

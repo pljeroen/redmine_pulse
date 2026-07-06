@@ -201,4 +201,89 @@ class PulseSettingsLayoutTest < ActionDispatch::IntegrationTest
              "INV-01: the webhook endpoint #{field} control must remain in the form"
     end
   end
+
+  # ── T-04 (E1 self-service copy) — the manager-friendly overview + section intros ──
+  # The self-service overhaul MUST surface (a) the top-of-page plain-language overview and
+  # (b) a short intro under every fieldset section. Assert the rendered page contains the
+  # overview block carrying the overview copy, and that each of the seven per-section
+  # group-intro paragraphs renders non-empty. Falsifier: drop the overview or any section
+  # intro and this fails. Uses the resolved i18n TEXT (not the key) so it also catches a
+  # mis-wired key that renders the raw translation-missing marker.
+  SECTION_INTRO_KEYS = %i[
+    label_pulse_help_group_enrichment
+    label_pulse_help_group_weights
+    label_pulse_help_group_profiles
+    label_pulse_help_group_thresholds
+    label_pulse_help_group_alerting
+    label_pulse_help_group_webhooks
+    label_pulse_help_group_windows
+  ].freeze
+
+  def test_page_shows_overview_and_section_intros
+    require_render_lane!
+    doc = render_settings_page
+
+    overview = doc.css('.pulse-settings-overview')
+    assert overview.any?, 'E1: the top-of-page self-service overview block must render'
+    overview_text = overview.text.gsub(/\s+/, ' ').strip
+    expected_overview = I18n.t(:label_pulse_settings_overview).gsub(/\s+/, ' ').strip
+    assert_includes overview_text, expected_overview.slice(0, 40),
+                    'E1: the overview block must carry the overview copy (not empty/missing)'
+
+    intros = doc.css('.pulse-group-intro')
+    assert_operator intros.size, :>=, SECTION_INTRO_KEYS.size,
+                    "E1: expected an intro <p> for each of the #{SECTION_INTRO_KEYS.size} sections"
+    intros.each do |p|
+      refute p.text.gsub(/\s+/, ' ').strip.empty?,
+             'E1: every section intro must render non-empty copy'
+    end
+
+    # Each section-intro key must resolve to real copy in the rendered page.
+    SECTION_INTRO_KEYS.each do |key|
+      snippet = I18n.t(key).gsub(/\s+/, ' ').strip.slice(0, 30)
+      assert_includes doc.text.gsub(/\s+/, ' '), snippet,
+                      "E1: the rendered page must contain the #{key} section intro copy"
+    end
+  end
+
+  # ── T-05 (i18n parity) — every E1 key exists in BOTH locales with the same %{vars} ──
+  # A light falsifiable guard mirroring the nl_locale_parity contract for the NEW E1 keys:
+  # the overview + the seven section intros + the rewritten field-help keys must be present
+  # and non-empty in en AND nl. Falsifier: add an en key without its nl twin => fails.
+  E1_NEW_KEYS = ([:label_pulse_settings_overview] + SECTION_INTRO_KEYS + %i[
+    label_pulse_help_effort_field
+    label_pulse_help_risk_trackers
+    label_pulse_help_blocked_status
+    label_pulse_help_weight_staleness
+    label_pulse_help_weight_progress
+    label_pulse_help_weight_momentum
+    label_pulse_help_weight_risk_load
+    label_pulse_help_weight_blocked_load
+    label_pulse_help_weight_coverage_gap
+    label_pulse_help_enable_coverage_gap
+    label_pulse_help_rag_green_min
+    label_pulse_help_rag_amber_min
+    label_pulse_help_on_track_threshold
+    label_pulse_help_h_stale
+    label_pulse_help_h_risk
+    label_pulse_help_h_blocked
+    label_pulse_help_activity_window_days
+    label_pulse_help_momentum_activity_half
+    label_pulse_help_momentum_direction_bias
+    label_pulse_help_snapshot_max_age_minutes
+    label_pulse_help_alert_auto_subscribe_role_id
+    label_pulse_help_alert_score_delta_threshold
+    label_pulse_help_webhook_event_filter
+  ]).freeze
+
+  def test_e1_keys_present_and_at_parity_in_both_locales
+    E1_NEW_KEYS.each do |key|
+      en = I18n.t(key, locale: :en, default: nil)
+      nl = I18n.t(key, locale: :nl, default: nil)
+      assert en && !en.to_s.strip.empty?,
+             "E1 parity: #{key} must be present and non-empty in the English locale"
+      assert nl && !nl.to_s.strip.empty?,
+             "E1 parity: #{key} must be present and non-empty in the Dutch locale"
+    end
+  end
 end

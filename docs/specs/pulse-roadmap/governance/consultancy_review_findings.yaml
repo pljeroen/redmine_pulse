@@ -1,0 +1,111 @@
+# Design + adversarial review record — redmine_pulse roadmap remainder.
+# A cross-disciplinary design pass proposed the recommendations; the operator confirmed the four
+# product forks; residual items were resolved. No unresolved CRITICAL/HIGH findings remain.
+spec_name: pulse-roadmap
+review_performed: true
+review_kind: forward_design_recommendation_plus_adversarial
+source: "Internal cross-disciplinary design analysis (2026-07-06), operator-confirmed."
+disciplines_consulted:
+  - Solution Architect
+  - UX/UI Designer
+  - UX Researcher
+  - Product Owner
+  - Backend Engineer
+  - API/Integration Engineer
+  - Security Architect
+  - Security Engineer
+  - Data Architect
+  - Database Administrator
+  - Observability Engineer
+  - Site Reliability Engineer
+  - Release Engineer
+  - Technical Writer
+  - Business Analyst
+consilience: 0.82
+
+operator_confirmed_decisions:
+  - {id: DEC-03, decision: "coverage_gap additive-optional, default OFF", confirmed: true}
+  - {id: DEC-05, decision: "per-viewer = presets + viewer override + role-default binding", confirmed: true}
+  - {id: DEC-09, decision: "alert subscription = opt-in Watch + optional PM-role auto-subscribe", confirmed: true}
+  - {id: DEC-11, decision: "webhook SSRF guard-on, per-endpoint overridable", confirmed: true}
+
+findings:
+  - id: F-01
+    severity: HIGH
+    category: architecture
+    description: >
+      Adding coverage_gap, custom lenses, scoring profiles, and the alert model against the
+      hardcoded 5-signal scoring model would produce repeated ad-hoc thaws and a large regression
+      surface (big-bang risk).
+    suggested_remediation: Introduce an N-signal registry (C1) as the keystone, backward-compatible
+      by default; layer every other feature on it as a small increment.
+    resolution_status: RESOLVED
+    resolution_note: Encoded as DEC-01 + C1; FR-C1-08/AC-C1-01 golden byte-identical gate added.
+
+  - id: F-02
+    severity: HIGH
+    category: security
+    description: >
+      Per-viewer scoring profiles add a configuration dimension to the cached payload. If the cache
+      partition does not include the active profile id, a snapshot computed under one profile could
+      be served for another — the same class as the prior stale-cache permission leak.
+    suggested_remediation: Fold the active profile id into the snapshot cache partition; add a
+      cross-serve regression test.
+    resolution_status: RESOLVED
+    resolution_note: Encoded as DEC-06 + FR-C4-05 (tier-1) + AC-C4-01; INV-CACHE-PARTITION cited.
+
+  - id: F-03
+    severity: MEDIUM
+    category: architecture
+    description: >
+      Webhooks (outbound) and mailer/in-app alerts could each derive "what happened" independently,
+      risking drift and duplicated transition logic.
+    suggested_remediation: One AlertEvent stream (pure domain) produced by the background scan;
+      both channels consume it.
+    resolution_status: RESOLVED
+    resolution_note: Encoded as DEC-12; AlertEvent/AlertRules in the domain; C7 consumes C6.
+
+  - id: F-04
+    severity: MEDIUM
+    category: operability
+    description: >
+      Background recompute/alerting could tempt a bundled worker (Sidekiq/delayed_job), adding a
+      Redis/daemon footprint that conflicts with the low-footprint, self-host ethos.
+    suggested_remediation: Rake task + operator cron (idiomatic for Redmine), additive; never a hard
+      runtime dependency.
+    resolution_status: RESOLVED
+    resolution_note: Encoded as DEC-08 + FR-C6-03 (tier-1, additive) + INV-LOW-FOOTPRINT.
+
+  - id: F-05
+    severity: MEDIUM
+    category: friction
+    description: >
+      Unsolicited portfolio-wide health emails would be spammy and erode trust.
+    suggested_remediation: Explicit opt-in "Watch project health" (mirror Redmine watchers), with an
+      optional admin auto-subscribe role; re-check view permission at send time.
+    resolution_status: RESOLVED
+    resolution_note: Encoded as DEC-09 + FR-C6-07/08; permission re-checked at emit.
+
+  - id: F-06
+    severity: LOW
+    category: edge-state
+    description: >
+      A saved view or role binding may reference a profile that was later removed or renamed.
+    suggested_remediation: Degrade gracefully to the system default profile with a surfaced warning;
+      no crash.
+    resolution_status: RESOLVED
+    resolution_note: Encoded as FR-C4-09 + AC-C4-05.
+
+  - id: F-07
+    severity: LOW
+    category: traceability
+    description: >
+      coverage_gap dimension set and the alert-canonical profile choice are the two places most
+      likely to need operator retuning post-launch.
+    suggested_remediation: Fix sensible defaults in v1 (documented), keep them operator-overridable
+      later; record as assumptions.
+    resolution_status: RECORDED
+    resolution_note: Captured as AS/AA assumptions (AA-01..AA-04); v1 dimensions fixed (FR-C2-08).
+
+unresolved_critical: 0
+unresolved_high: 0

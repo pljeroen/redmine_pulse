@@ -13,3 +13,10 @@ coverage/
 
 # OS
 .DS_Store
+
+
+# Personal workflow files
+.tddv6
+CLAUDE.md
+SESSION_HANDOFF*.md
+.hypothesis/

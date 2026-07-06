@@ -1,0 +1,60 @@
+# Assumptions — redmine_pulse roadmap remainder
+# Each entry classified: stated (from operator) | inferred (implied by requirements) | assumed
+# (working assumption; falsifiable, low-risk).
+spec_name: pulse-roadmap
+
+stated:
+  - id: AS-01
+    text: coverage_gap ships additive-optional, default OFF.
+  - id: AS-02
+    text: Per-viewer scoring includes admin presets + viewer override + role-default binding.
+  - id: AS-03
+    text: Alert subscription is opt-in "Watch project health" plus optional admin auto-subscribe of
+      a configured role.
+  - id: AS-04
+    text: Webhook SSRF guard is default-ON and overridable per endpoint.
+  - id: AS-05
+    text: Background recompute + alerting is in scope (operator override granted 2026-07-06).
+
+inferred:
+  - id: AI-01
+    text: A signal registry is the minimal shared substrate for coverage_gap, custom lenses,
+      scoring profiles, and the alert model; it is therefore built first (C1).
+    basis: five features each need enable/weight generalization or a signal catalog.
+  - id: AI-02
+    text: WeightSet is a single value object shared by custom lenses (C3) and scoring profiles (C4).
+    basis: both express "a validated weighted subset of signals".
+  - id: AI-03
+    text: Saved views should mirror Redmine's IssueQuery visibility model (private/public/role)
+      because Redmine users already understand it.
+  - id: AI-04
+    text: Alerting operates on a canonical (global) scoring profile per project, not per viewer;
+      per-viewer alerting would be semantically odd and combinatorially explosive.
+  - id: AI-05
+    text: Webhooks and mailer/in-app alerts share one AlertEvent stream produced by the background
+      scan; C7 consumes what C6 produces.
+
+assumed:
+  - id: AA-01
+    text: "has_estimate" means estimated_hours present and > 0 (0 or nil is uncovered).
+    risk: low; matches Redmine field semantics.
+  - id: AA-02
+    text: "has_schedule" is satisfied by due_date present OR fixed_version present (either alone).
+    risk: low; chosen so version-planned instances are not penalized.
+  - id: AA-03
+    text: coverage_gap default weight, when enabled, is 0.15 (renormalized over the enabled set).
+    risk: low; operator may retune via settings.
+  - id: AA-04
+    text: The canonical/global scoring profile used for alerting is the system default profile
+      (id "default") unless an admin designates another as the alert-canonical profile.
+    risk: low; documented default, admin-overridable.
+  - id: AA-05
+    text: Bounded webhook retry is 3 attempts with backoff; then dead-letter/log.
+    risk: low; standard at-least-once bound.
+  - id: AA-06
+    text: The HMAC signature header is named X-Pulse-Signature and covers the exact raw body.
+    risk: low; naming is cosmetic and adjustable.
+  - id: AA-07
+    text: Existing raw-metric lenses (stale/done/blocked) remain built-in and are not user-authorable
+      in v1; user lenses are of the weighted-signal-score family.
+    risk: low; keeps the CustomLens abstraction bounded and pure.

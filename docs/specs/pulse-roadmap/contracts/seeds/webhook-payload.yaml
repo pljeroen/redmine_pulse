@@ -1,0 +1,36 @@
+# Validating example payloads for contracts/schemas/webhook-payload.json (C7).
+# Each entry is a concrete instance that MUST validate against the schema.
+
+- # rag_transition: green -> amber, dominant flips to risk_load
+  version: "1"
+  event: rag_transition
+  project:
+    id: 42
+    identifier: apollo
+    name: "Apollo Platform"
+  health:
+    score: 58
+    rag: amber
+    dominant_signal: risk_load
+    delta: -14.0
+  previous:
+    rag: green
+    dominant_signal: momentum
+  occurred_at: "2026-07-06T09:30:00Z"
+  signature: "0d9f1b7c2a6e4f83b1c5d7e9a0f2b4c6d8e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b"
+
+- # no_data_appeared: project became genuinely empty; no previous, null score/dominant
+  version: "1"
+  event: no_data_appeared
+  project:
+    id: 77
+    identifier: nimbus
+    name: "Nimbus Research"
+  health:
+    score: null
+    rag: no_data
+    dominant_signal: null
+    delta: null
+  previous: null
+  occurred_at: "2026-07-06T09:31:12Z"
+  signature: "a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00"

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://redmine-pulse/schemas/webhook-payload.json",
+  "title": "redmine_pulse outbound webhook payload",
+  "description": "Read-only health AlertEvent forwarded to an operator-configured endpoint (C7). Versioned; carries snapshot data only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "event", "project", "health", "occurred_at", "signature"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1",
+      "description": "Payload schema version."
+    },
+    "event": {
+      "type": "string",
+      "enum": ["rag_transition", "dominant_change", "no_data_appeared", "score_delta"],
+      "description": "The AlertEvent type that fired."
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "identifier", "name"],
+      "properties": {
+        "id": {"type": "integer", "minimum": 1},
+        "identifier": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1}
+      }
+    },
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "rag", "dominant_signal"],
+      "properties": {
+        "score": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 100,
+          "description": "0..100 health score; null in the no_data state."
+        },
+        "rag": {
+          "type": "string",
+          "enum": ["green", "amber", "red", "no_data"]
+        },
+        "dominant_signal": {
+          "type": ["string", "null"],
+          "description": "Enabled signal key, :on_track, or null (no_data)."
+        },
+        "delta": {
+          "type": ["number", "null"],
+          "description": "Score change vs previous snapshot, when applicable."
+        }
+      }
+    },
+    "previous": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["rag", "dominant_signal"],
+      "properties": {
+        "rag": {"type": "string", "enum": ["green", "amber", "red", "no_data"]},
+        "dominant_signal": {"type": ["string", "null"]}
+      },
+      "description": "Prior health state (absent/null on first observation or no_data appearance)."
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339/ISO8601 timestamp of the transition."
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1,
+      "description": "HMAC-SHA256 of the raw body under the endpoint secret (also sent as a header)."
+    }
+  }
+}

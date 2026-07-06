@@ -1,0 +1,52 @@
+# Raw intent capture — redmine_pulse roadmap remainder
+spec_name: pulse-roadmap
+captured: "2026-07-06"
+
+stated_ask: >
+  Specify the full roadmap remainder for redmine_pulse (a read-only portfolio/project-health
+  cockpit for Redmine 6.x) as a decomposed package of small, independently-buildable units — no
+  big-bang — so downstream implementation can proceed autonomously with no unresolved questions,
+  no partials, and no deferrals. Six product features, benchmarked against a first-class modern
+  PM interface but kept Redmine-idiomatic and low-footprint.
+
+features_requested:
+  - coverage_gap: a new 6th health signal.
+  - per_viewer_scoring: fine-grained scoring that varies by the viewer.
+  - custom_lenses: user-definable lenses (current lens set is a fixed 5).
+  - saved_views: persisted filter/lens configuration.
+  - webhooks: outbound notifications.
+  - background_recompute_alerting: scheduled snapshot recompute + health alerting.
+
+explicit_goals:
+  - Fit Redmine 6.x ecosystem conventions.
+  - Match the UX/feature bar of a first-class modern PM interface (Jira/Linear/Asana/EasyRedmine
+    as benchmarks) while staying Redmine-idiomatic.
+  - Small, deferral-proof units; the operator does not want to micromanage after specs freeze.
+  - Surface every question early rather than relying on later overrides.
+
+explicit_dislikes_constraints:
+  - No new hard runtime dependency; low footprint; self-hostable.
+  - No vendor telemetry / no plugin phone-home. (User-configured outbound IS allowed — the
+    operator's own install, the operator's choice; safe defaults, not prohibitions.)
+  - Keep the pure-Ruby, zero-dependency domain.
+  - Preserve the read-only + reversible-cache trust narrative.
+
+stack_preference: existing (Ruby, Redmine 6.x plugin, hexagonal). No change proposed.
+
+known_constraints:
+  - Scoring model is currently frozen at exactly 5 signals / 5 lenses; changes are deliberate,
+    backward-compatible thaws.
+  - A prior stale-cache permission leak established that per-viewer cache partitions must cover
+    every permission/config dimension the payload reads.
+  - Background recompute + alerting was previously frozen out ("no background job"); the operator
+    granted an override on 2026-07-06 to bring it in scope.
+
+resolved_forks_2026-07-06:
+  coverage_gap_rollout: additive-optional default OFF
+  per_viewer_depth: presets + viewer override + role-default binding
+  alert_subscription: opt-in Watch + optional PM-role auto-subscribe
+  webhook_ssrf: guard-on, per-endpoint overridable
+
+provenance:
+  design_pass: "Cross-disciplinary design recommendation (15 disciplines), 2026-07-06."
+  design_review: "Internal cross-disciplinary design analysis, operator-confirmed, 2026-07-06."

@@ -1,0 +1,154 @@
+# Verification plan — redmine_pulse roadmap remainder
+spec_name: pulse-roadmap
+
+# Acceptance criteria are enumerated per contract in spec.md (AC-Cn-NN). This plan maps them to
+# verification targets and records the Tier-1 MUST enforcement matrix.
+
+acceptance_by_contract:
+  C1:
+    - {ac: AC-C1-01, target: "golden byte-identical default-output test over the existing fixture set"}
+    - {ac: AC-C1-02, target: "unit: enabling a 6th signal → 6 breakdown entries, completeness /6"}
+    - {ac: AC-C1-03, target: "unit: weights not summing to 1.0 → ArgumentError"}
+    - {ac: AC-C1-04, target: "unit: disabling a signal removes it from breakdown/dominant/completeness"}
+    - {ac: AC-C1-05, target: "unit: enabled always-active subset weight-sum 0 → ArgumentError"}
+    - {ac: AC-C1-06, target: "unit: settings adapter renormalizes weights to sum 1.0 on toggle"}
+  C2:
+    - {ac: AC-C2-01, target: "unit: fully-planned open issues → n=1.0"}
+    - {ac: AC-C2-02, target: "unit: no open issues → inactive"}
+    - {ac: AC-C2-03, target: "unit: mixed coverage → n=mean fraction (worked example 0.5)"}
+    - {ac: AC-C2-04, target: "unit: has_schedule true when due_date OR fixed_version present"}
+    - {ac: AC-C2-05, target: "golden: disabled → HealthResult identical to pre-C2"}
+    - {ac: AC-C2-06, target: "integration: coverage inputs respect issue visibility"}
+  C3:
+    - {ac: AC-C3-01, target: "unit: unknown signal key → ArgumentError"}
+    - {ac: AC-C3-02, target: "unit: negative/non-finite weight → ArgumentError"}
+    - {ac: AC-C3-03, target: "unit: ranking = normalized weighted mean (worked example)"}
+    - {ac: AC-C3-04, target: "unit: all-inactive lens → nil; partial excludes inactive from denom"}
+    - {ac: AC-C3-05, target: "unit: CustomLens frozen; mutation → FrozenError"}
+    - {ac: AC-C3-06, target: "unit: empty name / bad sort_direction → ArgumentError"}
+  C4:
+    - {ac: AC-C4-01, target: "integration: two profiles → two distinct cached snapshots, no cross-serve"}
+    - {ac: AC-C4-02, target: "unit: profile resolution precedence viewer>role>default"}
+    - {ac: AC-C4-03, target: "unit: profile disabling a signal omits it from breakdown"}
+    - {ac: AC-C4-04, target: "integration: profile cannot count an invisible issue (visibility holds)"}
+    - {ac: AC-C4-05, target: "unit: dangling profile ref → default fallback + warning, no error"}
+    - {ac: AC-C4-06, target: "golden: system default profile reproduces global-config output"}
+  C5:
+    - {ac: AC-C5-01, target: "migration: up creates pulse_views; down drops cleanly (reversible)"}
+    - {ac: AC-C5-02, target: "integration: private/public/role-scoped visibility enforced"}
+    - {ac: AC-C5-03, target: "integration: publishing without :manage_public_pulse_views denied"}
+    - {ac: AC-C5-04, target: "integration: built-in default views present after install"}
+    - {ac: AC-C5-05, target: "integration: selecting a view applies lens+profile+scope"}
+    - {ac: AC-C5-06, target: "integration: .json access re-checks permission"}
+  C6:
+    - {ac: AC-C6-01, target: "golden: unscheduled → sync request-path behavior unchanged"}
+    - {ac: AC-C6-02, target: "unit: green→amber emits one rag_transition; re-run emits nothing"}
+    - {ac: AC-C6-03, target: "unit: dominant change emits dominant_change"}
+    - {ac: AC-C6-04, target: "unit: empty project emits no_data_appeared"}
+    - {ac: AC-C6-05, target: "integration: recipient = subscribed AND view-permitted; revoked gets none"}
+    - {ac: AC-C6-06, target: "integration: admin auto-subscribe role receives without explicit watch"}
+    - {ac: AC-C6-07, target: "migration: alert-state up/down reversible"}
+    - {ac: AC-C6-08, target: "unit: score_delta fires only when |delta|>=N and N set"}
+    - {ac: AC-C6-09, target: "integration: recompute idempotent"}
+  C7:
+    - {ac: AC-C7-01, target: "schema-validation: seed validates against webhook-payload.json"}
+    - {ac: AC-C7-02, target: "integration: no endpoints → zero outbound requests"}
+    - {ac: AC-C7-03, target: "unit: HMAC-SHA256 signature verifies over exact body"}
+    - {ac: AC-C7-04, target: "unit: SSRF guard blocks loopback/RFC1918/metadata by default; override permits"}
+    - {ac: AC-C7-05, target: "unit: bounded retry (3) then dead-letter"}
+    - {ac: AC-C7-06, target: "unit: HTTPS-only default rejects http:// unless overridden"}
+    - {ac: AC-C7-07, target: "integration: test-event delivers + reports HTTP status"}
+    - {ac: AC-C7-08, target: "unit: ~5s timeout enforced"}
+
+# Schema-validation tests (one per emitted JSON schema).
+schema_validation_tests:
+  - schema: contracts/schemas/webhook-payload.json
+    seed: contracts/seeds/webhook-payload.yaml
+    shape: "load schema; load seed; validate each seed entry against schema; assert valid"
+    lifted_to: AC-C7-01
+
+# Tier-1 MUST enforcement matrix. mechanism ∈ TEST|HOOK|BENCH|GATE|SCHEMA|AGENT_CHECK|ADVISORY.
+must_tier1_coverage_matrix:
+  - requirement_id: FR-C1-01
+    requirement_text: "A SignalRegistry enumerates every known signal with key/always_active/default_weight/canonical_order."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/unit/domain/signal_registry_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C1-02
+    requirement_text: "ScoringConfig accepts an enabled set; weights cover exactly enabled keys, finite ≥0, sum 1.0 within 1e-9; else ArgumentError."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/unit/domain/scoring_config_registry_test.rb::test_weights_over_enabled_sum_to_one>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C1-03
+    requirement_text: "Enabled always-active subset weight-sum must be > 0 else ArgumentError."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/unit/domain/scoring_config_registry_test.rb::test_enabled_always_active_subset_positive>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C1-04
+    requirement_text: "signal_completeness = active_count / enabled_count."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/unit/domain/scoring_completeness_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C1-08
+    requirement_text: "Default registry produces HealthResult byte-identical to prior release over golden fixtures."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/unit/domain/backward_compat_golden_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C2-05
+    requirement_text: "coverage_gap disabled by default → HealthResult identical to pre-C2 for same inputs."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/unit/domain/coverage_gap_default_off_golden_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C4-05
+    requirement_text: "Active profile id is a component of the snapshot cache partition (no cross-serve)."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/functional/pulse_profile_cache_partition_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C5-02
+    requirement_text: "View visibility mirrors IssueQuery (private/public/role); publishing gated by :manage_public_pulse_views."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/functional/pulse_views_visibility_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C5-08
+    requirement_text: "View access control enforced server-side; .json re-checks permission."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/functional/pulse_views_permission_test.rb::test_json_rechecks_permission>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C6-03
+    requirement_text: "Additive — unscheduled ⇒ behavior identical to prior release; no scheduler dependency."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/functional/pulse_sync_unchanged_when_unscheduled_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C6-07
+    requirement_text: "Recipients = view-permitted AND subscribed; permission re-checked at send time."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/functional/pulse_alert_recipient_permission_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C7-02
+    requirement_text: "Endpoints admin-configured global+per-project; OFF by default (no endpoints → zero outbound)."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/functional/pulse_webhook_default_off_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C7-06
+    requirement_text: "Safe defaults: HTTPS-only default, ~5s timeout, SSRF guard default-ON overridable, HMAC-SHA256, redaction, test-event."
+    mechanism: TEST
+    evidence_pointer: "<DESIGNATED — test/unit/adapters/webhook_ssrf_and_signing_test.rb>"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: FR-C7-03
+    requirement_text: "Payload is versioned JSON conforming to webhook-payload.json."
+    mechanism: SCHEMA
+    evidence_pointer: "contracts/schemas/webhook-payload.json"
+    coverage_status: PRESENT
+  - requirement_id: PL-01
+    requirement_text: ".json/API entry points re-check viewer permission (platform rule)."
+    mechanism: AGENT_CHECK
+    evidence_pointer: "cold-review::json-permission-recheck (verifies C5/C4 controllers re-check permission on .json)"
+    coverage_status: DESIGNATED_FOR_DOWNSTREAM
+  - requirement_id: DEC-08
+    requirement_text: "Operator schedules recompute/scan via cron (no bundled worker)."
+    mechanism: ADVISORY
+    evidence_pointer: "operator cron scheduling — documented in ops guidance"
+    coverage_status: ADVISORY
+    rationale: "Pattern 1 — depends on operator behavior outside the codebase (cron scheduling on the
+      operator's host). The rake tasks themselves are TEST-covered (AC-C6-02/09); only the act of
+      scheduling is operator-side and cannot be mechanized within the plugin."

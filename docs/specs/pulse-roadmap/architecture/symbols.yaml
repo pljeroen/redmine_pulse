@@ -1,0 +1,246 @@
+# Architecture symbols — new/modified public symbols across C1–C7.
+# architecture_style: hexagonal → every symbol carries layer ∈ domain | port | adapter.
+# erratum 2026-07-06 (A6-C1-003): C1 ScoringConfig no longer lists Pulse::Domain::WeightSet
+# as a dependency — WeightSet is a C3 symbol, so that was a forward dependency violating the
+# C1→C3 build order. C1 ScoringConfig depends on SignalRegistry only and holds weights as a
+# validated Hash over the enabled set; C3 is where ScoringConfig adopts the WeightSet VO.
+spec_name: pulse-roadmap
+architecture_style: hexagonal
+
+symbols:
+  # ---- C1: registry generalization (domain) ----
+  - name: Pulse::Domain::SignalRegistry
+    type: module
+    layer: domain
+    contract: C1
+    status: new
+    dependencies: [Pulse::Domain::Signals]
+    note: Canonical ordered catalog of signals (key, always_active?, default_weight, canonical_order).
+  - name: Pulse::Domain::ScoringConfig
+    type: class
+    layer: domain
+    contract: C1
+    status: modified
+    dependencies: [Pulse::Domain::SignalRegistry]
+    note: >
+      Generalized to an enabled-set + weights-over-enabled model; stays a strict frozen VO.
+      erratum 2026-07-06 (A6-C1-003): WeightSet dependency deferred to C3 — C1 ScoringConfig
+      holds weights as a validated Hash over the enabled set; C3 refactors ScoringConfig to
+      share the WeightSet VO.
+  - name: Pulse::Domain::Scoring
+    type: module
+    layer: domain
+    contract: C1
+    status: modified
+    dependencies: [Pulse::Domain::SignalRegistry, Pulse::Domain::ScoringConfig, Pulse::Domain::HealthResult, Pulse::Domain::SignalResult]
+    note: completeness = active/enabled_count; dominant + breakdown over enabled set; default output unchanged.
+
+  # ---- C2: coverage_gap (domain + metrics inputs) ----
+  - name: Pulse::Domain::Signals.coverage_gap
+    type: function
+    layer: domain
+    contract: C2
+    status: new
+    dependencies: [Pulse::Domain::Signals::SignalDatum]
+    note: Planning-coverage signal; active iff open_issue_count>0; n=mean coverage over open issues.
+
+  # ---- C3: weighted lenses (domain) ----
+  - name: Pulse::Domain::WeightSet
+    type: class
+    layer: domain
+    contract: C3
+    status: new
+    dependencies: [Pulse::Domain::SignalRegistry]
+    note: >
+      Frozen validated map signal-key→weight over a subset of registered signals. Shared with C4.
+      erratum 2026-07-06 (A6-C1-003): C3 is where Pulse::Domain::ScoringConfig adopts WeightSet —
+      the C1 ScoringConfig holds weights as a validated Hash and C3 refactors it to share this VO.
+  - name: Pulse::Domain::CustomLens
+    type: class
+    layer: domain
+    contract: C3
+    status: new
+    dependencies: [Pulse::Domain::WeightSet, Pulse::Domain::SignalRegistry]
+    note: "{name, weight_set, sort_direction, threshold?} frozen VO."
+  - name: Pulse::Domain::LensRanking
+    type: module
+    layer: domain
+    contract: C3
+    status: new
+    dependencies: [Pulse::Domain::CustomLens, Pulse::Domain::HealthResult, Pulse::Domain::SignalResult]
+    note: Pure ranking = normalized weighted mean of chosen active signals' n.
+
+  # ---- C4: scoring profiles (domain + port + adapter) ----
+  - name: Pulse::Domain::ScoringProfile
+    type: class
+    layer: domain
+    contract: C4
+    status: new
+    dependencies: [Pulse::Domain::ScoringConfig, Pulse::Domain::WeightSet]
+    note: "{id, name, config}. Immutable."
+  - name: Pulse::Ports::ProfileProvider
+    type: port
+    layer: port
+    contract: C4
+    status: new
+    dependencies: [Pulse::Domain::ScoringProfile]
+    note: Supplies published profiles + resolves the active profile for a viewer (viewer>role>default).
+  - name: Pulse::Adapters::RedmineProfileProvider
+    type: class
+    layer: adapter
+    contract: C4
+    status: new
+    dependencies: [Pulse::Ports::ProfileProvider, Pulse::Domain::ScoringProfile]
+    note: Reads profiles + role-default bindings from plugin settings; uses viewer roles.
+  - name: Pulse::Adapters::SnapshotFingerprint
+    type: class
+    layer: adapter
+    contract: C4
+    status: modified
+    dependencies: [Pulse::Domain::ScoringProfile]
+    note: Adds active-profile-id as a partition component (FR-C4-05 / DEC-06).
+
+  # ---- C5: saved views (port + adapter) ----
+  - name: Pulse::Ports::ViewStore
+    type: port
+    layer: port
+    contract: C5
+    status: new
+    dependencies: []
+    note: Persistence of PulseView + user-authored private lenses.
+  - name: Pulse::Adapters::ActiveRecordViewStore
+    type: class
+    layer: adapter
+    contract: C5
+    status: new
+    dependencies: [Pulse::Ports::ViewStore, PulseView]
+    note: Backed by the pulse_views config table.
+  - name: PulseView
+    type: class
+    layer: adapter
+    contract: C5
+    status: new
+    dependencies: []
+    note: ActiveRecord model for the pulse_views config table (name, owner, visibility, scope, lens_ref, profile_ref, sort, prefs).
+  - name: Pulse::ViewsController
+    type: class
+    layer: adapter
+    contract: C5
+    status: new
+    dependencies: [Pulse::Ports::ViewStore]
+    note: CRUD for views; enforces visibility + :manage_public_pulse_views; .json re-checks permission.
+
+  # ---- C6: alerting (domain + ports + adapters) ----
+  - name: Pulse::Domain::AlertEvent
+    type: class
+    layer: domain
+    contract: C6
+    status: new
+    dependencies: []
+    note: Frozen VO {project_id, event_type, from, to, score, previous_score, delta, occurred_at}.
+  - name: Pulse::Domain::AlertRules
+    type: module
+    layer: domain
+    contract: C6
+    status: new
+    dependencies: [Pulse::Domain::AlertEvent, Pulse::Domain::HealthResult]
+    note: Pure transition detection (prior_state, current HealthResult) → [AlertEvent].
+  - name: Pulse::Ports::AlertStateStore
+    type: port
+    layer: port
+    contract: C6
+    status: new
+    dependencies: []
+    note: Persists per-project prior health state (canonical profile).
+  - name: Pulse::Ports::SubscriptionStore
+    type: port
+    layer: port
+    contract: C6
+    status: new
+    dependencies: []
+    note: Who watches which project's health; plus admin auto-subscribe-role resolution.
+  - name: Pulse::Ports::AlertDelivery
+    type: port
+    layer: port
+    contract: C6
+    status: new
+    dependencies: [Pulse::Domain::AlertEvent]
+    note: Delivers an AlertEvent to a resolved recipient set (mailer + in-app).
+  - name: Pulse::Adapters::ActiveRecordAlertStateStore
+    type: class
+    layer: adapter
+    contract: C6
+    status: new
+    dependencies: [Pulse::Ports::AlertStateStore, PulseAlertState]
+  - name: PulseAlertState
+    type: class
+    layer: adapter
+    contract: C6
+    status: new
+    dependencies: []
+    note: ActiveRecord model for per-project alert-state (reversible migration).
+  - name: Pulse::Adapters::RedmineSubscriptionStore
+    type: class
+    layer: adapter
+    contract: C6
+    status: new
+    dependencies: [Pulse::Ports::SubscriptionStore]
+    note: Watch/subscription lookup mirroring Redmine watchers; re-checks view permission at send.
+  - name: Pulse::Adapters::RedmineAlertDelivery
+    type: class
+    layer: adapter
+    contract: C6
+    status: new
+    dependencies: [Pulse::Ports::AlertDelivery, Pulse::Mailer]
+    note: ActionMailer + Redmine in-app notification delivery.
+  - name: Pulse::Mailer
+    type: class
+    layer: adapter
+    contract: C6
+    status: new
+    dependencies: []
+    note: ActionMailer for health-alert emails (both plural+singular locale unit keys).
+  - name: "rake redmine_pulse:recompute"
+    type: module
+    layer: adapter
+    contract: C6
+    status: new
+    dependencies: [Pulse::Ports::AlertStateStore]
+    note: Warms snapshots; idempotent. Operational entry point (scheduled via cron).
+  - name: "rake redmine_pulse:scan_and_alert"
+    type: module
+    layer: adapter
+    contract: C6
+    status: new
+    dependencies: [Pulse::Domain::AlertRules, Pulse::Ports::AlertDelivery, Pulse::Ports::SubscriptionStore, Pulse::Ports::AlertStateStore]
+    note: Detects transitions, resolves recipients, dispatches; updates state after success.
+
+  # ---- C7: webhooks (port + adapters) ----
+  - name: Pulse::Ports::WebhookDispatcher
+    type: port
+    layer: port
+    contract: C7
+    status: new
+    dependencies: [Pulse::Domain::AlertEvent]
+    note: Delivers an AlertEvent to configured endpoints.
+  - name: Pulse::Adapters::HttpWebhookDispatcher
+    type: class
+    layer: adapter
+    contract: C7
+    status: new
+    dependencies: [Pulse::Ports::WebhookDispatcher, Pulse::Adapters::SsrfGuard]
+    note: Net::HTTP delivery; HMAC-SHA256 signing; HTTPS-only default; ~5s timeout; bounded retry + dead-letter.
+  - name: Pulse::Adapters::SsrfGuard
+    type: class
+    layer: adapter
+    contract: C7
+    status: new
+    dependencies: []
+    note: Resolves target + blocks loopback/RFC1918/169.254.169.254 by default; per-endpoint override.
+  - name: Pulse::Adapters::WebhookPayloadSerializer
+    type: class
+    layer: adapter
+    contract: C7
+    status: new
+    dependencies: [Pulse::Domain::AlertEvent]
+    note: Serializes AlertEvent → versioned JSON per contracts/schemas/webhook-payload.json; redaction option.

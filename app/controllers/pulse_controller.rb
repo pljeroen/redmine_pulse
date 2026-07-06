@@ -130,7 +130,76 @@ class PulseController < PulseBaseController
     toggle_health_watch(subscribe: false)
   end
 
+  # ADMIN-ONLY: run `require_admin` (User.current.admin?) BEFORE #webhook_test — STRICTER than
+  # the :view_pulse authorize_pulse ladder. A non-admin (incl. a :view_pulse-only user) and an
+  # anonymous request are FORBIDDEN (403/redirect) with NO dispatch. This is the SOLE
+  # request-cycle webhook gate (FR-C7-09 / FC-C7-08). Scoped to webhook_test only so the
+  # read-only pulse surface is unaffected.
+  before_action :require_admin, only: :webhook_test
+
+  # POST /pulse/webhook_test — the admin "send test event" diagnostic (C7 / FR-C7-09).
+  # Builds a SYNTHETIC AlertEvent (+ synthetic Project + HealthResult + previous) OFF the domain
+  # scan path and delivers it to EXACTLY ONE operator-selected global endpoint (params[:endpoint]
+  # is its index) via the SHARED HttpWebhookDispatcher pipeline (HTTPS -> SSRF -> serialize ->
+  # HMAC -> POST, ~5s timeout), then SURFACES the resulting HTTP status / error class to the
+  # operator via flash. It contacts ONE endpoint, never the full list.
+  def webhook_test
+    endpoints = configured_global_endpoints
+    endpoint = endpoints[params[:endpoint].to_i]
+    if endpoint.nil?
+      flash[:error] = I18n.t(:error_pulse_webhook_no_endpoint,
+                             default: 'No webhook endpoint is configured at that position.')
+      return redirect_to plugin_settings_path(id: 'redmine_pulse')
+    end
+
+    result = deliver_test_event(endpoint)
+    if result[:ok]
+      flash[:notice] = I18n.t(:notice_pulse_webhook_test_ok, status: result[:status],
+                              default: 'Test webhook delivered (HTTP %{status}).')
+    elsif result[:status]
+      flash[:error] = I18n.t(:error_pulse_webhook_test_status, status: result[:status],
+                             default: 'Test webhook returned HTTP %{status}.')
+    else
+      flash[:error] = I18n.t(:error_pulse_webhook_test_error, error: result[:error],
+                             default: 'Test webhook failed: %{error}.')
+    end
+    redirect_to plugin_settings_path(id: 'redmine_pulse')
+  end
+
   private
+
+  # The configured global webhook endpoints (sanitized-at-write plugin settings). [] when OFF.
+  def configured_global_endpoints
+    settings = Setting.plugin_redmine_pulse
+    settings = {} unless settings.is_a?(Hash)
+    Array(settings['pulse_webhook_endpoints_global']).select { |ep| ep.is_a?(Hash) }
+  end
+
+  # Build the synthetic delivery inputs and run the ONE-endpoint diagnostic through the shared
+  # dispatcher. Returns { ok:, status:, error: }. The synthetic Project/HealthResult are plain
+  # duck-typed value carriers (Struct) so no domain scan or Redmine read is triggered here — the
+  # request cycle stays scan-free (INV-ADDITIVE). The synthetic Project#id mirrors the AlertEvent
+  # project_id so the payload is self-consistent (a representative id, not a real project read).
+  def deliver_test_event(endpoint)
+    occurred_at = Time.now.utc
+    event = Pulse::Domain::AlertEvent.new(
+      project_id: 1, event_type: :rag_transition, from: 'green', to: 'amber',
+      score: 58, previous_score: 72, delta: -14.0, occurred_at: occurred_at
+    )
+    project = WebhookTestProject.new(1, 'pulse-webhook-test', 'Pulse webhook test')
+    health = WebhookTestHealth.new(58, :amber, :risk_load)
+    previous = { rag: 'green', dominant_signal: 'momentum' }
+
+    Pulse::Adapters::HttpWebhookDispatcher.new.deliver_test(
+      event, endpoint, project: project, health_result: health, previous: previous
+    )
+  end
+
+  # Synthetic duck-typed carriers for the test-event payload (id/identifier/name;
+  # health_score/rag/dominant_signal) — the serializer reads these plain readers, so no real
+  # Project/HealthResult (and thus no Redmine/domain read) is needed on the request cycle.
+  WebhookTestProject = Struct.new(:id, :identifier, :name)
+  WebhookTestHealth = Struct.new(:health_score, :rag, :dominant_signal)
 
   # Shared body for watch/unwatch: run the EXACT 404/403 visibility ladder (existence not
   # leaked; module-off / no-view_pulse -> 403), require a real logged-in user (anonymous

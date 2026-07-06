@@ -122,21 +122,26 @@ class RegistrationTest < ActiveSupport::TestCase
                    { controller: 'pulse_api', action: 'project', id: 'abc', format: 'json' })
   end
 
-  def test_routes_file_declares_exactly_fifteen_routes
-    # Static: the plugin routes file declares exactly 15 route verbs (the original 5 +
+  def test_routes_file_declares_exactly_sixteen_routes
+    # Static: the plugin routes file declares exactly 16 route verbs (the original 5 +
     # the 8 additive C5 /pulse/views* routes; FC-C5-17 + the 2 additive C6 health-watch
-    # opt-in routes /projects/:id/pulse/{watch,unwatch}; FR-C6-08) and nothing else — no
-    # route to an unimplemented controller/action. C6 guard-evolution (+2), authorized by
-    # FR-C6-08 exactly as C5 authorized the +8 pulse_views widening: the "Watch project
-    # health" opt-in needs a member POST toggle, and Redmine's core WatchersController is not
-    # reusable (it requires a real Redmine::Acts::Watchable AR target and dereferences
-    # #watchable, which the plugin-private PulseHealth bare-string discriminator deliberately
-    # is not — see redmine_subscription_store.rb), so 2 pulse routes are added.
+    # opt-in routes /projects/:id/pulse/{watch,unwatch}; FR-C6-08 + the 1 additive C7
+    # admin-only "send test event" route POST /pulse/webhook_test; FR-C7-09) and nothing
+    # else — no route to an unimplemented controller/action. C7 guard-evolution (+1),
+    # authorized by FR-C7-09 exactly as C5 authorized the +8 pulse_views widening and C6
+    # the +2 watch/unwatch: the admin diagnostic "send test event" needs a single
+    # request-cycle POST toggle (the SOLE request-cycle webhook dispatch), so 1 pulse route
+    # is added. C6 guard-evolution (+2), authorized by FR-C6-08 exactly as C5 authorized the
+    # +8 pulse_views widening: the "Watch project health" opt-in needs a member POST toggle,
+    # and Redmine's core WatchersController is not reusable (it requires a real
+    # Redmine::Acts::Watchable AR target and dereferences #watchable, which the plugin-private
+    # PulseHealth bare-string discriminator deliberately is not — see
+    # redmine_subscription_store.rb), so 2 pulse routes are added.
     path = File.expand_path('../../../config/routes.rb', File.expand_path(__FILE__))
     src = File.read(path)
     verbs = src.scan(/^\s*(get|post|put|patch|delete|match)\b/).flatten
-    assert_equal 15, verbs.size,
-                 "exactly 15 route declarations expected (5 original + 8 C5 + 2 C6; got #{verbs.size}: #{verbs.inspect})"
+    assert_equal 16, verbs.size,
+                 "exactly 16 route declarations expected (5 original + 8 C5 + 2 C6 + 1 C7; got #{verbs.size}: #{verbs.inspect})"
   end
 
   def test_no_stale_deliverables_or_coverage_gap_route

@@ -62,6 +62,14 @@ module Pulse
           unless events.empty?
             recipients = subscriptions.subscribers_for(project.id)
             events.each { |event| delivery.deliver(event, recipients) }
+
+            # (4b) C7 — ADDITIVE outbound-webhook dispatch on the SAME event stream, AFTER the
+            # C6 email path. Best-effort: the dispatcher dead-letters every failure and never
+            # raises out, so advance_state (5) still runs regardless of webhook outcome (GR-05 /
+            # OI-C6-01). `previous` is the prior alert-state row (GR-03). When no endpoint is
+            # configured for this project the dispatcher's endpoint list is empty and its
+            # per-endpoint loop never runs — ZERO outbound HTTP (the OFF-by-default short-circuit).
+            dispatch_webhooks(project, health, events, prior)
           end
 
           # (5) advance the alert-state AFTER evaluation, once, regardless of delivery
@@ -72,6 +80,50 @@ module Pulse
           all_events.concat(events)
         end
         all_events
+      end
+
+      # C7 — dispatch each event to the operator-configured webhook endpoints for this project
+      # (global + per-project), best-effort. The dispatcher owns HTTPS/SSRF/HMAC/retry/dead-letter
+      # and never raises out, so this call cannot abort the scan or gate advance_state (GR-05).
+      # `previous` (the prior health snapshot for the payload) is derived from the prior
+      # alert-state row: {rag: last_rag, dominant_signal: last_dominant}, or nil on first
+      # observation / an all-nil prior row (GR-03).
+      def dispatch_webhooks(project, health, events, prior)
+        endpoints = webhook_endpoints_for(project.id)
+        return if endpoints.empty? # OFF-by-default: nothing configured => zero outbound HTTP
+
+        dispatcher = Pulse::Adapters::HttpWebhookDispatcher.new(endpoints: endpoints)
+        previous = previous_snapshot(prior)
+        events.each do |event|
+          dispatcher.dispatch(event, project: project, health_result: health, previous: previous)
+        end
+      rescue StandardError
+        # Defense-in-depth: the dispatcher is already best-effort, but a construction-time
+        # failure (e.g. a malformed settings value) must STILL not propagate into the scan.
+        nil
+      end
+
+      # Resolve the endpoint list for a project: the global endpoints plus this project's
+      # per-project endpoints. Reads the (sanitized-at-write) plugin settings; tolerant of a
+      # nil/absent key (OFF => []). Per-project keys are string-keyed by project id.
+      def webhook_endpoints_for(project_id)
+        settings = plugin_settings
+        global = Array(settings['pulse_webhook_endpoints_global'])
+        per_project_map = settings['pulse_webhook_endpoints_per_project']
+        per_project = per_project_map.is_a?(Hash) ? Array(per_project_map[project_id.to_s]) : []
+        (global + per_project).select { |ep| ep.is_a?(Hash) }
+      end
+
+      # Build the payload `previous` snapshot from the prior alert-state row. nil (=> null in the
+      # payload) on first observation or an all-nil prior row (matches AlertRules.first_run?).
+      def previous_snapshot(prior)
+        return nil if prior.nil?
+
+        rag = prior[:last_rag]
+        dominant = prior[:last_dominant]
+        return nil if rag.nil? && dominant.nil?
+
+        { rag: rag, dominant_signal: dominant }
       end
 
       # Persist the just-evaluated canonical health as the new prior (idempotent upsert).

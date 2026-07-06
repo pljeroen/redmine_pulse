@@ -191,3 +191,29 @@ nl:
   label_pulse_alert_event_dominant_change: "belangrijkste aandachtspunt gewijzigd"
   label_pulse_alert_event_no_data_appeared: "geen scoorbare gegevens"
   label_pulse_alert_event_score_delta: "gezondheidsscore sterk veranderd"
+
+  # webhooks-contract (C7 / FR-C7-02/06/09): de sectie voor uitgaande webhooks + de
+  # flash-teksten van de admin-testgebeurtenis. Alle endpoints staan standaard UIT; er wordt
+  # niets verzonden totdat de beheerder een bestemming instelt. Veilige standaarden
+  # (alleen HTTPS, SSRF-bewaking aan) zijn per endpoint te overschrijven.
+  label_pulse_settings_webhooks: "Uitgaande webhooks"
+  label_pulse_help_group_webhooks: "Optionele uitgaande webhooks: bij een gezondheidsovergang POST de scan een ondertekende JSON-payload naar je ingestelde endpoints (rake redmine_pulse:scan_and_alert, cron van de beheerder). Standaard UIT — geen endpoint wordt benaderd totdat je er een toevoegt. Veilige standaarden per endpoint: alleen HTTPS, SSRF-bewaking aan, HMAC-SHA256-handtekening, ~5s time-out, begrensde herhaling."
+  label_pulse_webhook_endpoints_global: "Globale webhook-endpoints"
+  label_pulse_help_webhook_endpoints_global: "Endpoints die de gezondheidsovergangen van elk project ontvangen. Elk endpoint heeft een URL, een HMAC-geheim, een aan/uit-vlag en optionele per-endpoint-overschrijvingen."
+  label_pulse_webhook_url: "Endpoint-URL"
+  label_pulse_webhook_secret: "HMAC-geheim"
+  label_pulse_webhook_enabled: "Ingeschakeld"
+  label_pulse_webhook_event_filter: "Gebeurtenisfilter"
+  label_pulse_help_webhook_event_filter: "Lever alleen deze gebeurtenistypen af. Leeg = lever alles af (rag_transition, dominant_change, no_data_appeared, score_delta)."
+  label_pulse_webhook_ssrf_override: "Niet-openbaar doel toestaan (SSRF-overschrijving)"
+  label_pulse_webhook_allow_http: "Gewone http:// toestaan (geen HTTPS)"
+  label_pulse_webhook_redaction: "Optionele velden weglaten (previous, health.delta)"
+  label_pulse_webhook_send_test: "Testgebeurtenis verzenden"
+  label_pulse_webhook_secret_set: "Er is een geheim ingesteld — laat leeg om het te behouden, of voer een nieuwe waarde in om het te vervangen."
+  label_pulse_webhook_secret_blank_keep: "Laat leeg om het huidige geheim te behouden; voer een waarde in om het in te stellen/te vervangen."
+  label_pulse_webhook_remove: "Dit endpoint verwijderen"
+  label_pulse_webhook_add: "Nog een endpoint toevoegen (vul de lege rij hieronder in en sla op)."
+  notice_pulse_webhook_test_ok: "Testwebhook afgeleverd (HTTP %{status})."
+  error_pulse_webhook_test_status: "Testwebhook gaf HTTP %{status} terug."
+  error_pulse_webhook_test_error: "Testwebhook mislukt: %{error}."
+  error_pulse_webhook_no_endpoint: "Er is geen webhook-endpoint ingesteld op die positie."

@@ -235,7 +235,7 @@ symbols:
     layer: adapter
     contract: C7
     status: new
-    dependencies: [Pulse::Ports::WebhookDispatcher, Pulse::Adapters::SsrfGuard]
+    dependencies: [Pulse::Ports::WebhookDispatcher, Pulse::Adapters::SsrfGuard, Pulse::Adapters::WebhookPayloadSerializer]
     note: Net::HTTP delivery; HMAC-SHA256 signing; HTTPS-only default; ~5s timeout; bounded retry + dead-letter.
   - name: Pulse::Adapters::SsrfGuard
     type: class
@@ -243,7 +243,7 @@ symbols:
     contract: C7
     status: new
     dependencies: []
-    note: Resolves target + blocks loopback/RFC1918/169.254.169.254 by default; per-endpoint override.
+    note: Resolves target + blocks loopback/RFC1918/link-local/169.254.169.254 AND IPv6 loopback ::1/ULA fc00::/7/link-local fe80::/10/IPv4-mapped ::ffff:0:0/96/v6-metadata fd00:ec2::254 by default (resolve-then-check, all address families); per-endpoint override.
   - name: Pulse::Adapters::WebhookPayloadSerializer
     type: class
     layer: adapter

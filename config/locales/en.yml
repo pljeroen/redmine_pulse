@@ -216,3 +216,29 @@ en:
   label_pulse_alert_event_dominant_change: "main concern changed"
   label_pulse_alert_event_no_data_appeared: "no scoreable data"
   label_pulse_alert_event_score_delta: "health score moved sharply"
+
+  # webhooks contract (C7 / FR-C7-02/06/09): the outbound-webhook settings section + the
+  # admin test-event flash strings. All endpoints are OFF by default; nothing is sent until
+  # the operator configures a destination. Safe defaults (HTTPS-only, SSRF-guard on) are
+  # per-endpoint overridable.
+  label_pulse_settings_webhooks: "Outbound webhooks"
+  label_pulse_help_group_webhooks: "Optional outbound webhooks: on a health transition the scan POSTs a signed JSON payload to your configured endpoints (rake redmine_pulse:scan_and_alert, operator cron). OFF by default — no endpoint is contacted until you add one. Safe defaults per endpoint: HTTPS-only, SSRF guard on, HMAC-SHA256 signature, ~5s timeout, bounded retry."
+  label_pulse_webhook_endpoints_global: "Global webhook endpoints"
+  label_pulse_help_webhook_endpoints_global: "Endpoints that receive every project's health transitions. Each endpoint has a URL, an HMAC secret, an enable flag, and optional per-endpoint overrides."
+  label_pulse_webhook_url: "Endpoint URL"
+  label_pulse_webhook_secret: "HMAC secret"
+  label_pulse_webhook_enabled: "Enabled"
+  label_pulse_webhook_event_filter: "Event filter"
+  label_pulse_help_webhook_event_filter: "Only deliver these event types. Empty = deliver all (rag_transition, dominant_change, no_data_appeared, score_delta)."
+  label_pulse_webhook_ssrf_override: "Allow non-public target (SSRF override)"
+  label_pulse_webhook_allow_http: "Allow plain http:// (not HTTPS)"
+  label_pulse_webhook_redaction: "Redact optional fields (previous, health.delta)"
+  label_pulse_webhook_send_test: "Send test event"
+  label_pulse_webhook_secret_set: "A secret is set — leave blank to keep it, or enter a new value to replace it."
+  label_pulse_webhook_secret_blank_keep: "Leave blank to keep the current secret; enter a value to set/replace."
+  label_pulse_webhook_remove: "Remove this endpoint"
+  label_pulse_webhook_add: "Add another endpoint (fill the blank row below and save)."
+  notice_pulse_webhook_test_ok: "Test webhook delivered (HTTP %{status})."
+  error_pulse_webhook_test_status: "Test webhook returned HTTP %{status}."
+  error_pulse_webhook_test_error: "Test webhook failed: %{error}."
+  error_pulse_webhook_no_endpoint: "No webhook endpoint is configured at that position."

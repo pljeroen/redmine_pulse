@@ -45,3 +45,12 @@ delete '/pulse/views/:id',      to: 'pulse_views#destroy'
 #   POST /projects/:id/pulse/unwatch  -> pulse#unwatch  (unsubscribe)
 post '/projects/:id/pulse/watch',   to: 'pulse#watch',   as: 'project_pulse_watch'
 post '/projects/:id/pulse/unwatch', to: 'pulse#unwatch', as: 'project_pulse_unwatch'
+
+# webhooks (C7 / FR-C7-09) — 1 additive ADMIN-ONLY "send test event" route. An admin POSTs
+# with params[:endpoint] (an index into the configured global endpoint list); the action
+# delivers a SYNTHETIC AlertEvent to EXACTLY that ONE endpoint via the shared dispatcher
+# pipeline (HTTPS -> SSRF -> serialize -> HMAC -> POST, ~5s timeout) and surfaces the HTTP
+# status / error class to the operator. Gated on User.current.admin? (require_admin) —
+# STRICTER than the :view_pulse ladder. It is the SOLE request-cycle webhook dispatch.
+#   POST /pulse/webhook_test -> pulse#webhook_test
+post '/pulse/webhook_test', to: 'pulse#webhook_test', as: 'pulse_webhook_test'

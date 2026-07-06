@@ -45,7 +45,14 @@ Redmine::Plugin.register :redmine_pulse do
     # composition root (never the request cycle). nil = disabled (auto-subscribe off /
     # score_delta off).
     'pulse_alert_auto_subscribe_role_id' => nil, # Redmine role id to auto-subscribe (nil = off)
-    'pulse_alert_score_delta_threshold'  => nil  # min |Δscore| to fire score_delta (nil/0 = off)
+    'pulse_alert_score_delta_threshold'  => nil, # min |Δscore| to fire score_delta (nil/0 = off)
+    # webhooks contract (C7 / FR-C7-02): two OFF-by-default webhook-endpoint keys so NO
+    # outbound HTTP fires on install until the operator configures a destination. Both are
+    # consumed ONLY by the rake-task composition root (scan_and_alert) + the admin test-event
+    # action — NEVER the scoring request cycle (INV-ADDITIVE). An empty list is the shipped
+    # state; the dispatcher's per-endpoint loop then never runs (structural short-circuit).
+    'pulse_webhook_endpoints_global'      => [], # Array<EndpointConfig>; [] = off (no endpoints)
+    'pulse_webhook_endpoints_per_project' => {}  # Hash<project_id, Array<EndpointConfig>>; {} = off
     # COND-CA-02 / DEC-12: deliverables_field is REMOVED — it was a deferred feature
     # that never shipped, so the manifest must not advertise it (the settings partial
     # exposes only the CA-23 field set).
@@ -162,6 +169,16 @@ require 'pulse/adapters/redmine_alert_delivery'
 # hooks). It subclasses Redmine's ::Mailer base (loadable by plugin-init time). Its HTML +
 # text views live at app/views/pulse_mailer/ (resolved via the plugin's view path).
 require 'pulse/mailer'
+# webhooks contract (C7): the WebhookDispatcher port (stdlib + domain only) + the three
+# adapters (SSRF guard, payload serializer, HTTP dispatcher). Reachable ONLY from the
+# scan_and_alert composition root + the admin test-event action — NEVER from the scoring
+# request cycle (INV-ADDITIVE; the no-coupling grep confirms the webhook symbols appear on
+# the request cycle solely in pulse_controller's test-event action). All outbound HTTP /
+# DNS / HMAC lives in the adapters (Net::HTTP -> http_webhook_dispatcher; Resolv -> ssrf_guard).
+require 'pulse/ports/webhook_dispatcher'
+require 'pulse/adapters/ssrf_guard'
+require 'pulse/adapters/webhook_payload_serializer'
+require 'pulse/adapters/http_webhook_dispatcher'
 require 'pulse/tasks/canonical_scan'
 require 'pulse/tasks/recompute'
 require 'pulse/tasks/scan_and_alert'

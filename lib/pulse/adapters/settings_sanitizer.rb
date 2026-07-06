@@ -7,7 +7,9 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
+require 'uri'
 require 'pulse/domain/signal_registry'
+require 'pulse/domain/alert_event'
 
 module Pulse
   module Adapters
@@ -196,7 +198,229 @@ module Pulse
         # => validate each profile + role-binding and REJECT invalid entries wholesale.
         sanitize_pulse_profiles(incoming['pulse_profiles'], result, errors)
 
+        # C7 (FR-C7-02 / FC-C7-10 / FC-C7-11) — two ADDITIVE webhook settings keys, OFF by
+        # default. Absent => not synthesized (additivity — pre-existing keys byte-unchanged).
+        # Present => validate each EndpointConfig; a MALFORMED entry REJECTS the whole key and
+        # keeps the prior value (never partially persisted, mirroring the C6 reject-keep-prior).
+        sanitize_webhook_endpoints_global(incoming, previous, result, errors)
+        sanitize_webhook_endpoints_per_project(incoming, previous, result, errors)
+
         [result, errors]
+      end
+
+      # C7 webhook constants. EVENT_TYPES is sourced from the domain AlertEvent (single source
+      # of truth); the redactable set is PINNED to the schema's OPTIONAL fields ONLY.
+      WEBHOOK_EVENT_TYPES = Pulse::Domain::AlertEvent::EVENT_TYPES.map(&:to_s).freeze
+      WEBHOOK_REDACTABLE_FIELDS = %w[previous health.delta].freeze
+      WEBHOOK_ENDPOINTS_GLOBAL_KEY = 'pulse_webhook_endpoints_global'
+      WEBHOOK_ENDPOINTS_PER_PROJECT_KEY = 'pulse_webhook_endpoints_per_project'
+
+      # pulse_webhook_endpoints_global : Array<EndpointConfig>. Additive — only touched when
+      # present. On ANY malformed endpoint the whole key is REJECTED (reported) and the prior
+      # value retained (never partially persisted).
+      def sanitize_webhook_endpoints_global(incoming, previous, result, errors)
+        key = WEBHOOK_ENDPOINTS_GLOBAL_KEY
+        return unless incoming.key?(key)
+
+        list = coerce_endpoint_list(incoming[key])
+        if list.nil?
+          errors << key
+          result[key] = previous[key]
+          return
+        end
+
+        prior_list = Array(previous[key])
+        clean = []
+        list.each do |raw|
+          next if removed_or_empty_endpoint_row?(raw) # WH-02 no-JS remove / empty add row
+
+          ep = sanitize_endpoint_config(raw, prior_secret: prior_secret_for(raw, prior_list))
+          if ep.nil?
+            errors << key
+            result[key] = previous.fetch(key, [])
+            return
+          end
+          clean << ep
+        end
+        result[key] = clean
+      end
+
+      # Coerce the posted endpoint list to an ordered Array. Accepts:
+      #   * an Array (canonical / console / API shape) — returned as-is;
+      #   * a Hash of indexed rows (the no-JS form posts settings[..][0][..], [1][..], [__new__])
+      #     — Rails parses that as a Hash; order numeric keys ascending, the blank __new__ add
+      #     row last, so a save round-trips ALL rows (WH-02: none silently dropped).
+      # Returns nil for any other shape (=> the whole key is rejected, prior kept).
+      def coerce_endpoint_list(raw)
+        return raw if raw.is_a?(Array)
+        return nil unless raw.is_a?(Hash)
+
+        numeric, non_numeric = raw.to_a.partition { |k, _| k.to_s.match?(/\A\d+\z/) }
+        ordered = numeric.sort_by { |k, _| k.to_s.to_i } + non_numeric
+        ordered.map { |_, v| v }
+      end
+
+      # WH-02 (no-JS multi-endpoint editor): a row flagged `remove` is DROPPED; the form's
+      # blank "add" row (marked `add_row` and left empty) is SILENTLY skipped (not an error) —
+      # mirroring the pulse_profiles empty-slot pattern. A row WITHOUT the add_row marker is
+      # NOT auto-skipped: a blank-url canonical/console endpoint still validates (and rejects),
+      # preserving the reject-keep-prior contract for a genuinely malformed entry.
+      def removed_or_empty_endpoint_row?(raw)
+        return false unless raw.is_a?(Hash)
+
+        row = stringify(raw)
+        return true if truthy?(row['remove'])
+
+        truthy?(row['add_row']) && blank?(row['url'])
+      end
+
+      # pulse_webhook_endpoints_per_project : Hash<project_id, Array<EndpointConfig>>. Same
+      # per-endpoint validation as the global key, keyed by project id (string). A malformed
+      # endpoint anywhere REJECTS the whole key and keeps the prior value.
+      def sanitize_webhook_endpoints_per_project(incoming, previous, result, errors)
+        key = WEBHOOK_ENDPOINTS_PER_PROJECT_KEY
+        return unless incoming.key?(key)
+
+        map = incoming[key]
+        unless map.is_a?(Hash)
+          errors << key
+          result[key] = previous[key]
+          return
+        end
+
+        clean = {}
+        map.each do |pid, list|
+          unless list.is_a?(Array)
+            errors << key
+            result[key] = previous.fetch(key, {})
+            return
+          end
+          prior_list = Array((previous[key] || {})[pid.to_s])
+          endpoints = []
+          list.each do |raw|
+            next if removed_or_empty_endpoint_row?(raw)
+
+            ep = sanitize_endpoint_config(raw, prior_secret: prior_secret_for(raw, prior_list))
+            if ep.nil?
+              errors << key
+              result[key] = previous.fetch(key, {})
+              return
+            end
+            endpoints << ep
+          end
+          clean[pid.to_s] = endpoints
+        end
+        result[key] = clean
+      end
+
+      # Validate one EndpointConfig -> a clean string-keyed Hash, or nil if malformed.
+      #   url          : non-blank http(s) URL (WH-03).
+      #   secret       : non-blank String when provided. WH-06 no-JS "keep existing" secret
+      #                  affordance: the settings form renders a BLANK password field for a
+      #                  configured secret (never echoes it) plus a `secret_present` marker.
+      #                  A BLANK submitted secret means "keep the prior secret" when a prior
+      #                  secret exists (preserved via prior_secret) — NOT wipe it on an
+      #                  unrelated save. A NON-blank secret replaces. With no prior secret a
+      #                  blank field stays nil (unsigned — the operator's choice).
+      #   enabled / ssrf_override / allow_http : Boolean, default false.
+      #   event_filter : Array<String> ⊆ EVENT_TYPES, default [] (= all). Any out-of-set
+      #                  entry rejects the endpoint.
+      #   redaction    : false (default) OR an Array of dotted paths ⊆ {previous, health.delta}.
+      #                  Requesting a REQUIRED (non-redactable) field rejects the endpoint
+      #                  (FC-C7-10). `true` is accepted as "redact the whole redactable set".
+      def sanitize_endpoint_config(raw, prior_secret: nil)
+        return nil unless raw.is_a?(Hash)
+
+        ep = stringify(raw)
+
+        url = ep['url']
+        return nil if blank?(url) || !url.is_a?(String)
+        return nil unless http_url?(url) # WH-03: reject non-http(s) schemes at WRITE time
+
+        event_filter = sanitize_event_filter(ep['event_filter'])
+        return nil if event_filter.nil?
+
+        redaction = sanitize_redaction(ep['redaction'])
+        return nil if redaction == :invalid
+
+        {
+          'url' => url,
+          'secret' => resolve_secret(ep, prior_secret),
+          'enabled' => truthy?(ep['enabled']),
+          'ssrf_override' => truthy?(ep['ssrf_override']),
+          'allow_http' => truthy?(ep['allow_http']),
+          'event_filter' => event_filter,
+          'redaction' => redaction
+        }
+      end
+
+      # WH-06: resolve the persisted secret. A NON-blank submitted secret replaces. A BLANK
+      # submitted secret KEEPS the prior secret when one is carried (the "leave blank to keep
+      # current" no-JS affordance — the form never echoes the stored secret), else stays nil
+      # (unsigned). prior_secret is nil unless the caller matched this row to a prior endpoint.
+      def resolve_secret(ep, prior_secret)
+        submitted = ep['secret']
+        return submitted.to_s unless blank?(submitted)
+
+        blank?(prior_secret) ? nil : prior_secret.to_s
+      end
+
+      # Match an incoming endpoint row to its prior secret for the WH-06 keep-blank affordance.
+      # The form emits a hidden `prior_index` for a previously-persisted row; a blank/absent
+      # index (a freshly-added row) has no prior secret. Fail-safe: an out-of-range index
+      # yields nil (no secret leaked, no crash).
+      def prior_secret_for(raw, prior_list)
+        return nil unless raw.is_a?(Hash)
+
+        row = stringify(raw)
+        idx = strict_integer(row['prior_index'])
+        return nil if idx.nil? || idx.negative? || idx >= prior_list.size
+
+        prior = prior_list[idx]
+        prior.is_a?(Hash) ? (prior['secret'] || prior[:secret]) : nil
+      end
+
+      # WH-03: an endpoint url must be an http(s) URL at WRITE time (defense-in-depth
+      # complementing the delivery-time HTTPS/allow_http guard). A non-http(s) scheme
+      # (ftp:/file:/javascript:/…) or an unparseable url rejects the endpoint (reject-keep-
+      # prior, consistent with the sanitizer pattern). fail-closed on parse error.
+      def http_url?(url)
+        scheme = URI.parse(url.to_s).scheme
+        !scheme.nil? && scheme.match?(/\Ahttps?\z/i)
+      rescue URI::InvalidURIError
+        false
+      end
+
+      # event_filter -> Array<String> subset of EVENT_TYPES, or nil if any entry is out of set.
+      # nil/blank/absent => [] (all events).
+      def sanitize_event_filter(raw)
+        return [] if raw.nil? || (raw.respond_to?(:empty?) && raw.empty?)
+        return nil unless raw.is_a?(Array)
+
+        filter = raw.map(&:to_s)
+        return nil unless filter.all? { |t| WEBHOOK_EVENT_TYPES.include?(t) }
+
+        filter
+      end
+
+      # redaction -> false | Array<String> (dotted paths ⊆ redactable set) | :invalid.
+      #   nil / false / '0' / blank        => false (nothing redacted).
+      #   true / '1' / 'true' (scalar)     => the full redactable set (the no-JS checkbox form).
+      #   Array within the redactable set  => that subset.
+      #   Array naming a required field    => :invalid (rejected at write time, FC-C7-10).
+      def sanitize_redaction(raw)
+        return false if raw.nil? || raw == false || (raw.respond_to?(:empty?) && raw.empty?)
+        return WEBHOOK_REDACTABLE_FIELDS.dup if raw == true
+
+        # A scalar (String/Integer) checkbox value: truthy => full set, falsy => nothing.
+        unless raw.is_a?(Array)
+          return truthy?(raw) ? WEBHOOK_REDACTABLE_FIELDS.dup : false
+        end
+
+        fields = raw.map(&:to_s)
+        return :invalid unless fields.all? { |f| WEBHOOK_REDACTABLE_FIELDS.include?(f) }
+
+        fields
       end
 
       # C6 auto-subscribe role id: Integer >= 1, explicit nil = disabled. Additive — the key

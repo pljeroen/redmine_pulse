@@ -202,6 +202,97 @@
   </p>
 </fieldset>
 
+<%# C7 (FR-C7-02/06/09): outbound webhooks. OFF by default — the shipped global list is empty,
+    so the scan makes ZERO outbound HTTP until an endpoint is configured. Server-inline, no-JS,
+    matching the settings idiom (mirrors the pulse_profiles multi-row pattern above). ALL
+    configured GLOBAL endpoints render as editable indexed rows plus one blank "add" row; a
+    per-row "remove" checkbox drops that endpoint. Each row persists as an Array<EndpointConfig>
+    under settings[pulse_webhook_endpoints_global]; SettingsSanitizer validates each endpoint at
+    POST time (bad url scheme / bad event_filter / redaction-of-a-required-field => reject, keep
+    prior) and normalizes the boolean defaults. Safe defaults are per-endpoint overridable (SSRF /
+    HTTPS-only / redaction). The HMAC secret is NEVER echoed (WH-06): a configured secret renders
+    a BLANK password field with a "secret is set" hint + a hidden prior_index — leave blank to
+    keep it, enter a value to replace. Endpoints are consumed by the rake scan composition root;
+    the admin "Send test event" button is the SOLE request-cycle dispatch (admin-gated).
+    Per-project endpoints are managed via the console/API and are PRESERVED untouched across a
+    global-settings save (they are a separate settings key the sanitizer only touches when
+    posted — this global form never emits them, so they are never dropped). %>
+<% webhook_endpoints = Array(settings['pulse_webhook_endpoints_global']).select { |e| e.is_a?(Hash) } %>
+<% webhook_event_types = %w[rag_transition dominant_change no_data_appeared score_delta] %>
+<fieldset class="box tabular pulse-settings-webhooks">
+  <legend><%= t(:label_pulse_settings_webhooks) %></legend>
+  <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_webhooks) %></em></p>
+
+  <%# Persisted endpoints (indexed rows) + one blank "add" row. is_new rows carry an add_row
+      marker so the sanitizer silently skips an untouched blank slot (never a reject). %>
+  <% webhook_rows = webhook_endpoints.each_with_index.map { |ep, i| [i.to_s, ep, i] } + [['__new__', {}, nil]] %>
+  <% webhook_rows.each do |row_key, ep, prior_idx| %>
+    <% is_new = (row_key == '__new__') %>
+    <% base = "settings[pulse_webhook_endpoints_global][#{row_key}]" %>
+    <% ep_filter = Array(ep['event_filter']).map(&:to_s) %>
+    <div class="pulse-webhook-entry box">
+      <% if is_new %>
+        <input type="hidden" name="<%= base %>[add_row]" value="1" />
+      <% else %>
+        <input type="hidden" name="<%= base %>[prior_index]" value="<%= prior_idx %>" />
+      <% end %>
+      <p>
+        <label><%= t(:label_pulse_webhook_url) %></label>
+        <input type="url" name="<%= base %>[url]" value="<%= ep['url'] %>" placeholder="https://" />
+      </p>
+      <p>
+        <label><%= t(:label_pulse_webhook_secret) %></label>
+        <%# WH-06: never echo the stored secret. Blank password field; keep-on-blank. %>
+        <input type="password" name="<%= base %>[secret]" value="" autocomplete="new-password" />
+        <% if !is_new && !ep['secret'].to_s.strip.empty? %>
+          <em class="info"><%= t(:label_pulse_webhook_secret_set) %></em>
+        <% else %>
+          <em class="info"><%= t(:label_pulse_webhook_secret_blank_keep) %></em>
+        <% end %>
+      </p>
+      <p>
+        <label><%= t(:label_pulse_webhook_enabled) %></label>
+        <input type="hidden" name="<%= base %>[enabled]" value="0" />
+        <input type="checkbox" name="<%= base %>[enabled]" value="1" <%= 'checked' if ep['enabled'] %> />
+      </p>
+      <p>
+        <label><%= t(:label_pulse_webhook_event_filter) %></label>
+        <% webhook_event_types.each do |et| %>
+          <label class="pulse-webhook-event-filter">
+            <input type="checkbox" name="<%= base %>[event_filter][]" value="<%= et %>"
+                   <%= 'checked' if ep_filter.include?(et) %> /> <%= et %>
+          </label>
+        <% end %>
+        <em class="info"><%= t(:label_pulse_help_webhook_event_filter) %></em>
+      </p>
+      <p>
+        <label><%= t(:label_pulse_webhook_ssrf_override) %></label>
+        <input type="hidden" name="<%= base %>[ssrf_override]" value="0" />
+        <input type="checkbox" name="<%= base %>[ssrf_override]" value="1" <%= 'checked' if ep['ssrf_override'] %> />
+      </p>
+      <p>
+        <label><%= t(:label_pulse_webhook_allow_http) %></label>
+        <input type="hidden" name="<%= base %>[allow_http]" value="0" />
+        <input type="checkbox" name="<%= base %>[allow_http]" value="1" <%= 'checked' if ep['allow_http'] %> />
+      </p>
+      <p>
+        <label><%= t(:label_pulse_webhook_redaction) %></label>
+        <input type="hidden" name="<%= base %>[redaction]" value="0" />
+        <input type="checkbox" name="<%= base %>[redaction]" value="1"
+               <%= 'checked' if ep['redaction'] && ep['redaction'] != false %> />
+      </p>
+      <% unless is_new %>
+        <p>
+          <label><%= t(:label_pulse_webhook_remove) %></label>
+          <input type="hidden" name="<%= base %>[remove]" value="0" />
+          <input type="checkbox" name="<%= base %>[remove]" value="1" />
+        </p>
+      <% end %>
+    </div>
+  <% end %>
+  <p class="info pulse-webhook-hint"><em class="info"><%= t(:label_pulse_webhook_add) %></em></p>
+</fieldset>
+
 <fieldset class="box tabular pulse-settings-windows">
   <legend><%= t(:label_pulse_settings_windows) %></legend>
   <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_windows) %></em></p>

@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'pulse/domain/signal_result'
 
-# FR-03 / FC-08, FC-31, FC-32.
 # SignalResult VO: nil-consistency invariant (active<=>all-numerics-non-nil),
 # immutability, fail-loud construction on mixed state.
 class SignalResultTest < Minitest::Test
@@ -28,7 +33,7 @@ class SignalResultTest < Minitest::Test
     refute_nil s.n
     refute_nil s.effective_weight
     refute_nil s.contribution
-    assert s.frozen?, 'SignalResult must be frozen (FC-31)'
+    assert s.frozen?, 'SignalResult must be frozen'
   end
 
   def test_inactive_result_all_numerics_nil
@@ -48,7 +53,7 @@ class SignalResultTest < Minitest::Test
     end
   end
 
-  # --- FC-32: fail-loud construction on mixed/partial nil state ---
+  # --- fail-loud construction on mixed/partial nil state ---
   def test_active_with_any_nil_numeric_rejected
     assert_raises(ArgumentError) do
       Pulse::Domain::SignalResult.new(key: :staleness, active: true, raw_value: 1,

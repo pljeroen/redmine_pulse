@@ -9,15 +9,15 @@
 
 module Pulse
   module Adapters
-    # RedmineAlertDelivery — the AlertDelivery port over Pulse::Mailer (C6 / FC-C6-08).
+    # RedmineAlertDelivery — the AlertDelivery port over Pulse::Mailer.
     # v1 is EMAIL-ONLY: it dispatches one Pulse::Mailer.health_alert(user, event) per
     # recipient via deliver_now.
     #
-    # BEST-EFFORT per recipient (OI-C6-01): a per-recipient mailer failure is RESCUED +
+    # BEST-EFFORT per recipient: a per-recipient mailer failure is RESCUED +
     # LOGGED (Rails.logger.error) and MUST NOT propagate out — so one failing recipient
     # never aborts the remaining deliveries NOR the scan_and_alert run, and the alert-state
     # still advances afterwards. The recipient set passed in is ALREADY permission-filtered
-    # by RedmineSubscriptionStore (the permission gate does NOT live here — RISK-C6-01).
+    # by RedmineSubscriptionStore (the permission gate does NOT live here).
     #
     # Reachable ONLY from the scan_and_alert composition root — never on a request cycle.
     class RedmineAlertDelivery

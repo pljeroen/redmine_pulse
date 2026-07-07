@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://redmine-pulse/schemas/webhook-payload.json",
   "title": "redmine_pulse outbound webhook payload",
-  "description": "Read-only health AlertEvent forwarded to an operator-configured endpoint (C7). Versioned; carries snapshot data only.",
+  "description": "Read-only health AlertEvent forwarded to an operator-configured endpoint. Versioned; carries snapshot data only.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "event", "project", "health", "occurred_at", "signature"],

@@ -10,19 +10,17 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# H1 I18n sweep — RED guard for F1–F5 (badge JS hardcoded RAG words + aria prefix).
+# I18n sweep — guard for the badge JS localized RAG words + aria prefix.
 #
-#   I18N-F1..F5  assets/javascripts/project_list_badge.js hardcodes 'Green'/'Amber'/
-#                'Red'/'No data' and the aria prefix 'Health: '. The pure renderer must
-#                NOT hold its own vocabulary; the SERVER must pass the localized RAG words
-#                + an aria FORMAT string down through the inline blob (the existing data
-#                channel), using the already-present label_pulse_rag_* keys, so the JS can
-#                render localized labels with an English fallback.
+#   assets/javascripts/project_list_badge.js must not hardcode 'Green'/'Amber'/'Red'/'No
+#   data' or the aria prefix 'Health: '. The pure renderer must NOT hold its own
+#   vocabulary; the SERVER must pass the localized RAG words + an aria FORMAT string down
+#   through the inline blob (the existing data channel), using the already-present
+#   label_pulse_rag_* keys, so the JS can render localized labels with an English fallback.
 #
 # This is the SERVER half (the inline blob produced by RedminePulseHooks). It asserts the
 # blob carries a "labels" object with the localized RAG words AND a health aria format
-# string. It FAILS NOW (the hook emits only {"projects":[...]}, no "labels" object) and
-# PASSES once A9 extends inline_blob with the server-localized labels.
+# string, so the hook extends the inline blob with the server-localized labels.
 #
 # Postgres-only evidence lane (mirrors project_list_badge_hook_test).
 class I18nBadgeLabelsBlobTest < ActionDispatch::IntegrationTest
@@ -78,16 +76,15 @@ class I18nBadgeLabelsBlobTest < ActionDispatch::IntegrationTest
     JSON.parse(body)
   end
 
-  # ── I18N-F1..F4 : the blob carries a "labels" object with the localized RAG words ──
+  # ── the blob carries a "labels" object with the localized RAG words ──
 
   def test_blob_carries_labels_object_with_localized_rag_words
     ctx = hook_context(controller_name: 'projects', action_name: 'index')
     data = blob_json(emit_as(@user, ctx))
 
     refute_nil data['labels'],
-               'I18N-F1..F5: the inline blob MUST carry a "labels" object so the pure-' \
-               'renderer JS can render LOCALIZED RAG words (the JS must not hold its own ' \
-               'vocabulary). The hook emits only {"projects":[...]} today -> RED.'
+               'the inline blob MUST carry a "labels" object so the pure-renderer JS can ' \
+               'render LOCALIZED RAG words (the JS must not hold its own vocabulary).'
     labels = data['labels']
 
     # The localized RAG words come from the EXISTING label_pulse_rag_* keys (no new key
@@ -100,12 +97,12 @@ class I18nBadgeLabelsBlobTest < ActionDispatch::IntegrationTest
       'rag_no_data' => I18n.t(:label_pulse_rag_no_data)
     }.each do |key, expected|
       assert_equal expected, labels[key],
-                   "I18N-F1..F4: blob labels.#{key} must be the localized RAG word " \
+                   "blob labels.#{key} must be the localized RAG word " \
                    "#{expected.inspect} (from label_pulse_rag_*), so the JS need not hardcode it"
     end
   end
 
-  # ── I18N-F5 : the blob carries a health ARIA FORMAT string (not a JS-side prefix) ──
+  # ── the blob carries a health ARIA FORMAT string (not a JS-side prefix) ──
 
   def test_blob_carries_health_aria_format_string
     ctx = hook_context(controller_name: 'projects', action_name: 'index')
@@ -118,13 +115,13 @@ class I18nBadgeLabelsBlobTest < ActionDispatch::IntegrationTest
     # label_pulse_rag_aria_label key, so the JS formats a LOCALIZED accessible label.
     aria_format = labels['rag_aria_format'] || labels['rag_aria_prefix']
     refute_nil aria_format,
-               'I18N-F5: the blob "labels" object MUST carry a health aria format string ' \
+               'the blob "labels" object MUST carry a health aria format string ' \
                '(rag_aria_format) so the JS can build a LOCALIZED accessible label instead ' \
-               "of the hardcoded 'Health: ' prefix -> RED until A9 adds it"
+               "of a hardcoded 'Health: ' prefix"
     # A format string carries a substitution slot (the word is interpolated, word-order-
     # translatable) — a bare English 'Health: ' prefix does not satisfy this.
     assert_match(/%s|%\{?\w+\}?/, aria_format.to_s,
-                 'I18N-F5: the aria format string must carry a substitution slot (%s / ' \
+                 'the aria format string must carry a substitution slot (%s / ' \
                  "%{state}) for the RAG word, not a fixed prefix. Got: #{aria_format.inspect}")
   end
 end

@@ -14,21 +14,21 @@ require 'pulse/adapters/settings_sanitizer'
 module Pulse
   module Adapters
     # SettingsProvider implementation: maps the plugin Settings into the pure-domain
-    # ScoringConfig (DEC-13 defaults when absent) and exposes the enrichment-mapping
+    # ScoringConfig (defaults when absent) and exposes the enrichment-mapping
     # state. Validates the configured effort field is numeric-format AT READ TIME
-    # (FC-11 / MS-10) so a non-numeric mapping degrades gracefully (effort unmapped)
+    # so a non-numeric mapping degrades gracefully (effort unmapped)
     # rather than summing garbage. Read-only: never writes Redmine domain tables.
     class RedmineSettingsProvider
       PLUGIN_KEY = 'redmine_pulse'
 
-      # Custom-field formats that yield a summable numeric value (FC-11/FC-13).
+      # Custom-field formats that yield a summable numeric value.
       NUMERIC_FORMATS = %w[int float].freeze
 
       def initialize; end
 
       # -> Pulse::Domain::ScoringConfig (defaults when a value is absent/blank).
       #
-      # A10-C2-001 (b): enable_coverage_gap is AUTHORITATIVE for the enabled signal set.
+      # enable_coverage_gap is AUTHORITATIVE for the enabled signal set.
       # weights_from resolves the persisted weights and then reconciles the coverage_gap key
       # against the flag — coverage_gap present iff enabled — so the ScoringConfig enabled set
       # (== dom(weights)) always tracks the flag, never the (possibly drifted) weight-hash keys.
@@ -83,7 +83,7 @@ module Pulse
         Array(raw).map { |v| v.to_s.strip }.reject(&:empty?).map(&:to_i)
       end
 
-      # -> Integer (CT-02 snapshot freshness cap in minutes; blank/absent => default 60,
+      # -> Integer (snapshot freshness cap in minutes; blank/absent => default 60,
       # 0 = disabled). OPERATIONAL cache knob — deliberately NOT a ScoringConfig field
       # (scoring stays scoring-only); the projection engine reads it directly.
       def snapshot_max_age_minutes
@@ -98,13 +98,13 @@ module Pulse
         raw.to_i
       end
 
-      # A10-C2-001 (b) — the enable_coverage_gap flag is AUTHORITATIVE for the enabled set.
+      # The enable_coverage_gap flag is AUTHORITATIVE for the enabled set.
       # -> Boolean: true iff the optional coverage_gap signal is enabled in settings.
       def coverage_gap_enabled?
         SettingsSanitizer.truthy?(settings['enable_coverage_gap'])
       end
 
-      # C4 (FR-C4-02/04) — the admin-defined scoring profiles + role bindings, in the shape
+      # The admin-defined scoring profiles + role bindings, in the shape
       # RedmineProfileProvider consumes: { 'profiles' => {id => {name, weights, ...}},
       # 'role_bindings' => {role_id => profile_id} }. Absent => an empty pair (the synthetic
       # default needs no entry). Read-only passthrough of the sanitizer-validated sub-hash.
@@ -144,7 +144,7 @@ module Pulse
       # Honour explicit weight overrides only when they form a complete, valid set;
       # otherwise fall through to the domain ScoringConfig defaults (nil => defaults).
       #
-      # A10-C2-001 (b): after resolving the persisted weights, RECONCILE the coverage_gap key
+      # After resolving the persisted weights, RECONCILE the coverage_gap key
       # against the AUTHORITATIVE enable flag so the enabled set (dom of weights) tracks the
       # flag, not the raw weight-hash keys:
       #   * enabled + coverage_gap already present  => keep the persisted 6-key map as-is.

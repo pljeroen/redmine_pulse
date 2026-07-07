@@ -16,30 +16,31 @@ module Pulse
   module Domain
     # Pure composite scoring + lens computation. Reads `today` ONLY via clock.today.
     module Scoring
-      # Distinct RAG band for a project with zero scoreable data (THAW-RA-001).
+      # Distinct RAG band for a project with zero scoreable data.
       NO_DATA_RAG = :no_data
 
       module_function
 
-      # round_half_up applied ONCE to score_raw (FC-06). NOT Float#round (no banker's).
+      # round_half_up applied ONCE to score_raw. NOT Float#round (no banker's).
       def round_half_up(x)
         (x + 0.5).floor
       end
 
       # A project with ZERO scoreable data renders a DISTINCT no-data state rather than a
-      # spurious freshness score (THAW-RA-001). Trigger (pure-domain), all four conjuncts
+      # spurious freshness score. Trigger (pure-domain), all four conjuncts
       # PER-PROJECT DATA: no mapped/issue effort, no created/closed activity, no blockers,
       # and no risk issues. risk_raw == 0 (this project has no risk issues) is used instead
       # of risk_mapped, because risk_mapped is GLOBAL config (whether a risk tracker is
       # configured), not per-project data — keying no-data on it never fires for a genuinely
-      # empty project in any instance with a risk tracker configured (aieyes-found escape).
-      # FC-C2-09 (A10-C2-002): when coverage_gap is ENABLED and this project has scoreable
+      # empty project in any instance with a risk tracker configured.
+      # When coverage_gap is ENABLED and this project has scoreable
       # coverage data (open_issue_count > 0), coverage_gap is an ACTIVE signal, so the project
       # is NOT no-data — it has a real signal to score. Without this the four-conjunct
       # short-circuit would return a no-data result BEFORE Signals.coverage_gap is dispatched,
       # suppressing an enabled active signal. The guard is EXACT: when coverage_gap is disabled
-      # (the default), the clause never fires and no_data? is byte-identical to the C1 behavior
-      # (the golden gate's no-data cases are unaffected). config is nil-safe for legacy callers.
+      # (the default), the clause never fires and no_data? is byte-identical to the original
+      # behavior (the golden reference's no-data cases are unaffected). config is nil-safe for
+      # legacy callers.
       def no_data?(metrics, config = nil)
         return false if coverage_gap_active?(metrics, config)
 
@@ -61,9 +62,9 @@ module Pulse
 
       # No-data HealthResult: rag :no_data, nil health_score/dominant_signal, completeness
       # 0.0, one inactive SignalResult per ENABLED signal in canonical order, the 5 lens
-      # keys all nil, and the effort_open passthrough (THAW-RA-001). Carries no Date field
-      # (FC-31). The breakdown key-set/length tracks the config's enabled set (default 5);
-      # on the default config this reproduces the pre-C1 five-row canonical sequence exactly.
+      # keys all nil, and the effort_open passthrough. Carries no Date field.
+      # The breakdown key-set/length tracks the config's enabled set (default 5);
+      # on the default config this reproduces the original five-row canonical sequence exactly.
       def no_data_result(metrics, config)
         HealthResult.new(
           project_id: metrics.project_id,
@@ -97,11 +98,11 @@ module Pulse
           contrib[d.key] = 100.0 * w * d.n
         end
 
-        # FC-C2-09 (e): the at_risk LENS effective weights normalize over the active set
+        # The at_risk LENS effective weights normalize over the active set
         # EXCLUDING coverage_gap, so enabling coverage_gap does NOT shift the at_risk lens
         # (coverage_gap is at_risk?:false — it never enters the lens, and its weight must not
         # enter the lens's normalization base either). On the default-OFF path coverage_gap is
-        # never active, so lens_eff == eff exactly and the byte-identical golden gate holds.
+        # never active, so lens_eff == eff exactly and the byte-identical golden reference holds.
         lens_eff = lens_effective_weights(active, config)
 
         score_raw = active.sum { |d| contrib[d.key] }
@@ -129,7 +130,7 @@ module Pulse
         )
       end
 
-      # FC-C2-09 (e): effective weights for the at_risk LENS, normalized over the active set
+      # Effective weights for the at_risk LENS, normalized over the active set
       # with coverage_gap EXCLUDED from the denominator (coverage_gap is at_risk?:false and
       # must not perturb the lens). When coverage_gap is not active this equals the ordinary
       # effective_weight map (byte-identical default-OFF path). Only the at_risk lens consumes
@@ -148,8 +149,8 @@ module Pulse
 
       # Compute ONLY the enabled signals, emitted in the registry's canonical order
       # restricted to the enabled set. On the default 5-signal set this reproduces the
-      # pre-C1 fixed sequence [staleness, progress, momentum, risk_load, blocked_load]
-      # exactly (same methods, same order) so the byte-identical golden gate holds.
+      # original fixed sequence [staleness, progress, momentum, risk_load, blocked_load]
+      # exactly (same methods, same order) so the byte-identical golden reference holds.
       def collect_data(metrics, clock, config)
         enabled = enabled_in_canonical_order(config)
         enabled.map { |key| compute_signal(key, metrics, clock, config) }
@@ -186,7 +187,7 @@ module Pulse
         end
       end
 
-      # SEVERITY-FIRST (THAW-RA-001): the active signal with the LOWEST normalized health
+      # SEVERITY-FIRST: the active signal with the LOWEST normalized health
       # n (most broken) — argmin_{A} n_i, WEIGHT-INDEPENDENT. Tie -> earlier CANONICAL_ORDER.
       # Never nil on the normal path (the always-active subset guarantees a non-empty active
       # set; CR-01); nil appears ONLY in the no-data state, handled before scoring.
@@ -215,10 +216,10 @@ module Pulse
         staleness = data.find { |d| d.key == :staleness }
         progress = data.find { |d| d.key == :progress }
 
-        # at_risk lens enrichment (FR-26): sum eff*(1-n) over the at_risk signals that
+        # at_risk lens enrichment: sum eff*(1-n) over the at_risk signals that
         # are ENABLED (present in data) AND active. The at_risk subset is sourced from
-        # the registry; iterated in the pinned pre-C1 sequence [risk_load, blocked_load,
-        # staleness] so the Float summation order (hence the byte-identical golden gate)
+        # the registry; iterated in the pinned sequence [risk_load, blocked_load,
+        # staleness] so the Float summation order (hence the byte-identical golden reference)
         # is preserved exactly.
         at_risk = at_risk_sum_keys.sum do |key|
           d = data.find { |x| x.key == key }
@@ -236,7 +237,7 @@ module Pulse
         }
       end
 
-      # The at_risk subset (from the registry) in the FIXED pre-C1 summation order.
+      # The at_risk subset (from the registry) in the FIXED summation order.
       # SignalRegistry.at_risk_keys is the source of truth for MEMBERSHIP; this pins the
       # ORDER of accumulation to the historical sequence so the golden gate stays exact.
       PRE_C1_AT_RISK_ORDER = %i[risk_load blocked_load staleness].freeze

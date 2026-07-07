@@ -9,7 +9,7 @@
 
 module Pulse
   module Domain
-    # Immutable per-signal result. Nil-consistency invariant (FC-32): when active,
+    # Immutable per-signal result. Nil-consistency invariant: when active,
     # ALL numeric fields are non-nil; when inactive, ALL numeric fields are nil.
     class SignalResult
       attr_reader :key, :active, :raw_value, :n, :effective_weight, :contribution
@@ -19,10 +19,10 @@ module Pulse
       def initialize(key:, active:, raw_value:, n:, effective_weight:, contribution:)
         numerics = [raw_value, n, effective_weight, contribution]
         if active && numerics.any?(&:nil?)
-          raise ArgumentError, 'active SignalResult must have all numeric fields non-nil (FC-32)'
+          raise ArgumentError, 'active SignalResult must have all numeric fields non-nil'
         end
         if !active && numerics.any? { |v| !v.nil? }
-          raise ArgumentError, 'inactive SignalResult must have all numeric fields nil (FC-32)'
+          raise ArgumentError, 'inactive SignalResult must have all numeric fields nil'
         end
 
         @key = key

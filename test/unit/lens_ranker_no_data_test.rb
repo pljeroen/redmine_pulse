@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require 'minitest/autorun'
 require 'pulse/adapters/lens_ranker'
 
@@ -11,7 +17,7 @@ require 'pulse/adapters/lens_ranker'
 # sort CONSISTENTLY LAST in every one of the 5 lens orderings — never first, never
 # in the middle. Scoreable projects keep their exact prior worst-first ordering.
 #
-# RED on the pre-fix asymmetric impl: there nil sorted FIRST (worst) under
+# Fails on the pre-fix asymmetric implementation: there nil sorted FIRST (worst) under
 # health/done but LAST (best, via -(nil.to_f) == -0.0) under at_risk/stale/blocked,
 # so the no-data project was NOT last for health/done.
 class LensRankerNoDataTest < Minitest::Test

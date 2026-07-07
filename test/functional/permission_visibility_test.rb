@@ -1,13 +1,19 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # The CRITICAL property suite: every aggregate is computed ONLY over the viewer's
-# visible issue set; non-visible issues never contribute (INV-PERMISSION-SAFE).
-# Postgres-gated (FC-38). RED until A9 builds the adapter.
+# visible issue set; non-visible issues never contribute (permission-safe).
+# Runs on PostgreSQL. Requires the metrics adapter.
 #
-# Canonical access-decision API (A9 implements):
+# Canonical access-decision API:
 #   ms.access_decision(user, project_id) -> :ok | :forbidden | :not_found
 #     :not_found  == HTTP 404 (not in Project.visible / nonexistent / archived)
 #     :forbidden  == HTTP 403 (visible but no view_pulse, or pulse module disabled)
@@ -39,7 +45,7 @@ class PermissionVisibilityTest < ActiveSupport::TestCase
     ms.metrics_for(user, project_ids: [project.id]).first
   end
 
-  # --- MS-35 / FC-06: viewer-scoped aggregates differ for differing visibility -
+  # --- viewer-scoped aggregates differ for differing visibility -
 
   def test_viewer_scoped_aggregates_differ_all_vs_own
     all_user = create_user!(login: 'allviewer')
@@ -62,7 +68,7 @@ class PermissionVisibilityTest < ActiveSupport::TestCase
     refute_equal m_all.effort_total, m_own.effort_total
   end
 
-  # --- MS-06 / FC-06: private issue excluded for non-identity user --------------
+  # --- private issue excluded for non-identity user --------------
 
   def test_private_issue_excluded_for_non_member_identity
     owner_role = create_role!(name: 'OwnerAll', issues_visibility: 'all')
@@ -79,7 +85,7 @@ class PermissionVisibilityTest < ActiveSupport::TestCase
     assert_equal 0, m.event_series.count { |e| e[:type] == :issue_created }
   end
 
-  # --- MS-07 / FC-07: 'own' includes group-assigned issues --------------------
+  # --- 'own' includes group-assigned issues --------------------
 
   def test_own_visibility_includes_group_assigned_issues
     own_role = create_role!(name: 'OwnGrp', issues_visibility: 'own')
@@ -99,7 +105,7 @@ class PermissionVisibilityTest < ActiveSupport::TestCase
     assert_equal 1, m.effort_total, 'group-assigned issue is visible to own-visibility group member'
   end
 
-  # --- MS-16 / FC-17: hidden blocker excluded (incl. cross-project) ------------
+  # --- hidden blocker excluded (incl. cross-project) ------------
 
   def test_hidden_blocker_not_counted_in_blocked_count
     viewer_role = create_role!(name: 'ViewerAll', issues_visibility: 'all')
@@ -126,7 +132,7 @@ class PermissionVisibilityTest < ActiveSupport::TestCase
     assert_equal 1, m_priv.blocked_count, 'privileged user sees the blocker -> counted'
   end
 
-  # --- MS-21 / FC-21: event_series visible-only ---------------------------------
+  # --- event_series visible-only ---------------------------------
 
   def test_event_series_excludes_non_visible_issue_events
     own_role = create_role!(name: 'EvtOwn', issues_visibility: 'own')
@@ -145,7 +151,7 @@ class PermissionVisibilityTest < ActiveSupport::TestCase
     assert_equal 0, m.event_series.size, 'no events from a non-visible issue appear'
   end
 
-  # --- MS-03 / MS-05 / FC-03/FC-04: outer set + portfolio subset ---------------
+  # --- outer set + portfolio subset ---------------
 
   def test_outer_set_excludes_archived_and_invisible
     member_role = create_role!(name: 'OuterAll', issues_visibility: 'all')
@@ -158,7 +164,7 @@ class PermissionVisibilityTest < ActiveSupport::TestCase
 
     ids = ms.portfolio_project_ids(user)
     assert_includes ids, @project.id
-    refute_includes ids, archived.id, 'archived project excluded (DEC-16)'
+    refute_includes ids, archived.id, 'archived project excluded'
   end
 
   def test_portfolio_requires_view_pulse_and_module
@@ -171,7 +177,7 @@ class PermissionVisibilityTest < ActiveSupport::TestCase
     refute_includes ids, @project.id, 'no view_pulse -> omitted, no error raised'
   end
 
-  # --- MS-04 / FC-05: 404 / 403 access-decision matrix -------------------------
+  # --- 404 / 403 access-decision matrix -------------------------
 
   def test_access_decision_404_for_invisible_and_archived
     outsider = create_user!(login: 'outsider') # no membership anywhere

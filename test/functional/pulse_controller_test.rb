@@ -1,14 +1,19 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# CA-10/11/12/20/21/22/24/26 + FC-CA-10b/11b/12b/26/24det/CA-RAG-A11Y +
-# COND-A8-002/003/004: PulseController HTML surfaces — portfolio overview, panel,
+# PulseController HTML surfaces — portfolio overview, panel,
 # refresh POST. Drives real HTTP through the Redmine harness and asserts OBSERVABLE
 # POST-STATE (rendered markup + snapshot rows + write-set), not just status codes.
 #
-# COND-A8-004: PostgreSQL 16 gate. Postgres-gated (FC-CA-38). RED until A9.
+# Runs on PostgreSQL 16.
 class PulseControllerTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -17,8 +22,8 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the other CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
@@ -45,7 +50,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
                       .to_i
   end
 
-  # RT-06: count rows for one (project, visibility_context_id) cell.
+  # count rows for one (project, visibility_context_id) cell.
   def ctx_rows(project, ctx)
     ActiveRecord::Base.connection
                       .select_value(
@@ -55,7 +60,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
                       ).to_i
   end
 
-  # RT-06: a minimal JSON-safe payload for a directly-seeded foreign-context row.
+  # a minimal JSON-safe payload for a directly-seeded foreign-context row.
   def foreign_payload(project)
     { 'project_id' => project.id, 'reference_date' => '2026-06-10',
       'effort_open' => 0, 'effort_total' => 0, 'risk_raw' => 0,
@@ -63,7 +68,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
       'event_series' => [], 'version_due_dates' => [], 'last_activity_at' => nil }
   end
 
-  # ─────────────────────────── INDEX (FC-CA-10b) ────────────────────────────
+  # ─────────────────────────── INDEX ────────────────────────────
 
   def test_index_renders_visible_project_row
     login_as(@user)
@@ -131,12 +136,12 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     login_as(@user)
     get '/pulse'
     assert_response :success
-    # HTML banner localized via I18n.t(:label_pulse_visibility_note) (D-CA-OQ01 HTML side).
+    # HTML banner localized via I18n.t(:label_pulse_visibility_note).
     assert_match(/visible to you/i, response.body,
                  'visibility banner (HTML, localized) must be present')
   end
 
-  # ─────────────────────────── SHOW (FC-CA-11b) ─────────────────────────────
+  # ─────────────────────────── SHOW ─────────────────────────────
 
   def test_show_renders_all_five_signals
     login_as(@user)
@@ -149,7 +154,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
 
   def test_show_inactive_signal_present_with_enable_hint
     # No risk tracker mapped -> risk_load inactive. It MUST still appear (active:false)
-    # with an enable-hint (CA-26 / FC-CA-26), never omitted.
+    # with an enable-hint, never omitted.
     login_as(@user)
     get "/projects/#{@project.identifier}/pulse"
     assert_response :success
@@ -205,10 +210,10 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     get "/projects/#{@project.identifier}/pulse"
     assert_response :success
     refute_match(/projected|estimated/i, response.body,
-                 'no projected/estimated date class may appear (INV-NO-INVENTED-DATES)')
+                 'no projected/estimated date class may appear (no invented dates)')
   end
 
-  # ─────────────────── RAG ACCESSIBILITY (CA-RAG-A11Y / D-CA-OQ04) ───────────
+  # ─────────────────── RAG ACCESSIBILITY ───────────
 
   def test_show_rag_chip_carries_non_color_cue_and_aria_label
     login_as(@user)
@@ -229,10 +234,10 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     get '/pulse'
     assert_response :success
     assert_match(/aria-label|title=/, response.body,
-                 'portfolio-row RAG chip must carry an accessible label (D-CA-OQ04)')
+                 'portfolio-row RAG chip must carry an accessible label')
   end
 
-  # ─────────────────────────── REFRESH (FC-CA-12b) ──────────────────────────
+  # ─────────────────────────── REFRESH ──────────────────────────
 
   def test_refresh_invalidates_only_target_project_snapshots
     other = create_project!(name: 'CtlB', identifier: 'ctlb-proj')
@@ -248,16 +253,15 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     post '/pulse/refresh', params: { project_id: @project.identifier }
     assert_equal 0, snapshot_count(@project), 'refresh deletes the target project snapshots'
     assert_equal before_other, snapshot_count(other),
-                 'refresh MUST NOT touch a different project (per-project scope, CD-CA-04)'
+                 'refresh MUST NOT touch a different project (per-project scope)'
   end
 
-  # ── RT-06 (security-S2-dos): caller-SCOPED refresh (cross-context blast radius) ──
-  # POST /pulse/refresh currently calls store.invalidate_project(project.id), which deletes
-  # EVERY pulse_snapshots row for the project across ALL visibility contexts — so any single
-  # authorized viewer can evict every other viewer's warmed snapshot for that project (a
-  # cross-tenant cache-stampede / amplification lever). The intended fix scopes the delete to
-  # the ACTING user's own visibility_context_id, leaving other contexts' rows intact. RED now:
-  # both the caller's ctx row AND a foreign ctx row are deleted.
+  # ── caller-SCOPED refresh (cross-context blast radius) ──
+  # POST /pulse/refresh must NOT call store.invalidate_project(project.id) unscoped, which
+  # would delete EVERY pulse_snapshots row for the project across ALL visibility contexts — so
+  # any single authorized viewer could evict every other viewer's warmed snapshot for that
+  # project (a cross-tenant cache-stampede / amplification lever). The delete is scoped to
+  # the ACTING user's own visibility_context_id, leaving other contexts' rows intact.
   def test_refresh_deletes_only_the_callers_visibility_context
     login_as(@user)
     # (1) Warm the caller's OWN snapshot cell via a GET (creates a row under the acting
@@ -281,7 +285,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
                  'refresh must evict the acting caller\'s own visibility-context row(s)'
     assert_equal 1, ctx_rows(@project, foreign_ctx),
                  'refresh MUST NOT delete a DIFFERENT visibility context\'s row for the same ' \
-                 'project — the blast radius is the caller\'s context only (RT-06)'
+                 'project — the blast radius is the caller\'s context only'
   end
 
   def test_refresh_redirects_with_flash_notice
@@ -330,7 +334,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     ActionController::Base.allow_forgery_protection = false
   end
 
-  # ─────────────── READ-ONLY runtime write-set guard (FC-CA-11) ──────────────
+  # ─────────────── READ-ONLY runtime write-set guard ──────────────
 
   def test_get_index_writes_no_redmine_domain_table
     login_as(@user)
@@ -356,12 +360,12 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     login_as(@user)
     assert_equal 0, snapshot_count(@project), 'cold: no snapshot yet'
     get "/projects/#{@project.identifier}/pulse"
-    assert_equal 1, snapshot_count(@project), 'cold GET stores exactly one snapshot row (FC-CA-12)'
+    assert_equal 1, snapshot_count(@project), 'cold GET stores exactly one snapshot row'
     get "/projects/#{@project.identifier}/pulse"
-    assert_equal 1, snapshot_count(@project), 'warm GET (same fingerprint) inserts zero rows (FC-CA-20)'
+    assert_equal 1, snapshot_count(@project), 'warm GET (same fingerprint) inserts zero rows'
   end
 
-  # ─────── COND-A8-002: identity-dependent VisibilityContext cache split ───────
+  # ─────── identity-dependent VisibilityContext cache split ───────
 
   def test_own_visibility_users_do_not_share_a_snapshot_cell
     # Two users under an 'own' (identity-dependent) role MUST NOT share a snapshot
@@ -406,10 +410,9 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
   end
 
   # ════════════════════════════════════════════════════════════════════════════
-  # R-B UI COMPLETION (THAW-RB-001) — the aieyes-found PRESENTATION defects + the
-  # R-A domain downstream (severity-first "Main concern" + no-data state). Each
-  # assertion FAILS on the current views (which lack the wiring / crash on no-data)
-  # for the right reason; cited current-view lines are in the RUN_LEDGER.
+  # UI COMPLETION — PRESENTATION defects + the domain downstream (severity-first
+  # "Main concern" + no-data state). Each assertion FAILS on the current views (which
+  # lack the wiring / crash on no-data) for the right reason.
   # ════════════════════════════════════════════════════════════════════════════
 
   # ──────────── finding 2: RAG carries a COLOR class + stylesheet is linked ────
@@ -525,7 +528,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = response.body
     # R-A relabel: the "why" column header must read the Main-concern i18n label, NOT the
-    # old "Dominant signal" wording. (label_pulse_main_concern is a NEW i18n key A9 adds.)
+    # old "Dominant signal" wording. (label_pulse_main_concern is the i18n key.)
     main_concern = I18n.t(:label_pulse_main_concern, default: 'Main concern')
     assert_match(/#{Regexp.escape(main_concern)}/, body,
                  'the portfolio "why" column header must read the Main-concern label (R-A relabel)')
@@ -620,17 +623,17 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
   end
 
   # ════════════════════════════════════════════════════════════════════════════
-  # C4 remediation (A9+A8 fix cycle) — the CONTROLLER-PATH gaps A10 flagged:
-  #   A10-C4-001: a dangling ?profile_id surfaces a visible fallback warning + scores
-  #               default (through the REAL controller -> provider -> engine -> view wiring).
-  #   A10-C4-002: the canonical selector param is ?profile_id (not ?profile).
-  #   A10-C4-003: the portfolio (index) is PROFILED per project — a ?profile_id override
-  #               reweights every project, and the per-project portfolio snapshots are
-  #               profile-partitioned (a distinct fingerprint row from the default one).
+  # Scoring-profile selection on the controller path:
+  #   * a dangling ?profile_id surfaces a visible fallback warning + scores
+  #     default (through the REAL controller -> provider -> engine -> view wiring).
+  #   * the canonical selector param is ?profile_id (not ?profile).
+  #   * the portfolio (index) is PROFILED per project — a ?profile_id override
+  #     reweights every project, and the per-project portfolio snapshots are
+  #     profile-partitioned (a distinct fingerprint row from the default one).
   # ════════════════════════════════════════════════════════════════════════════
 
   # Publish a scoring profile whose weights differ strongly from the global default so its
-  # score is observably distinct. Settings-hash write is test setup (FC-CA-11), not a GET body.
+  # score is observably distinct. Settings-hash write is test setup, not a GET body.
   RISK_HEAVY_WEIGHTS = { 'staleness' => 0.10, 'progress' => 0.10, 'momentum' => 0.10,
                          'risk_load' => 0.35, 'blocked_load' => 0.35 }.freeze
 
@@ -651,7 +654,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     ).to_i
   end
 
-  # ── A10-C4-001 + A10-C4-002: a dangling ?profile_id => 200 + visible warning + default score
+  # ── a dangling ?profile_id => 200 + visible warning + default score
   def test_show_dangling_profile_id_renders_warning_and_falls_back_to_default
     publish_risk_heavy_profile!
     login_as(@user)
@@ -659,7 +662,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     # A missing profile id through the CANONICAL ?profile_id param.
     get "/projects/#{@project.identifier}/pulse", params: { profile_id: 'does-not-exist' }
     assert_response :success, 'a dangling ?profile_id must still render (200), never crash'
-    # The surfaced dangling-fallback warning is visible (FC-C4-12 / FR-C4-09).
+    # The surfaced dangling-fallback warning is visible.
     assert_select 'div.pulse-profile-warning', 1,
                   'a dangling profile selection must surface a visible fallback warning'
     assert_match(/not a published profile|system default/i, response.body,
@@ -676,7 +679,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
                  'a dangling ?profile_id must score under the SYSTEM DEFAULT (same score as no selection)'
   end
 
-  # ── A10-C4-002: the switcher emits name="profile_id" and ?profile_id selects the profile ──
+  # ── the switcher emits name="profile_id" and ?profile_id selects the profile ──
   def test_show_switcher_uses_canonical_profile_id_param
     publish_risk_heavy_profile!
     login_as(@user)
@@ -692,7 +695,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
                  'a valid ?profile_id must resolve the named profile (scored-under header)')
   end
 
-  # ── A10-C4-003: the portfolio scores under a ?profile_id override, partitioned per project ──
+  # ── the portfolio scores under a ?profile_id override, partitioned per project ──
   def test_index_profile_id_override_reprofiles_and_partitions_portfolio
     publish_risk_heavy_profile!
     login_as(@user)
@@ -708,11 +711,11 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     # The override produced a DISTINCT per-project snapshot fingerprint (profile-partitioned):
     # no cross-serve of the default row to the profiled request.
     assert_operator distinct_snapshot_fingerprints(@project), :>, default_fps,
-                    'A10-C4-003: a ?profile_id override must warm a DISTINCT per-project ' \
+                    'a ?profile_id override must warm a DISTINCT per-project ' \
                     'snapshot fingerprint on the portfolio (profile-partitioned, no cross-serve)'
   end
 
-  # ── A10-C4-003: a role-bound profile reprofiles the portfolio WITHOUT any ?profile_id ──
+  # ── a role-bound profile reprofiles the portfolio WITHOUT any ?profile_id ──
   def test_index_role_bound_profile_partitions_portfolio_without_explicit_selection
     publish_risk_heavy_profile!(role_binding: { role_id: @role.id, profile_id: 'risk-heavy' })
     login_as(@user)
@@ -731,11 +734,11 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     get '/pulse'
     assert_response :success
     assert_operator distinct_snapshot_fingerprints(@project), :>=, 2,
-                    'A10-C4-003: a role-bound viewer and a default viewer must occupy DISTINCT ' \
+                    'a role-bound viewer and a default viewer must occupy DISTINCT ' \
                     'per-project portfolio snapshot fingerprints (per-project profile resolution)'
   end
 
-  # ── A10-C4-001 (index path): a dangling ?profile_id => 200 + visible warning on the INDEX +
+  # ── (index path): a dangling ?profile_id => 200 + visible warning on the INDEX +
   #    default score (mirrors the show-page dangling test on the portfolio/index page). ──
   def test_index_dangling_profile_id_renders_warning_and_falls_back_to_default
     publish_risk_heavy_profile!
@@ -744,7 +747,7 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
     # A missing profile id through the CANONICAL ?profile_id GLOBAL override on the portfolio.
     get '/pulse', params: { profile_id: 'does-not-exist' }
     assert_response :success, 'a dangling ?profile_id must still render the index (200), never crash'
-    # The surfaced dangling-fallback warning is VISIBLE on the index (FC-C4-12 / FR-C4-09).
+    # The surfaced dangling-fallback warning is VISIBLE on the index.
     assert_select 'div.pulse-profile-warning', 1,
                   'a dangling profile selection must surface a visible fallback warning on the index'
     assert_match(/not a published profile|system default/i, response.body,

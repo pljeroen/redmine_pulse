@@ -1,16 +1,23 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 
-# FC-C2-13 / INV-PURE-DOMAIN — the C2-touched domain files import ZERO external deps
-# (stdlib / intra-pulse-domain only): no Rails/ActiveRecord/Redmine, no I/O, no adapter
-# require (adapter->domain only). The adapter (RedmineMetricsSource) does ALL AR I/O.
+# The domain layer uses only the standard library (or intra-pulse-domain requires):
+# the coverage-gap domain files import ZERO external deps — no Rails/ActiveRecord/Redmine,
+# no I/O, no adapter require (adapter->domain only). The adapter (RedmineMetricsSource)
+# does ALL AR I/O.
 #
-# Structural source-scan of the FOUR C2-touched domain files (signals.rb gains
+# Structural source-scan of the four coverage-gap domain files (signals.rb gains
 # coverage_gap; signal_registry.rb gains default_on + coverage_gap; scoring.rb gains the
-# compute_signal branch; project_metrics.rb gains the two coverage fields). RED-safe: if a
-# file is missing the test flags it; the scan itself passes today (the files are pure) and
-# stays GREEN through A9 provided A9 does not introduce an external dep in the C2 edits.
+# compute_signal branch; project_metrics.rb gains the two coverage fields). If a file is
+# missing the test flags it; the scan passes as long as the files stay pure (no external
+# dep introduced in the coverage-gap edits).
 class CoverageGapDomainPurityTest < Minitest::Test
   ROOT = File.expand_path('../../../..', __FILE__)
   FILES = %w[
@@ -21,7 +28,7 @@ class CoverageGapDomainPurityTest < Minitest::Test
   ].map { |p| File.join(ROOT, p) }.freeze
 
   def test_all_c2_domain_files_exist
-    FILES.each { |f| assert File.exist?(f), "C2-touched domain file must exist: #{f}" }
+    FILES.each { |f| assert File.exist?(f), "coverage-gap domain file must exist: #{f}" }
   end
 
   def test_no_external_or_adapter_requires
@@ -33,7 +40,7 @@ class CoverageGapDomainPurityTest < Minitest::Test
       %r{require(_relative)?\s+['"]redmine},
       %r{require(_relative)?\s+['"]net/},
       %r{require(_relative)?\s+['"]open-uri['"]},
-      %r{require\s+['"]pulse/adapters}, # domain must NEVER require an adapter (FC-C2-13)
+      %r{require\s+['"]pulse/adapters}, # domain must NEVER require an adapter
       %r{\bautoload\b},
       %r{\brequire_dependency\b}
     ]
@@ -41,7 +48,7 @@ class CoverageGapDomainPurityTest < Minitest::Test
       src = File.read(f)
       forbidden.each do |pat|
         refute_match pat, src,
-                     "#{File.basename(f)}: forbidden external/adapter require (#{pat.source}) (FC-C2-13)"
+                     "#{File.basename(f)}: forbidden external/adapter require (#{pat.source})"
       end
     end
   end
@@ -55,7 +62,7 @@ class CoverageGapDomainPurityTest < Minitest::Test
         target = Regexp.last_match(2)
         ok = allow_stdlib.include?(target) ||
              target.start_with?('pulse/domain/', 'pulse/ports/')
-        assert ok, "#{File.basename(f)}: require '#{target}' not on stdlib/intra-domain allowlist (FC-C2-13)"
+        assert ok, "#{File.basename(f)}: require '#{target}' not on stdlib/intra-domain allowlist"
       end
     end
   end
@@ -70,7 +77,7 @@ class CoverageGapDomainPurityTest < Minitest::Test
       src = File.read(f)
       banned.each do |pat|
         refute_match pat, src,
-                     "#{File.basename(f)}: banned AR/Redmine/system token #{pat.source} (INV-PURE-DOMAIN)"
+                     "#{File.basename(f)}: banned AR/Redmine/system token #{pat.source}"
       end
     end
   end

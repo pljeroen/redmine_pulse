@@ -9,25 +9,25 @@
 
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 
-# DEF-RG-01 (fix-cycle CT-02 / project-list-badge) — PRODUCTION EAGER-LOAD SAFETY.
+# PRODUCTION EAGER-LOAD SAFETY.
 #
-# THE ESCAPED DEFECT
-# ------------------
+# THE DEFECT
+# ----------
 # Redmine 6.x adds each plugin's lib/ to Zeitwerk (Rails.autoloaders.main) and
 # EAGER-LOADS it when RAILS_ENV=production. Zeitwerk derives the constant a file
 # is EXPECTED to define from the file's path:
 #
 #     lib/redmine_pulse/hooks.rb  =>  RedminePulse::Hooks
 #
-# The R-G implementation instead defines a TOP-LEVEL constant `RedminePulseHooks`
+# The original implementation instead defines a TOP-LEVEL constant `RedminePulseHooks`
 # in that file. Under eager-load this path/constant mismatch makes
 # `Rails.application.eager_load!` raise:
 #
 #     NameError: uninitialized constant RedminePulse::Hooks
 #     (Zeitwerk: expected file .../lib/redmine_pulse/hooks.rb to define RedminePulse::Hooks)
 #
-# WHY THE EXISTING GREEN SUITE MISSED IT
-# --------------------------------------
+# WHY THE EXISTING TEST SUITE MISSED IT
+# -------------------------------------
 # RAILS_ENV=test has eager_load OFF, and init.rb does an EXPLICIT
 # `require 'redmine_pulse/hooks'` which defines `RedminePulseHooks` the classic
 # (non-Zeitwerk) way. So every existing test boots fine and the crash only ever
@@ -38,15 +38,16 @@ require File.expand_path('../../../../../test/test_helper', File.expand_path(__F
 # ---------
 # This test FORCES the exact production condition inside the test suite by calling
 # `Rails.application.eager_load!` explicitly (the test-env boot itself does not).
-# It is RED now (NameError as above) and goes GREEN once the file/constant Zeitwerk
+# It fails now (NameError as above) and passes once the file/constant Zeitwerk
 # mismatch is resolved. The whole app's lib/pulse/** tree already path-matches its
 # constants (e.g. lib/pulse/domain/scoring_config.rb => Pulse::Domain::ScoringConfig),
 # so the FIRST and ONLY constant eager_load! trips on is RedminePulse::Hooks — making
-# this assertion specific to DEF-RG-01 and not a sink for unrelated zeitwerk noise.
+# this assertion specific to the hook path/constant mismatch and not a sink for
+# unrelated zeitwerk noise.
 class EagerLoadSafetyTest < ActiveSupport::TestCase
   # The faithful, minimal production-condition assertion: eager-loading the whole
   # application (what RAILS_ENV=production does at boot) must raise nothing.
-  # RED until the lib/redmine_pulse/hooks.rb path/constant mismatch is fixed.
+  # Fails until the lib/redmine_pulse/hooks.rb path/constant mismatch is fixed.
   def test_application_eager_loads_without_raising
     assert_nothing_raised do
       Rails.application.eager_load!

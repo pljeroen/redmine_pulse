@@ -1,15 +1,19 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require 'minitest/autorun'
 require 'yaml'
 
-# CA-28 / FC-CA-28 (SHOULD/tier-2, but a hard pass/fail lint): I18N COVERAGE.
+# I18N COVERAGE (a hard pass/fail lint).
 # Path-based (no Redmine env): scans app/views/**/*.erb + app/controllers/*.rb and
 # asserts (a) every key used in a t()/I18n.t() call resolves in config/locales/en.yml,
-# and (b) the 5 NEW canonicalized keys (D-CA-OQ01/04) are present. Developer-facing
-# strings (logs, exception messages) are exempt.
-#
-# RED until A9 writes the views/controllers + extends en.yml.
+# and (b) the 5 canonicalized keys are present. Developer-facing strings (logs,
+# exception messages) are exempt.
 class I18nCoverageTest < Minitest::Test
   ROOT = File.expand_path('../../..', __FILE__)
   LOCALE = File.join(ROOT, 'config/locales/en.yml')
@@ -60,7 +64,7 @@ class I18nCoverageTest < Minitest::Test
     have = locale_keys
     NEW_KEYS.each do |k|
       assert_includes have, k,
-                      "config/locales/en.yml must define #{k} (D-CA-OQ01/04)"
+                      "config/locales/en.yml must define #{k}"
     end
   end
 
@@ -69,15 +73,15 @@ class I18nCoverageTest < Minitest::Test
   def test_every_used_key_resolves_in_en_yml
     have = locale_keys
     erbs = Dir[File.join(ROOT, 'app/views/**/*.erb')]
-    flunk 'no views yet (RED until A9)' if erbs.empty?
+    flunk 'no views found' if erbs.empty?
     missing = used_keys.reject { |k| have.include?(k) || have.include?(k.split('.').last) }
     assert_empty missing,
                  "t() keys with no en.yml entry: #{missing.inspect}"
   end
 
-  # ── snapshot-max-age-refresh (CT-02 EVOLUTION): the new label + help keys ───
+  # ── snapshot-max-age-refresh: the new label + help keys ───
   # The freshness-cap setting adds a label and an inline-help i18n key; both must be
-  # defined in en.yml. RED until GREEN extends config/locales/en.yml.
+  # defined in en.yml.
 
   SNAPSHOT_MAX_AGE_KEYS = %w[
     label_pulse_snapshot_max_age_minutes

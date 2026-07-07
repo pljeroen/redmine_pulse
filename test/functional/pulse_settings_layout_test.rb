@@ -11,24 +11,24 @@ require File.expand_path('../../../../../test/test_helper', File.expand_path(__F
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'nokogiri'
 
-# settings-ui-overlap-remediation (CT-03 BUGFIX): the two settings-page label-overlap
+# settings-page label-overlap fix: the two settings-page label-overlap
 # defects. Redmine core CSS floats EVERY `p label` into a fixed ~200px left column, so a
 # settings `<p>` containing MORE THAN ONE `<label>` stacks those labels on top of each
 # other. The plugin ships redmine_pulse.css but defines NO float-neutralizing rule for the
 # two multi-control rows, so their labels fall back to the floated core style and overlap.
 #
-#   DEF-01 (AC-01) — role-bindings entry `<p>` (partial lines 138-145) has TWO plain
+#   Defect 1 — the role-bindings entry `<p>` (partial lines 138-145) has TWO plain
 #     <label> children (role_id + profile_id); both float into the same grid column.
-#   DEF-02 (AC-02) — the event-filter group labels carry class="pulse-webhook-event-filter"
+#   Defect 2 — the event-filter group labels carry class="pulse-webhook-event-filter"
 #     in markup (partial lines 258-267) but that class is UNDEFINED in the stylesheet, so
 #     the four event-type checkbox labels float and jumble too.
 #
-# T-01 (structural render) + T-02 (CSS rule presence) are RED now against the current
-# buggy markup/CSS and pass only once A9's fix lands. T-03 is a standing no-field-dropped
-# regression guard (INV-01 byte-identical POST) — green before AND after.
+# T-01 (structural render) + T-02 (CSS rule presence) check the current markup/CSS against
+# the intended layout; T-03 is a standing no-field-dropped regression guard (the settings
+# POST must stay byte-identical).
 #
-# Postgres-gated for the RENDERED tests (T-01, T-03) to match the existing settings render
-# evidence lane (settings_render_test.rb / FC-CA-38). T-02 is a pure static CSS file read
+# The RENDERED tests (T-01, T-03) run on PostgreSQL to match the existing settings render
+# suite (settings_render_test.rb). T-02 is a pure static CSS file read
 # with NO DB dependency, so it runs on EVERY adapter (it does not consult the Postgres gate).
 class PulseSettingsLayoutTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
@@ -91,7 +91,7 @@ class PulseSettingsLayoutTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # ── T-01 (AC-01 / DEF-01, DEF-02, FR-03) — RED NOW ──────────────────────────
+  # ── T-01: at most one grid-level label per settings paragraph ──────────────────────────
   # Every settings <p> in the Pulse form must expose AT MOST ONE grid-level (floated)
   # <label>. Fails today because the role-bindings entry <p> (partial 138-145) holds two
   # plain <label>s (role_id + profile_id), and (once markup is examined) the event-filter
@@ -118,13 +118,13 @@ class PulseSettingsLayoutTest < ActionDispatch::IntegrationTest
     end
 
     assert_empty offenders,
-                 'AC-01/DEF-01: every settings <p> must expose AT MOST ONE grid-level ' \
+                 'every settings <p> must expose AT MOST ONE grid-level ' \
                  '(floated) <label>; grouped labels must carry the non-floating opt-out ' \
                  "class. Offending <p>(s):\n" +
                  offenders.map { |p| "  * #{p.text.gsub(/\s+/, ' ').strip.inspect}" }.join("\n")
   end
 
-  # ── T-02 (AC-02 / DEF-02) — RED NOW ─────────────────────────────────────────
+  # ── T-02: the stylesheet neutralizes the float for grouped labels ─────────────────────────────────────────
   # redmine_pulse.css must define a float-NEUTRALIZING rule for the grouped event-filter
   # labels (`.pulse-webhook-event-filter` => float:none + a non-grid width/inline display),
   # AND at least one `float:none` rule scoped to SOME `pulse-`-prefixed settings class (the
@@ -143,31 +143,31 @@ class PulseSettingsLayoutTest < ActionDispatch::IntegrationTest
     # text rather than parsing the cascade: the selector token is present, `float:none;` is
     # present, and a non-grid width/inline-display token is present.
     assert_includes css, '.pulse-webhook-event-filter',
-                    'AC-02/DEF-02: redmine_pulse.css must define a rule targeting ' \
+                    'redmine_pulse.css must define a rule targeting ' \
                     '.pulse-webhook-event-filter (the class is applied in the ERB but ' \
                     'currently UNDEFINED in CSS)'
     assert_match(/float:none;?/, css,
-                 'AC-02/DEF-02: the event-filter group must neutralize the core float ' \
+                 'the event-filter group must neutralize the core float ' \
                  '(float:none) so the four checkbox labels no longer stack')
     assert_match(/width:auto;?|display:inline(?:-block)?;?/, css,
-                 'AC-02/DEF-02: the grouped labels must drop the fixed grid width ' \
+                 'the grouped labels must drop the fixed grid width ' \
                  '(width:auto or display:inline*) so they lay out inline, not in the ' \
                  '~200px float column')
 
     # (b) fix-agnostic guard for the role-binding inline sub-labels: at least one
     # `float:none` declaration must be scoped to SOME `pulse-`-prefixed settings class, so
-    # A9 must add a REAL neutralizing rule (not a no-op). We assert a `.pulse-...` selector
+    # the stylesheet must add a REAL neutralizing rule (not a no-op). We assert a `.pulse-...` selector
     # co-occurs with a float:none block. The event-filter rule above already satisfies this
     # weaker property, but we assert it explicitly so the intent is a standing falsifier:
     # a stylesheet whose ONLY float:none is unscoped (bare `label { float:none }`) fails.
     pulse_float_none = css.scan(/\.pulse-[a-z0-9-]+[^{}]*\{[^}]*float:none;?[^}]*\}/i)
     assert pulse_float_none.any?,
-           'AC-02/FR-01: at least one float:none rule must be scoped to a pulse-prefixed ' \
+           'at least one float:none rule must be scoped to a pulse-prefixed ' \
            'settings class (the role-binding inline sub-labels), so the fix is real CSS ' \
            'and not a no-op / unscoped override'
   end
 
-  # ── T-03 (INV-01 no-field-dropped regression guard) — STANDING (green before + after) ──
+  # ── T-03: no-field-dropped regression guard (the settings POST stays byte-identical) ──
   # The presentation fix MUST NOT silently drop any load-bearing form field. Assert the
   # rendered settings form STILL contains every load-bearing input `name` so the POST stays
   # byte-identical across the fix. Falsifier: a fix that renames/removes any of these names
@@ -178,31 +178,31 @@ class PulseSettingsLayoutTest < ActionDispatch::IntegrationTest
 
     # Role-binding pair inputs (the __new__ blank slot always renders): role_id + profile_id.
     assert doc.css('input[name*="[role_bindings_pairs]"][name$="[role_id]"]').any?,
-           'INV-01: the role-binding role_id input must remain in the form'
+           'the role-binding role_id input must remain in the form'
     assert doc.css('input[name*="[role_bindings_pairs]"][name$="[profile_id]"]').any?,
-           'INV-01: the role-binding profile_id input must remain in the form'
+           'the role-binding profile_id input must remain in the form'
 
     # Webhook event_filter[] checkboxes for ALL FOUR event types (the blank __new__ endpoint
     # row always renders them), each an <input ... value="<event>">.
     %w[rag_transition dominant_change no_data_appeared score_delta].each do |et|
       assert doc.css("input[name$='[event_filter][]'][value='#{et}']").any?,
-             "INV-01: the webhook event_filter checkbox for #{et} must remain in the form"
+             "the webhook event_filter checkbox for #{et} must remain in the form"
     end
 
     # The webhook endpoint editor fields (url/secret/enabled/ssrf_override/allow_http/
     # redaction) — the checkbox trio has a hidden `0` companion + the checkbox; assert both
     # url + secret text inputs and each toggle name is present at least once.
     assert doc.css("input[name$='[url]']").any?,
-           'INV-01: the webhook endpoint url input must remain in the form'
+           'the webhook endpoint url input must remain in the form'
     assert doc.css("input[name$='[secret]']").any?,
-           'INV-01: the webhook endpoint secret input must remain in the form'
+           'the webhook endpoint secret input must remain in the form'
     %w[enabled ssrf_override allow_http redaction].each do |field|
       assert doc.css("input[name$='[#{field}]']").any?,
-             "INV-01: the webhook endpoint #{field} control must remain in the form"
+             "the webhook endpoint #{field} control must remain in the form"
     end
   end
 
-  # ── T-04 (E1 self-service copy) — the manager-friendly overview + section intros ──
+  # ── T-04 (self-service copy) — the manager-friendly overview + section intros ──
   # The self-service overhaul MUST surface (a) the top-of-page plain-language overview and
   # (b) a short intro under every fieldset section. Assert the rendered page contains the
   # overview block carrying the overview copy, and that each of the seven per-section
@@ -224,30 +224,30 @@ class PulseSettingsLayoutTest < ActionDispatch::IntegrationTest
     doc = render_settings_page
 
     overview = doc.css('.pulse-settings-overview')
-    assert overview.any?, 'E1: the top-of-page self-service overview block must render'
+    assert overview.any?, 'the top-of-page self-service overview block must render'
     overview_text = overview.text.gsub(/\s+/, ' ').strip
     expected_overview = I18n.t(:label_pulse_settings_overview).gsub(/\s+/, ' ').strip
     assert_includes overview_text, expected_overview.slice(0, 40),
-                    'E1: the overview block must carry the overview copy (not empty/missing)'
+                    'the overview block must carry the overview copy (not empty/missing)'
 
     intros = doc.css('.pulse-group-intro')
     assert_operator intros.size, :>=, SECTION_INTRO_KEYS.size,
-                    "E1: expected an intro <p> for each of the #{SECTION_INTRO_KEYS.size} sections"
+                    "expected an intro <p> for each of the #{SECTION_INTRO_KEYS.size} sections"
     intros.each do |p|
       refute p.text.gsub(/\s+/, ' ').strip.empty?,
-             'E1: every section intro must render non-empty copy'
+             'every section intro must render non-empty copy'
     end
 
     # Each section-intro key must resolve to real copy in the rendered page.
     SECTION_INTRO_KEYS.each do |key|
       snippet = I18n.t(key).gsub(/\s+/, ' ').strip.slice(0, 30)
       assert_includes doc.text.gsub(/\s+/, ' '), snippet,
-                      "E1: the rendered page must contain the #{key} section intro copy"
+                      "the rendered page must contain the #{key} section intro copy"
     end
   end
 
-  # ── T-05 (i18n parity) — every E1 key exists in BOTH locales with the same %{vars} ──
-  # A light falsifiable guard mirroring the nl_locale_parity contract for the NEW E1 keys:
+  # ── T-05 (i18n parity) — every self-service key exists in BOTH locales with the same %{vars} ──
+  # A light guard mirroring the nl-locale parity checks for the NEW self-service keys:
   # the overview + the seven section intros + the rewritten field-help keys must be present
   # and non-empty in en AND nl. Falsifier: add an en key without its nl twin => fails.
   E1_NEW_KEYS = ([:label_pulse_settings_overview] + SECTION_INTRO_KEYS + %i[
@@ -281,9 +281,9 @@ class PulseSettingsLayoutTest < ActionDispatch::IntegrationTest
       en = I18n.t(key, locale: :en, default: nil)
       nl = I18n.t(key, locale: :nl, default: nil)
       assert en && !en.to_s.strip.empty?,
-             "E1 parity: #{key} must be present and non-empty in the English locale"
+             "locale parity: #{key} must be present and non-empty in the English locale"
       assert nl && !nl.to_s.strip.empty?,
-             "E1 parity: #{key} must be present and non-empty in the Dutch locale"
+             "locale parity: #{key} must be present and non-empty in the Dutch locale"
     end
   end
 end

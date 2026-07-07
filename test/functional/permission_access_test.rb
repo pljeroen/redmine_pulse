@@ -1,11 +1,17 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# CA-07 / CA-09 / FC-CA-01 / FC-CA-02: THE 404-vs-403 ACCESS DECISION MATRIX, end
+# THE 404-vs-403 ACCESS DECISION MATRIX, end
 # to end through the HTTP layer (both HTML show and JSON project actions). Each row
-# R1..R9 of the FC-CA-02 ACCESS-DECISION-TABLE is a discrete, independently
+# R1..R9 of the access-decision table is a discrete, independently
 # falsifiable assertion.
 #
 #   R1 nonexistent id                 -> 404
@@ -18,9 +24,9 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #   R8 JSON action, rest_api disabled -> Redmine 401/403 (decided before R1-R6)
 #   R9 JSON action, rest on, no/invalid key, not logged in -> Redmine 401/403
 #
-# COND-A8-004: this suite MUST run on PostgreSQL 16 (the production engine) — the
+# this suite MUST run on PostgreSQL 16 (the production engine) — the
 # Project.visible / allowed_to? SQL composition is verified on the deployed engine.
-# Postgres-gated (FC-CA-38). RED until A9 builds the controllers + routes.
+# Requires the controllers + routes.
 class PermissionAccessTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -29,9 +35,9 @@ class PermissionAccessTest < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004: production-engine gate — the access SQL must be verified on Postgres.
-    # CI MySQL legs (GL-CI-MYSQL): this is the Postgres-evidence lane; skip on non-Postgres
-    # adapters (counted as skips, not failures) so the MySQL legs stay green. On Postgres
+    # production-engine gate — the access SQL must be verified on Postgres.
+    # This is the Postgres-evidence lane; skip on non-Postgres
+    # adapters (counted as skips, not failures) so the other CI legs stay green. On Postgres
     # (local harness + Postgres CI legs) the guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
@@ -187,7 +193,7 @@ class PermissionAccessTest < ActionDispatch::IntegrationTest
     outsider = create_user!(login: 'emptyport') # sees no pulse projects
     login_as(outsider)
     get '/pulse'
-    assert_response :success, 'an empty portfolio renders 200 (empty state), never 404 (FC-CA-10)'
+    assert_response :success, 'an empty portfolio renders 200 (empty state), never 404'
   end
 
   private

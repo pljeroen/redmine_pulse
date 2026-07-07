@@ -16,7 +16,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 require 'pulse/adapters/settings_sanitizer'
 
-# C7 / FR-C7-02 / FC-C7-10 / FC-C7-11 — two ADDITIVE webhook settings keys, OFF by default:
+# Two ADDITIVE webhook settings keys, OFF by default:
 #   pulse_webhook_endpoints_global      : Array<EndpointConfig>
 #   pulse_webhook_endpoints_per_project : Hash<project_id, Array<EndpointConfig>>
 # Each EndpointConfig is sanitized at write time: url well-formed String; secret non-empty if
@@ -27,7 +27,6 @@ require 'pulse/adapters/settings_sanitizer'
 # synthesized (additivity — pre-existing keys sanitize byte-identically).
 #
 # The sanitizer surface: SettingsSanitizer.sanitize(incoming, previous) -> [sanitized, errors].
-# RED NOW: sanitize does not yet validate the two webhook keys.
 class SettingsSanitizerWebhookKeysTest < Minitest::Test
   S = Pulse::Adapters::SettingsSanitizer
 
@@ -74,12 +73,12 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
                  'the prior valid endpoint list is kept on reject (never partially persisted)'
   end
 
-  # ── WH-03: a non-http(s) URL scheme is REJECTED at write time, prior kept ───
+  # ── a non-http(s) URL scheme is REJECTED at write time, prior kept ───
   def test_non_http_scheme_url_rejected_keeps_prior
     prior = { GLOBAL => [endpoint('url' => 'https://old.example/hook')] }
     %w[file:///etc/passwd ftp://x/y javascript:alert(1) not-a-url].each do |bad|
       sanitized, errors = san({ GLOBAL => [endpoint('url' => bad)] }, prior)
-      assert_includes errors, GLOBAL, "a non-http(s) url (#{bad}) is rejected (WH-03)"
+      assert_includes errors, GLOBAL, "a non-http(s) url (#{bad}) is rejected"
       assert_equal 'https://old.example/hook', sanitized[GLOBAL].first['url'],
                    "the prior valid endpoint is kept on a bad-scheme reject (#{bad})"
     end
@@ -88,7 +87,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
   def test_http_and_https_scheme_urls_accepted
     %w[https://hooks.example/pulse http://plain.example/hook].each do |good|
       _sanitized, errors = san({ GLOBAL => [endpoint('url' => good)] })
-      refute_includes errors, GLOBAL, "an http(s) url (#{good}) is accepted (WH-03)"
+      refute_includes errors, GLOBAL, "an http(s) url (#{good}) is accepted"
     end
   end
 
@@ -105,18 +104,18 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
                  Array(sanitized[GLOBAL].first['event_filter']).map(&:to_s).sort
   end
 
-  # ── FC-C7-10: a config redacting a REQUIRED field is rejected at write time ─
+  # ── a config redacting a REQUIRED field is rejected at write time ─
   # redactable ⊆ {previous, health.delta}; anything else (e.g. a required field) is invalid.
   def test_redaction_of_a_required_field_rejected
     _sanitized, errors = san({ GLOBAL => [endpoint('redaction' => %w[health.rag])] })
     assert_includes errors, GLOBAL,
-                    'requesting redaction of a REQUIRED schema field (health.rag) is rejected (FC-C7-10)'
+                    'requesting redaction of a REQUIRED schema field (health.rag) is rejected'
   end
 
   def test_redaction_of_optional_fields_accepted
     sanitized, errors = san({ GLOBAL => [endpoint('redaction' => %w[previous health.delta])] })
     refute_includes errors, GLOBAL,
-                    'redacting the OPTIONAL fields {previous, health.delta} is accepted (FC-C7-06e)'
+                    'redacting the OPTIONAL fields {previous, health.delta} is accepted'
     assert sanitized.key?(GLOBAL)
   end
 
@@ -150,7 +149,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
     assert_equal 34, sanitized['rag_amber_min']
   end
 
-  # ── WH-02: MULTIPLE global endpoints all round-trip (none silently dropped) ──
+  # ── MULTIPLE global endpoints all round-trip (none silently dropped) ──
   def test_multiple_global_endpoints_all_preserved
     eps = [endpoint('url' => 'https://a.example/hook'),
            endpoint('url' => 'https://b.example/hook'),
@@ -159,10 +158,10 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
     refute_includes errors, GLOBAL
     assert_equal %w[https://a.example/hook https://b.example/hook https://c.example/hook],
                  sanitized[GLOBAL].map { |e| e['url'] },
-                 'ALL global endpoints must survive a save (WH-02: no silent truncation)'
+                 'ALL global endpoints must survive a save (no silent truncation)'
   end
 
-  # ── WH-02: the no-JS indexed-Hash form shape coerces to an ordered list ─────
+  # ── the no-JS indexed-Hash form shape coerces to an ordered list ─────
   def test_indexed_hash_form_shape_coerces_to_ordered_list
     form = { GLOBAL => {
       '0' => endpoint('url' => 'https://first.example/hook'),
@@ -176,7 +175,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
                  'indexed rows keep numeric order; blank __new__ add-row dropped'
   end
 
-  # ── WH-02: a row flagged remove is dropped; the rest are preserved ──────────
+  # ── a row flagged remove is dropped; the rest are preserved ──────────
   def test_remove_flag_drops_that_endpoint_only
     form = { GLOBAL => {
       '0' => endpoint('url' => 'https://keep.example/hook'),
@@ -188,7 +187,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
                  'the remove-flagged endpoint is dropped, the other preserved'
   end
 
-  # ── WH-06: a BLANK submitted secret KEEPS the prior secret (keep-on-blank) ──
+  # ── a BLANK submitted secret KEEPS the prior secret (keep-on-blank) ──
   def test_blank_secret_keeps_prior_secret_via_prior_index
     prior = { GLOBAL => [endpoint('url' => 'https://x.example/hook', 'secret' => 'keep-me-123')] }
     # The no-JS form re-posts the row with a blank secret + prior_index pointing at row 0.
@@ -197,10 +196,10 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
     sanitized, errors = san(form, prior)
     refute_includes errors, GLOBAL
     assert_equal 'keep-me-123', sanitized[GLOBAL].first['secret'],
-                 'a blank submitted secret must KEEP the prior secret (WH-06 keep-on-blank)'
+                 'a blank submitted secret must KEEP the prior secret (keep-on-blank)'
   end
 
-  # ── WH-06: a NON-blank submitted secret REPLACES the prior one ──────────────
+  # ── a NON-blank submitted secret REPLACES the prior one ──────────────
   def test_non_blank_secret_replaces_prior
     prior = { GLOBAL => [endpoint('url' => 'https://x.example/hook', 'secret' => 'old-secret')] }
     form = { GLOBAL => { '0' => { 'url' => 'https://x.example/hook', 'secret' => 'new-secret',
@@ -209,7 +208,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
     assert_equal 'new-secret', sanitized[GLOBAL].first['secret'], 'a new secret replaces the prior'
   end
 
-  # ── WH-06: a blank secret with NO prior secret stays nil (unsigned, valid) ──
+  # ── a blank secret with NO prior secret stays nil (unsigned, valid) ──
   def test_blank_secret_no_prior_stays_nil
     form = { GLOBAL => { '__new0__' => { 'url' => 'https://new.example/hook', 'secret' => '' } } }
     sanitized, errors = san(form)
@@ -217,7 +216,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
     assert_nil sanitized[GLOBAL].first['secret'], 'no prior secret + blank field => nil (unsigned)'
   end
 
-  # ── WH-07 (safe default, FR-C7-06/07): an ENABLED endpoint with NO effective
+  # ── safe default: an ENABLED endpoint with NO effective
   # secret (blank submitted, no prior) MUST NOT persist enabled. We keep the row
   # (URL/config preserved so the admin can add a secret later) but FORCE enabled
   # false — an enabled delivery must never be effectively unsigned (empty-key HMAC).
@@ -233,7 +232,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
                  'an enabled endpoint with no effective secret is force-disabled (safe default)'
   end
 
-  # ── WH-07 positive: enabled WITH a non-blank secret STAYS enabled ───────────
+  # ── positive: enabled WITH a non-blank secret STAYS enabled ───────────
   def test_enabled_endpoint_with_secret_stays_enabled
     form = { GLOBAL => { '__new0__' => { 'url' => 'https://new.example/hook',
                                          'secret' => 'signing-key', 'enabled' => '1' } } }
@@ -244,7 +243,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
     assert_equal true, ep['enabled'], 'a signed enabled endpoint stays enabled'
   end
 
-  # ── WH-07 preserves WH-06: enabled + blank secret + PRIOR secret => stays ───
+  # ── enabled + blank secret + PRIOR secret => stays ───
   # enabled with the prior secret (the effective secret is non-empty).
   def test_enabled_blank_secret_with_prior_stays_enabled
     prior = { GLOBAL => [endpoint('url' => 'https://x.example/hook', 'secret' => 'prior-key')] }
@@ -253,7 +252,7 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
     sanitized, errors = san(form, prior)
     refute_includes errors, GLOBAL
     ep = sanitized[GLOBAL].first
-    assert_equal 'prior-key', ep['secret'], 'WH-06 blank-keeps-prior still holds'
+    assert_equal 'prior-key', ep['secret'], 'blank-keeps-prior still holds'
     assert_equal true, ep['enabled'],
                  'an enabled endpoint with an effective (prior) secret stays enabled'
   end

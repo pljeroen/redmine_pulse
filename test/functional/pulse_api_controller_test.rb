@@ -1,15 +1,20 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'json'
 
-# CA-09/13/14/15/16/17/18/19/24/26 + FC-CA-09/15/16/19/24det + D-CA-OQ03:
 # PulseApiController JSON surfaces — portfolio + project. REST auth gate, pagination,
 # schema_version, two distinct timestamps, projection block, inactive-signal
 # presence, determinism + lens tie-break, Redmine-conventional 422 error shape.
 #
-# COND-A8-004: PostgreSQL 16 gate (FC-CA-38). RED until A9.
+# Runs on PostgreSQL 16.
 class PulseApiControllerTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -18,8 +23,8 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the other CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
@@ -54,7 +59,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     JSON.parse(response.body)
   end
 
-  # ─────────────────────── CA-09 / FC-CA-09: REST auth ──────────────────────
+  # ─────────────────────── REST auth ──────────────────────
 
   def test_api_key_header_authenticates
     get_portfolio
@@ -78,7 +83,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
 
       src = File.read(path)
       refute_match(/X-Redmine-API-Key|params\[:key\]|api_key/i, src,
-                   "#{name} must not implement custom API-key parsing (FC-CA-09)")
+                   "#{name} must not implement custom API-key parsing")
     end
   end
 
@@ -86,13 +91,13 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     path = File.expand_path('../../../app/controllers/pulse_api_controller.rb', File.expand_path(__FILE__))
     if File.exist?(path)
       assert_match(/accept_api_auth\s+:portfolio,\s*:project/, File.read(path),
-                   'PulseApiController must declare accept_api_auth :portfolio, :project (BR-04)')
+                   'PulseApiController must declare accept_api_auth :portfolio, :project')
     else
-      flunk 'pulse_api_controller.rb not yet implemented (RED)'
+      flunk 'pulse_api_controller.rb not yet implemented'
     end
   end
 
-  # ── RT-09 (security-S3-defense): CHARACTERIZATION — the .json surface must NOT be
+  # ── Defense-in-depth CHARACTERIZATION — the .json surface must NOT be
   # reachable with only a session cookie (no API key, no basic auth). Redmine's
   # accept_api_auth / api_request? path treats a `.json` request as an API request and
   # requires an API key (or explicit REST credentials) via require_login for format.api;
@@ -114,7 +119,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     end
     assert_includes [401, 403], response.status,
                     'REST enabled + NO API credentials on a .json request must be 401/403, ' \
-                    'never 200 with data (RT-09 characterization)'
+                    'never 200 with data (characterization)'
     refute_equal 200, response.status,
                  'the session-cookie/no-key .json path must NOT expose portfolio data'
   end
@@ -132,14 +137,14 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     end
     assert_includes [401, 403], response.status,
                     'a session cookie WITHOUT an API key must NOT unlock the .json body ' \
-                    '(RT-09 characterization: session-only => 401/403, not 200+data)'
+                    '(characterization: session-only => 401/403, not 200+data)'
     # Defense-in-depth: if the framework were to 200 here, the body must at minimum not be
     # a real portfolio payload. Pin that it is not a 200 data leak.
     refute_equal 200, response.status,
                  'session-only .json must not return a 200 portfolio payload'
   end
 
-  # ───────────────── CA-19 schema_version + CA-13 pagination ─────────────────
+  # ───────────────── schema_version + pagination ─────────────────
 
   def test_portfolio_schema_version_is_string_one_zero
     get_portfolio
@@ -165,7 +170,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     assert_operator body_json['projects'].size, :<=, 1
   end
 
-  # D-CA-OQ03 + CT-PAG-1 / FC-CA-19: limit<1 / non-integer -> 422 Redmine-conventional.
+  # limit<1 / non-integer -> 422 Redmine-conventional.
 
   def test_portfolio_limit_zero_is_422
     get_portfolio(params: { limit: 0 })
@@ -177,23 +182,22 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     assert_response 422
   end
 
-  # ── RT-05 (security-S2-dos): API limit UPPER-BOUND cap (availability hardening) ──
-  # GET /pulse/portfolio.json validates limit as integer>=1 but has NO upper bound: a
-  # request with limit far above a sane maximum forces the composition root to rank +
-  # serialize an unbounded slice — an amplification / memory-DoS lever. The intended fix
+  # ── API limit UPPER-BOUND cap (availability hardening) ──
+  # GET /pulse/portfolio.json validates limit as integer>=1 but must also have an upper
+  # bound: a request with limit far above a sane maximum would force the composition root
+  # to rank + serialize an unbounded slice — an amplification / memory-DoS lever. The guard
   # caps limit at a hard maximum (MAX_PORTFOLIO_LIMIT; e.g. 100/250) and returns the
-  # Redmine-conventional 422 above it, exactly like the lower bound. RED now: the huge
-  # limit is currently ACCEPTED (200), so this asserts the missing upper-bound guard.
+  # Redmine-conventional 422 above it, exactly like the lower bound.
   def test_portfolio_over_cap_limit_is_422
     get_portfolio(params: { limit: 1_000_000 })
     assert_response 422,
                     'limit far above the sane maximum must be a validation error -> 422 ' \
-                    '(hard upper-bound cap, MAX_PORTFOLIO_LIMIT), not an unbounded page (RT-05)'
+                    '(hard upper-bound cap, MAX_PORTFOLIO_LIMIT), not an unbounded page'
   end
 
   def test_portfolio_over_cap_limit_uses_errors_envelope
     # The over-cap 422 renders via the SAME Redmine-conventional {"errors":[...]} envelope
-    # as the lower-bound violation (D-CA-OQ03), not a bespoke shape.
+    # as the lower-bound violation, not a bespoke shape.
     get_portfolio(params: { limit: 1_000_000 })
     assert_response 422
     parsed = body_json
@@ -215,7 +219,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
   end
 
   def test_422_uses_redmine_conventional_errors_envelope
-    # D-CA-OQ03: errors render via Redmine's render_validation_errors style
+    # errors render via Redmine's render_validation_errors style
     # ({"errors":[...]}), NOT a custom pulse envelope.
     get_portfolio(params: { limit: 0 })
     assert_response 422
@@ -224,7 +228,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     assert_kind_of Array, parsed['errors']
   end
 
-  # ───────────── CA-15: two distinct timestamps (FC-CA-15) ──────────────────
+  # ───────────── two distinct timestamps ──────────────────
 
   def test_portfolio_two_distinct_provenance_computed_timestamps
     get_portfolio
@@ -238,7 +242,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     assert j.key?('snapshot_computed_at') && j.key?('projected_at')
   end
 
-  # ───────────── CA-16: projection block from active ScoringConfig ───────────
+  # ───────────── projection block from active ScoringConfig ───────────
 
   def test_portfolio_projection_block_matches_active_config
     get_portfolio
@@ -253,7 +257,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     refute_empty proj['time_zone'].to_s
   end
 
-  # ───────── CA-18 / CA-26: all 5 signals present incl. inactive ─────────────
+  # ───────── all 5 signals present incl. inactive ─────────────
 
   def test_portfolio_all_five_signals_present_with_inactive_nulls
     get_portfolio
@@ -270,7 +274,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     assert_nil rl['contribution']
   end
 
-  # ───────────── CA-14: project payload structure (FC-CA-18b) ────────────────
+  # ───────────── project payload structure ────────────────
 
   def test_project_payload_core_fields
     get_project
@@ -286,7 +290,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
   end
 
   def test_project_visibility_note_is_exact_fixed_english_literal
-    # D-CA-OQ01: API visibility_note is a FIXED English literal, byte-for-byte.
+    # API visibility_note is a FIXED English literal, byte-for-byte.
     get_project
     assert_response :success
     assert_equal 'Health computed from issues visible to you.',
@@ -295,7 +299,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
 
   def test_project_weights_effective_only_active_keys
     # risk_load inactive -> ABSENT from weights_effective, but PRESENT (active:false)
-    # in signals (FC-CA-18b).
+    # in signals.
     get_project
     assert_response :success
     j = body_json
@@ -309,7 +313,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
     get_project
     assert_response :success
     assert_equal [], body_json['timeline']['forward'],
-                 'forward axis is [] when no Version due dates exist (INV-NO-INVENTED-DATES)'
+                 'forward axis is [] when no Version due dates exist (no invented dates)'
   end
 
   def test_project_forward_milestone_is_date_only_not_midnight_utc
@@ -335,7 +339,7 @@ class PulseApiControllerTest < ActionDispatch::IntegrationTest
                  'retrospective bucket boundary is midnight-UTC date-time')
   end
 
-  # ─────────────── CA-13: determinism + lens tie-break (FC-CA-24det) ─────────
+  # ─────────────── determinism + lens tie-break ─────────
 
   def test_portfolio_payload_is_deterministic_across_repeated_calls
     get_portfolio

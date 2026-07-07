@@ -10,17 +10,14 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# IT-C6-07 / FC-C6-08 / FC-C6-09 — Pulse::Mailer + RedmineAlertDelivery (EMAIL-ONLY v1).
+# Pulse::Mailer + RedmineAlertDelivery — email-only health alerts.
 #
 # Pulse::Mailer < Redmine's Mailer base (app/models/mailer.rb) — inherits SMTP /
 # default_url_options / I18n from Redmine's existing config; introduces NO new SMTP
-# settings, env vars, or delivery_method (INV-LOW-FOOTPRINT). health_alert(user, event)
+# settings, env vars, or delivery_method (low footprint). health_alert(user, event)
 # renders HTML + text and delivers via ActionMailer. RedmineAlertDelivery#deliver
 # dispatches per recipient, best-effort (per-recipient rescue+log), never raises out.
-# In-app channel is a DECLARED DEFERRAL (Rule 41, GF-C6-01) — email is the ONLY channel.
-#
-# RED-by-construction: Pulse::Mailer / RedmineAlertDelivery / Pulse::Domain::AlertEvent
-# are absent (NameError). A9 makes it GREEN.
+# The in-app channel is a deliberate deferral — email is the ONLY channel.
 #
 # Postgres-gated for parity.
 class PulseMailerTest < ActiveSupport::TestCase
@@ -47,14 +44,14 @@ class PulseMailerTest < ActiveSupport::TestCase
     )
   end
 
-  # ── FC-C6-09: Pulse::Mailer inherits the Redmine Mailer base ────────────────
+  # ── Pulse::Mailer inherits the Redmine Mailer base ────────────────
   def test_pulse_mailer_inherits_redmine_mailer_base
     assert defined?(Pulse::Mailer), 'Pulse::Mailer must be defined'
     assert_includes Pulse::Mailer.ancestors, Mailer,
                     'Pulse::Mailer < Redmine Mailer base (inherits SMTP / URL / I18n config)'
   end
 
-  # ── FC-C6-09: no new SMTP config / delivery_method introduced ───────────────
+  # ── no new SMTP config / delivery_method introduced ───────────────
   def test_no_new_smtp_config_in_manifests
     plugin_root = File.expand_path('../../..', File.expand_path(__FILE__))
     manifests = Dir.glob(File.join(plugin_root, '{Gemfile,*.gemspec,init.rb}'))
@@ -68,7 +65,7 @@ class PulseMailerTest < ActiveSupport::TestCase
     assert_equal [], offenders, "Pulse must introduce NO new SMTP config: #{offenders.inspect}"
   end
 
-  # ── FC-C6-08: health_alert renders + delivers an email to the recipient ─────
+  # ── health_alert renders + delivers an email to the recipient ─────
   def test_health_alert_delivers_email_to_user
     assert_difference 'ActionMailer::Base.deliveries.size', +1 do
       Pulse::Mailer.health_alert(@user, event).deliver_now
@@ -85,7 +82,7 @@ class PulseMailerTest < ActiveSupport::TestCase
     refute_empty body, 'health_alert renders a non-empty body (HTML + text views)'
   end
 
-  # ── FC-C6-08: RedmineAlertDelivery dispatches per recipient, EMAIL-ONLY ──────
+  # ── RedmineAlertDelivery dispatches per recipient, email-only ──────
   def test_delivery_dispatches_email_per_recipient
     u2 = create_user!(login: 'mail_u2')
     delivery = Pulse::Adapters::RedmineAlertDelivery.new
@@ -97,7 +94,7 @@ class PulseMailerTest < ActiveSupport::TestCase
     assert_includes recipients, u2.mail
   end
 
-  # ── FC-C6-08: deliver never raises out — a failing recipient is logged only ──
+  # ── deliver never raises out — a failing recipient is logged only ──
   def test_deliver_never_raises_out_on_recipient_failure
     delivery = Pulse::Adapters::RedmineAlertDelivery.new
     logged = []

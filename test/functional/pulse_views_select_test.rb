@@ -11,31 +11,28 @@ require File.expand_path('../../../../../test/test_helper', File.expand_path(__F
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# IT-C5-05 — VIEW SELECTION applies lens + profile + scope (FC-C5-13 / FC-C5-16 /
-#            FC-C5-17); AC-C5-05; lands C4's deferred FR-C4-03
+# VIEW SELECTION applies lens + profile + scope; lands the saved-view -> active-profile
+# binding
 # ═══════════════════════════════════════════════════════════════════════════════
 # POST /pulse/views/:id/select (target resolved via visible_to) records the active view
 # in session[:active_pulse_view_id]. A subsequent GET /pulse then:
 #   (a) feeds the view's lens_ref to LensRanker.normalize_lens (active lens);
 #   (b) feeds the view's profile_ref as the effective selected_profile_id into the engine
 #       — the requested_id (level-1 transient selection) of RedmineProfileProvider#resolve,
-#       LANDING C4's deferred FR-C4-03;
+#       binding the saved view to the active profile;
 #   (c) filters the project set by project_scope / scope_params.
 #
-# DANGLING REFS (FC-C5-16, no 500):
+# DANGLING REFS (no 500):
 #   * profile_ref removed -> RedmineProfileProvider#resolve falls back to 'default' AND
 #     surfaces #last_warning (as-built, no new code).
 #   * lens_ref unknown key -> LensRanker.normalize_lens ALREADY returns 'health', BUT
-#     surfaces NO warning as-built (RC-C5-06). C5 MUST ADD a surfaced warning — asserted
-#     here (see the dangling-lens test). The silent default is NOT sufficient.
+#     surfaces NO warning as-built. A surfaced warning is REQUIRED — asserted here (see the
+#     dangling-lens test). The silent default is NOT sufficient.
 #
-# ADDITIVE-COMPAT (FC-C5-17): with no active view in session the cockpit behaves EXACTLY
-# as pre-C5 (lens from params, full scope).
+# ADDITIVE-COMPAT: with no active view in session the cockpit behaves EXACTLY as before
+# (lens from params, full scope).
 #
-# RED-by-construction: the select route/action, session wiring, PulseView, and the
-# dangling-lens warning do not exist yet. A9 implements GREEN.
-#
-# Postgres-evidence lane (COND-A8-004 / GL-CI-MYSQL): skip on non-Postgres.
+# Runs on PostgreSQL (the production engine): skip on non-Postgres.
 class PulseViewsSelectTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -65,7 +62,7 @@ class PulseViewsSelectTest < ActionDispatch::IntegrationTest
                         name: 'Sel view' }.merge(attrs))
   end
 
-  # ── FC-C5-13 — select stores the active view id in session ──
+  # ── select stores the active view id in session ──
 
   def test_select_sets_active_view_in_session
     v = make_view(lens_ref: 'at_risk')
@@ -86,7 +83,7 @@ class PulseViewsSelectTest < ActionDispatch::IntegrationTest
                     'selecting a view outside visible_to must 404 (resolved via the view store)'
   end
 
-  # ── FC-C5-13 — a selected view drives the active lens ──
+  # ── a selected view drives the active lens ──
 
   def test_selected_view_applies_its_lens
     v = make_view(lens_ref: 'at_risk')
@@ -102,7 +99,7 @@ class PulseViewsSelectTest < ActionDispatch::IntegrationTest
                  "the selected view's lens_ref (at_risk) must drive the active cockpit lens")
   end
 
-  # ── FC-C5-13 — a selected view drives the active profile (LANDS FR-C4-03) ──
+  # ── a selected view drives the active profile ──
   # The view's profile_ref becomes the effective selected_profile_id fed into
   # RedmineProfileProvider#resolve as the requested_id. We assert this by pointing the
   # view at a PUBLISHED admin profile and observing the cockpit resolve under it: a
@@ -119,16 +116,16 @@ class PulseViewsSelectTest < ActionDispatch::IntegrationTest
                     "a selected view whose profile_ref is dangling must still render 200 " \
                     '(the resolve path degrades to default, never 500)'
     # The surfaced warning proves the view's profile_ref was fed into the resolve path as
-    # the requested_id (the same path as params[:profile_id]) — landing FR-C4-03.
+    # the requested_id (the same path as params[:profile_id]).
     assert_match(/not a published profile|falling back|system default/i, response.body,
                  "the selected view's profile_ref must feed the resolve path and surface the " \
-                 'dangling-fallback warning (proves FR-C4-03 selection wiring)')
+                 'dangling-fallback warning (proves the selection wiring)')
   end
 
-  # ── FC-C5-13 — project_scope=selected filters the project set ──
+  # ── project_scope=selected filters the project set ──
 
   def test_selected_view_with_selected_scope_filters_projects
-    # TD-C5-02 (2026-07-06): the original assertion used refute_match(/SelP2/, response.body)
+    # (2026-07-06): the original assertion used refute_match(/SelP2/, response.body)
     # over the ENTIRE page body. The scope filter IS correct — the portfolio table renders only
     # SelP1's row (verified: one <tr>, href="/projects/sel-p1/pulse"). However, SelP2 also
     # appears in Redmine's core #project-jump dropdown chrome (the user is a member of SelP2),
@@ -152,15 +149,15 @@ class PulseViewsSelectTest < ActionDispatch::IntegrationTest
                   message: 'project_scope=selected must exclude SelP2 from the portfolio table'
   end
 
-  # ── FR-C5-01 / FC-C5-13 — project_scope=status_filter narrows to matching PROJECT status ──
-  # A10-C5-004 remediation: Select x status_filter must apply end-to-end. A status_filter view
+  # ── project_scope=status_filter narrows to matching PROJECT status ──
+  # Select x status_filter must apply end-to-end. A status_filter view
   # stores a PROJECT status (Project::STATUS_ACTIVE/CLOSED/ARCHIVED) in scope_params[:status_id];
   # selecting it narrows the portfolio to the viewer's VISIBLE projects of that status only.
   #   - an ACTIVE project the viewer can see -> included
   #   - a CLOSED project the viewer can see (still visible via Project.visible) -> excluded
   #   - status_filter NEVER widens the visible set (visibility stays PRE-scope): a project the
   #     viewer is NOT a member of is absent regardless of its status.
-  # Assert against the portfolio TABLE (TD-C5-02: Redmine chrome the plugin cannot suppress).
+  # Assert against the portfolio TABLE (Redmine chrome the plugin cannot suppress).
   def test_selected_view_with_status_filter_scope_narrows_by_project_status
     # A CLOSED project the viewer CAN see (member) — visible via Project.visible, but wrong status.
     closed_p = create_project!(name: 'SelClosed', identifier: 'sel-closed',
@@ -195,7 +192,7 @@ class PulseViewsSelectTest < ActionDispatch::IntegrationTest
                   message: 'status_filter must NOT surface a project the viewer cannot see'
   end
 
-  # ── FC-C5-16 — dangling profile_ref degrades to default + surfaced warning (no 500) ──
+  # ── dangling profile_ref degrades to default + surfaced warning (no 500) ──
 
   def test_dangling_profile_ref_renders_200_with_warning
     v = make_view(lens_ref: 'health', profile_ref: 'deleted-profile-id')
@@ -208,10 +205,10 @@ class PulseViewsSelectTest < ActionDispatch::IntegrationTest
                  'a dangling profile_ref must surface the RedmineProfileProvider warning')
   end
 
-  # ── FC-C5-16 — dangling lens_ref degrades to health + surfaced warning (NEW, RC-C5-06) ──
+  # ── dangling lens_ref degrades to health + surfaced warning ──
   # As-built LensRanker.normalize_lens returns 'health' for an unknown key but surfaces NO
-  # warning. C5 MUST ADD a surfaced warning for a dangling lens_ref. This test FAILS on the
-  # silent-default impl (no warning) — the RC-C5-06 residual A8/A9 must discharge.
+  # warning. A surfaced warning for a dangling lens_ref is REQUIRED. This test FAILS on a
+  # silent-default impl (no warning).
   def test_dangling_lens_ref_renders_200_with_surfaced_warning
     v = make_view(lens_ref: 'a-lens-that-was-removed', profile_ref: nil)
     login_as(@user)
@@ -221,26 +218,26 @@ class PulseViewsSelectTest < ActionDispatch::IntegrationTest
     assert_response :success, 'a dangling lens_ref must NOT 500 — it degrades to the default lens'
     assert_match(/lens/i, response.body,
                  'the cockpit still renders under the default (health) lens')
-    # The NEW obligation (RC-C5-06): a surfaced warning for the dangling lens_ref. The
+    # The NEW obligation: a surfaced warning for the dangling lens_ref. The
     # silent fallback alone is insufficient — a warning must be visible in the cockpit.
     assert_match(
       /is not (a )?(known|registered|available) lens|unknown lens|falling back to the (default|health) lens/i,
       response.body,
-      'a dangling lens_ref must surface a warning (RC-C5-06: NOT present as-built; C5 must ADD it)'
+      'a dangling lens_ref must surface a warning (not present in a silent-default impl)'
     )
   end
 
-  # ── FC-C5-17 — additive-compat: no active view -> pre-C5 behavior ──
+  # ── additive-compat: no active view -> baseline behavior ──
 
   def test_no_active_view_uses_params_lens_baseline
     login_as(@user)
     # No select performed -> session has no active view. The cockpit resolves the lens
-    # from params exactly as pre-C5.
+    # from params exactly as the baseline.
     get '/pulse?lens=stale'
     assert_response :success
     assert_nil session[:active_pulse_view_id], 'no view is active without an explicit select'
     assert_match(/stale/, response.body,
-                 'with no active view the cockpit uses params[:lens] (pre-C5 behavior, FC-C5-17)')
+                 'with no active view the cockpit uses params[:lens] (baseline behavior)')
   end
 
   private

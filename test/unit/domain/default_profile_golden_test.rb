@@ -13,16 +13,15 @@ require 'yaml'
 require 'pulse/domain/scoring_config'
 require 'pulse/domain/scoring_profile'
 
-# IT-C4-06 (golden slice) — FR-C4-02 / AC-C4-06 / FC-C4-13 (output-identity via default).
-# Scoring under the SYSTEM DEFAULT profile reproduces the pre-C1 output BYTE-IDENTICALLY —
+# Golden slice — output-identity via the default profile.
+# Scoring under the SYSTEM DEFAULT profile reproduces the original output BYTE-IDENTICALLY —
 # the default profile's config IS the global ScoringConfig (synthetic, live-read, not a
 # drifting copy), so wrapping it in a ScoringProfile named "default" changes NOTHING at the
-# output layer. This is the output half of AC-C4-06; the fingerprint half is
-# FC-C4-05B-CHECK (test/functional/pulse_profile_cache_partition_test.rb). The standing
-# C1/C2 golden gate (backward_compat_golden_test.rb) is the additional compatibility guard.
+# output layer. This is the output half; the fingerprint half lives in
+# test/functional/pulse_profile_cache_partition_test.rb. The standing backward-compat golden
+# gate (backward_compat_golden_test.rb) is the additional compatibility guard.
 #
-# RED NOW: Pulse::Domain::ScoringProfile is unimplemented -> `require` raises LoadError.
-# GREEN after A9. Pure-domain lane: ruby -Itest -Ilib.
+# Pure-domain lane: ruby -Itest -Ilib.
 class DefaultProfileGoldenTest < Minitest::Test
   include ScoringSupport
 
@@ -89,7 +88,7 @@ class DefaultProfileGoldenTest < Minitest::Test
       Array.new(inp.fetch('commits', 0).to_i)   { { date: date, type: :commit } }
   end
 
-  # === FC-C4-13: the default profile config IS the global config =================
+  # === the default profile config IS the global config =================
   def test_default_profile_config_equals_global_config
     assert_equal global_config.weights, default_profile.config.weights,
                  'the synthetic default profile config carries the global config weights'
@@ -97,7 +96,7 @@ class DefaultProfileGoldenTest < Minitest::Test
                  'the default profile enabled set equals the global config enabled set'
   end
 
-  # === FC-C4-13: scoring under the default profile reproduces the pre-C1 baseline =
+  # === scoring under the default profile reproduces the baseline =
   def test_default_profile_scoring_is_byte_identical_to_baseline
     cfg = default_profile.config
     baseline.each do |name, row|
@@ -120,7 +119,7 @@ class DefaultProfileGoldenTest < Minitest::Test
     end
   end
 
-  # === FC-C4-13: scoring under the default profile == scoring under the global config ===
+  # === scoring under the default profile == scoring under the global config ===
   def test_default_profile_matches_direct_global_config_scoring
     global = global_config
     via_profile = default_profile.config

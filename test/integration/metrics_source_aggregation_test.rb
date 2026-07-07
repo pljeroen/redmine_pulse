@@ -1,13 +1,18 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # Aggregate-derivation correctness for RedmineMetricsSource against KNOWN fixture
-# data (§4.1 / FC-09..FC-22, FC-33). Postgres-gated (FC-38). RED until A9 builds
-# Pulse::Adapters::RedmineMetricsSource.
+# data. Runs on PostgreSQL (the production engine).
 #
-# Adapter API exercised here (canonical — A9 implements to this):
+# Adapter API exercised here:
 #   ms = Pulse::Adapters::RedmineMetricsSource.new(
 #          settings_provider: <SettingsProvider>, clock: <Clock>)
 #   ms.metrics_for(user, project_ids: [id]) -> Array<Pulse::Domain::ProjectMetrics>
@@ -41,7 +46,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     ms.metrics_for(@admin, project_ids: [project.id]).first
   end
 
-  # --- MS-08 / FC-09: reference_date = max of three branches + fallback --------
+  # --- reference_date = max of three branches + fallback --------
 
   def test_reference_date_is_max_of_issue_updated_on
     # Control project.created_on to a PAST date so issue.updated_on is the max (TD-001).
@@ -73,7 +78,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal Date.new(2026, 3, 3), m.reference_date
   end
 
-  # A10-MS-001 / MS-08 / FC-09: project.created_on is a FULL max participant, not a
+  # project.created_on is a FULL max participant, not a
   # fallback. A freshly-created project (created_on NEWER than its latest visible
   # issue.updated_on AND latest visible changeset.committed_on) is FRESH:
   #   reference_date == max(issue.updated_on, changeset.committed_on, created_on)
@@ -88,10 +93,10 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     m = metrics_for(@project) # @admin has view_changesets
     assert_instance_of Date, m.reference_date
     assert_equal Date.new(2026, 6, 10), m.reference_date,
-                 'created_on is a full max() participant: a fresh project reads as fresh (FC-09)'
+                 'created_on is a full max() participant: a fresh project reads as fresh'
   end
 
-  # --- MS-09 / FC-10: changeset needs :view_changesets, NOT :browse_repository -
+  # --- changeset needs :view_changesets, NOT :browse_repository -
 
   def test_changeset_excluded_for_browse_repository_only_user
     # Control project.created_on to a PAST date so the issue date is the max (TD-001).
@@ -124,7 +129,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal Date.new(2026, 5, 1), m.reference_date
   end
 
-  # --- MS-10 / FC-11: effort sum from numeric field -----------------------------
+  # --- effort sum from numeric field -----------------------------
 
   def test_effort_sum_from_numeric_field_open_and_total
     field = numeric_custom_field!(name: 'StoryPoints', format: 'int')
@@ -142,12 +147,12 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     sp.define_singleton_method(:effort_custom_field_id) { field.id }
 
     m = metrics_for(@project, settings_provider: sp)
-    assert_equal true, m.effort_mapped, 'numeric effort field -> effort_mapped true (FC-13)'
+    assert_equal true, m.effort_mapped, 'numeric effort field -> effort_mapped true'
     assert_equal 16, m.effort_total, 'total over all visible issues (3+5+8)'
     assert_equal 8, m.effort_open, 'open over visible open issues (3+5)'
   end
 
-  # --- MS-10a / FC-11a: per-issue NULL/blank/unparseable = 0 (not excluded) -----
+  # --- per-issue NULL/blank/unparseable = 0 (not excluded) -----
 
   def test_effort_per_issue_null_blank_unparseable_count_as_zero
     field = numeric_custom_field!(name: 'SP2', format: 'int')
@@ -168,7 +173,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal 4, m.effort_total
   end
 
-  # --- MS-11 / FC-12: count fallback when unmapped + empty boundary -------------
+  # --- count fallback when unmapped + empty boundary -------------
 
   def test_effort_count_fallback_when_unmapped
     create_issue!(project: @project, author: @admin, status: open_status)
@@ -187,7 +192,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal false, m.effort_mapped
   end
 
-  # --- MS-13 / FC-14: risk_raw = Σ priority.position over visible OPEN risk-tracker
+  # --- risk_raw = Σ priority.position over visible OPEN risk-tracker
 
   def test_risk_raw_sum_of_priority_positions_visible_open_only
     risk_tracker = tracker_for(@project)
@@ -211,7 +216,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
                  'sum of positions over visible OPEN risk-tracker issues'
   end
 
-  # --- MS-14 / FC-15: no risk tracker -> risk_raw 0, risk_mapped false ----------
+  # --- no risk tracker -> risk_raw 0, risk_mapped false ----------
 
   def test_risk_unmapped_degrades_to_zero
     create_issue!(project: @project, author: @admin, status: open_status)
@@ -220,7 +225,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal false, m.risk_mapped
   end
 
-  # --- MS-15 / MS-17 / FC-16: blocked_count relation + status, OR, once ---------
+  # --- blocked_count relation + status, OR, once ---------
 
   def test_blocked_count_relation_rule_both_endpoints_visible
     blocked = create_issue!(project: @project, author: @admin, status: open_status)
@@ -230,7 +235,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal 1, m.blocked_count
   end
 
-  # A10-MS-002 / MS-15 / FC-16: the status rule applies to visible OPEN issues ONLY.
+  # the status rule applies to visible OPEN issues ONLY.
   # (a) a visible OPEN issue whose status_id == configured blocked_status_id -> counted.
   # EXACT value.
   def test_blocked_count_status_rule_counts_open_issue_by_id
@@ -245,8 +250,8 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
   end
 
   # (b) a visible CLOSED issue whose status_id == configured blocked_status_id MUST NOT
-  # be counted: blocked_count is over visible OPEN issues only (A10-MS-002). This is the
-  # RED-against-current-impl case (the status branch currently selects from the full
+  # be counted: blocked_count is over visible OPEN issues only. This is the
+  # This exercises the status branch, which must select from the full
   # visible set, counting the closed issue). EXACT value 0.
   def test_blocked_count_status_rule_excludes_closed_issue
     blocked_status = closed_status # configured blocked status is itself a CLOSED status
@@ -272,7 +277,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal 1, m.blocked_count, 'an issue satisfying both rules is counted exactly once'
   end
 
-  # --- MS-18 / FC-18: event_series tz-normalized + shape -----------------------
+  # --- event_series tz-normalized + shape -----------------------
 
   def test_event_series_dates_normalized_to_instance_timezone
     Setting.default_language = 'en'
@@ -289,7 +294,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     end
   end
 
-  # momentum-broaden §7: event_series now also emits :issue_commented (issue journals in
+  # momentum-broaden: event_series now also emits :issue_commented (issue journals in
   # the activity window) and :commit (changesets in the window). The allowed-type set is
   # broadened to the four canonical event types.
   ALLOWED_EVENT_TYPES = %i[issue_created issue_closed issue_commented commit].freeze
@@ -303,7 +308,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     end
   end
 
-  # Append a NON-status comment journal (notes only) timestamped at `at`. Per §7 every
+  # Append a NON-status comment journal (notes only) timestamped at `at`. Every
   # journal whose created_on (local date) is within the activity window counts as an
   # :issue_commented activity event.
   def add_comment_journal!(issue:, user:, at:, notes: 'a comment')
@@ -313,7 +318,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     j
   end
 
-  # --- momentum-broaden §7: :issue_commented from in-window journals --------------
+  # --- momentum-broaden: :issue_commented from in-window journals --------------
 
   def test_event_series_emits_issue_commented_for_in_window_journal
     # @clock.today is 2026-06-20; default activity_window_days 30 => window [2026-05-21, today).
@@ -344,13 +349,13 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     j
   end
 
-  # --- M-01 / INV-PERMISSION-SAFE: :issue_commented private-notes permission gate ---
+  # --- permission-safe: :issue_commented private-notes permission gate ---
   # A journal whose notes are PRIVATE (private_notes = true) is counted as
   # :issue_commented ONLY when the requester has :view_private_notes on the issue's
   # project; otherwise it is EXCLUDED (symmetric with the :commit gate). A
   # non-privileged user must not be able to infer private-note activity timing via
   # momentum/health. Non-private journals are always counted (subject to issue
-  # visibility + window). §7 / IMPL_SPEC.
+  # visibility + window).
   def test_issue_commented_private_note_excluded_for_user_without_view_private_notes
     # @clock.today is 2026-06-20; default activity_window_days 30 => window [2026-05-21, today).
     issue = create_issue!(project: @project, author: @admin, status: open_status,
@@ -410,7 +415,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
                  'an admin (allowed :view_private_notes) counts the private-notes journal'
   end
 
-  # --- momentum-broaden §7: :commit from in-window changesets, gated + fallback ---
+  # --- momentum-broaden: :commit from in-window changesets, gated + fallback ---
 
   def test_event_series_emits_commit_for_in_window_changeset
     @project.enabled_module_names = (@project.enabled_module_names + %w[repository]).uniq
@@ -425,10 +430,10 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal Date.new(2026, 6, 12), commits.first[:date]
   end
 
-  # ── RT-03 (security-S2-dos): commit_changesets counts ONLY in-window changesets ──
+  # ── commit_changesets counts ONLY in-window changesets ──
   # CHARACTERIZATION guard for a perf refactor that pushes the activity-window filter into
   # SQL (currently commit_changesets plucks ALL changesets and filters in Ruby; the refactor
-  # windows in the query). This test pins the observable contract — the :commit events reflect
+  # windows in the query). This test pins the observable behavior — the :commit events reflect
   # ONLY changesets whose committed_on is inside [today - activity_window_days, today) — so it
   # passes BOTH before and after that refactor. The window source is the injected scoring
   # config's activity_window_days (@clock.today is the upper bound). Uses a NON-default window
@@ -452,7 +457,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     commits = m.event_series.select { |e| e[:type] == :commit }
     assert_equal 2, commits.size,
                  'only the two in-window changesets ([today-activity_window_days, today)) ' \
-                 'produce :commit events; out-of-window commits are excluded (RT-03)'
+                 'produce :commit events; out-of-window commits are excluded'
     assert_equal [Date.new(2026, 6, 12), Date.new(2026, 6, 19)], commits.map { |e| e[:date] }.sort,
                  'the :commit dates are exactly the in-window changeset committed_on dates'
   end
@@ -482,7 +487,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
                  'no repository => no :commit events (graceful fallback to none)'
   end
 
-  # --- momentum-broaden §7: stable defined order with the broadened type_rank ----
+  # --- momentum-broaden: stable defined order with the broadened type_rank ----
   # type_rank = { issue_created: 0, issue_closed: 1, issue_commented: 2, commit: 3 }.
   # Same-date events sort by that rank; the public series stays in [date, type_rank, ...] order.
   def test_event_series_stable_order_with_broadened_type_rank
@@ -502,12 +507,12 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     rank = { issue_created: 0, issue_closed: 1, issue_commented: 2, commit: 3 }
     ranks = on_date.map { |e| rank[e[:type]] }
     assert_equal ranks.sort, ranks,
-                 'same-date events must be in type_rank order [created<closed<commented<commit] (§7)'
+                 'same-date events must be in type_rank order [created<closed<commented<commit]'
     assert_includes on_date.map { |e| e[:type] }, :commit, 'the in-window commit is present on that date'
     assert_includes on_date.map { |e| e[:type] }, :issue_commented, 'the in-window comment is present'
   end
 
-  # --- MS-19 / FC-19: closing-event classification golden ----------------------
+  # --- closing-event classification golden ----------------------
 
   def test_issue_created_event_per_visible_issue
     create_issue!(project: @project, author: @admin, created_on: Time.utc(2026, 5, 1, 0))
@@ -548,7 +553,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
                  'created-as-open + two closes => exactly two close events'
   end
 
-  # --- MS-20 / FC-20: retention horizon >= 60d --------------------------------
+  # --- retention horizon >= 60d --------------------------------
 
   def test_event_series_covers_at_least_60_day_horizon
     today = @clock.today
@@ -563,11 +568,11 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert within.size >= 3, 'all within-60d created events present (adapter does not pre-filter window)'
   end
 
-  # --- A10-MS-004 / FC-36: event_series determinism + stable defined order -----
+  # --- event_series determinism + stable defined order -----
 
   # Repeated invocations over fixed state MUST produce deeply-equal ProjectMetrics
-  # (FC-36). RED on the current impl: event_series uses SQL row order with no ORDER
-  # BY, which is not a deterministic contract.
+  # event_series uses SQL row order with no ORDER BY unless it sorts, which is not
+  # deterministic.
   def test_metrics_for_is_deterministic_across_invocations
     # Insertion order deliberately differs from date order.
     create_issue!(project: @project, author: @admin, created_on: Time.utc(2026, 5, 20, 0))
@@ -579,7 +584,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     b = ms.metrics_for(@admin, project_ids: [@project.id]).first
 
     assert_equal a.event_series, b.event_series,
-                 'event_series must be deeply equal across repeated invocations (FC-36)'
+                 'event_series must be deeply equal across repeated invocations'
     assert_equal a.version_due_dates, b.version_due_dates
     assert_equal a.reference_date, b.reference_date
     assert_equal a.effort_open, b.effort_open
@@ -588,9 +593,9 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
   end
 
   # event_series ordering MUST be a stable, defined order independent of the DB row
-  # order in which the issues were inserted (FC-36). The defined order is ascending
+  # order in which the issues were inserted. The defined order is ascending
   # by [date, type]; with insertion order scrambled relative to date, the emitted
-  # series MUST still be sorted. RED on the current impl (no ORDER BY / no sort).
+  # series MUST still be sorted (guards against an unsorted SQL row order with no ORDER BY).
   def test_event_series_has_stable_defined_order_independent_of_db_order
     # Insertion order: 20th, 1st, 10th (NOT chronological).
     create_issue!(project: @project, author: @admin, created_on: Time.utc(2026, 5, 20, 0))
@@ -601,11 +606,11 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     created = m.event_series.select { |e| e[:type] == :issue_created }
     dates = created.map { |e| e[:date] }
     assert_equal dates.sort, dates,
-                 'event_series must be in a stable [date,type] order, not raw DB row order (FC-36)'
+                 'event_series must be in a stable [date,type] order, not raw DB row order'
     assert_equal [Date.new(2026, 5, 1), Date.new(2026, 5, 10), Date.new(2026, 5, 20)], dates
   end
 
-  # --- MS-22 / FC-22: version_due_dates plain Date, empty when none ------------
+  # --- version_due_dates plain Date, empty when none ------------
 
   def test_version_due_dates_are_plain_dates
     create_version!(project: @project, name: 'v1', effective_date: Date.new(2026, 9, 1))
@@ -616,8 +621,8 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_instance_of Date, entry[:due_date]
     assert_kind_of Integer, entry[:version_id]
     assert_equal Date.new(2026, 9, 1), entry[:due_date]
-    # D-TL-C (TC-11c / Path A): the adapter populates :name from Version#name.
-    # RED until RedmineMetricsSource#version_due_dates plucks :name (A9 adapter amendment).
+    # the adapter populates :name from Version#name.
+    # RedmineMetricsSource#version_due_dates must pluck :name.
     assert_kind_of String, entry[:name], 'adapter must populate entry[:name] from Version#name'
     refute_empty entry[:name], 'version name is a non-empty String (Version#name is non-nullable)'
     assert_equal 'v1', entry[:name], 'name passed through from the Version'
@@ -628,7 +633,7 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     assert_equal [], m.version_due_dates
   end
 
-  # --- MS-32 / FC-33: ProjectMetrics field shape, frozen, no AR ----------------
+  # --- ProjectMetrics field shape, frozen, no AR ----------------
 
   def test_project_metrics_field_shape_frozen_no_activerecord
     create_issue!(project: @project, author: @admin)
@@ -646,13 +651,13 @@ class MetricsSourceAggregationTest < ActiveSupport::TestCase
     m.version_due_dates.each do |v|
       assert_kind_of Integer, v[:version_id]
       assert_instance_of Date, v[:due_date]
-      # D-TL-C (TC-11c): each entry carries a non-empty String :name (adapter-populated).
+      # each entry carries a non-empty String :name (adapter-populated).
       assert_kind_of String, v[:name]
       refute_empty v[:name]
     end
   end
 
-  # --- MS-01 / FC-34: result ordered by project_id ascending -------------------
+  # --- result ordered by project_id ascending -------------------
 
   def test_result_ordered_by_project_id_asc
     p2 = create_project!(name: 'Agg2', identifier: 'agg-proj-2')

@@ -11,8 +11,8 @@ require 'pulse/domain/alert_rules'
 
 module Pulse
   module Tasks
-    # ScanAndAlert — the composition root for `rake redmine_pulse:scan_and_alert` (C6 /
-    # FR-C6-02 / FC-C6-15 / OI-C6-01). It holds NO domain logic itself — it WIRES the pure
+    # ScanAndAlert — the composition root for `rake redmine_pulse:scan_and_alert`.
+    # It holds NO domain logic itself — it WIRES the pure
     # AlertRules domain to the alert-state store, the subscription store (permission-at-send),
     # and the email delivery adapter. Five steps per project:
     #   (1) compute the current canonical HealthResult (CanonicalScan);
@@ -23,10 +23,10 @@ module Pulse
     #       (the permission re-check happens THERE, at send) then RedmineAlertDelivery.deliver
     #       (best-effort, per-recipient rescue+log — never raises out);
     #   (5) upsert PulseAlertState AFTER evaluation, ONCE, regardless of delivery outcome
-    #       (OI-C6-01 — state advances even on a partial delivery failure; a re-run with
+    #       (state advances even on a partial delivery failure; a re-run with
     #       unchanged health then emits nothing).
     #
-    # Reachable ONLY from lib/tasks/pulse.rake — never on a request cycle (INV-ADDITIVE).
+    # Reachable ONLY from lib/tasks/pulse.rake — never on a request cycle (additive to the request path).
     module ScanAndAlert
       module_function
 
@@ -49,7 +49,7 @@ module Pulse
           project = Project.find_by(id: pid)
           next if project.nil?
 
-          # INV-C6-ONCE under overlapping cron (remediation of C6-CODEX-HIGH-002): the whole
+          # Fire-once-per-transition under overlapping cron: the whole
           # read->evaluate->deliver->advance section is SINGLE-WRITER per project. Without this
           # serialization two concurrent scan_and_alert runs could both read the SAME prior
           # state, both deliver the SAME transition, and both advance — duplicate emails for one
@@ -87,25 +87,25 @@ module Pulse
           recipients = subscriptions.subscribers_for(project.id)
           events.each { |event| delivery.deliver(event, recipients) }
 
-          # (4b) C7 — ADDITIVE outbound-webhook dispatch on the SAME event stream, AFTER the
-          # C6 email path. Best-effort: the dispatcher dead-letters every failure and never
-          # raises out, so advance_state (5) still runs regardless of webhook outcome (GR-05 /
-          # OI-C6-01). `previous` is the prior alert-state row (GR-03). When no endpoint is
+          # (4b) ADDITIVE outbound-webhook dispatch on the SAME event stream, AFTER the
+          # email path. Best-effort: the dispatcher dead-letters every failure and never
+          # raises out, so advance_state (5) still runs regardless of webhook outcome.
+          # `previous` is the prior alert-state row. When no endpoint is
           # configured for this project the dispatcher's endpoint list is empty and its
           # per-endpoint loop never runs — ZERO outbound HTTP (the OFF-by-default short-circuit).
           dispatch_webhooks(project, health, events, prior)
         end
 
         # (5) advance the alert-state AFTER evaluation, once, regardless of delivery
-        #     outcome (OI-C6-01). Even a first-run baseline (no events) writes the row so
+        #     outcome. Even a first-run baseline (no events) writes the row so
         #     the NEXT scan has a prior to compare against (no first-cron flood).
         advance_state(state_store, project.id, health)
 
         events
       end
 
-      # Run the block holding a Postgres transaction-scoped ADVISORY LOCK keyed by project_id
-      # (remediation of C6-CODEX-HIGH-002). pg_advisory_xact_lock(classid, objid) auto-releases
+      # Run the block holding a Postgres transaction-scoped ADVISORY LOCK keyed by project_id.
+      # pg_advisory_xact_lock(classid, objid) auto-releases
       # when the surrounding transaction commits/rolls back — no explicit unlock, no leak on a
       # crashed process. It requires NO state row to exist (correct on the FIRST run) and adds NO
       # schema (reversible). LOCK_NAMESPACE is a stable, plugin-private classid keeping our keyspace
@@ -126,12 +126,12 @@ module Pulse
         end
       end
 
-      # C7 — dispatch each event to the operator-configured webhook endpoints for this project
+      # Dispatch each event to the operator-configured webhook endpoints for this project
       # (global + per-project), best-effort. The dispatcher owns HTTPS/SSRF/HMAC/retry/dead-letter
-      # and never raises out, so this call cannot abort the scan or gate advance_state (GR-05).
+      # and never raises out, so this call cannot abort the scan or gate advance_state.
       # `previous` (the prior health snapshot for the payload) is derived from the prior
       # alert-state row: {rag: last_rag, dominant_signal: last_dominant}, or nil on first
-      # observation / an all-nil prior row (GR-03).
+      # observation / an all-nil prior row.
       def dispatch_webhooks(project, health, events, prior)
         endpoints = webhook_endpoints_for(project.id)
         return if endpoints.empty? # OFF-by-default: nothing configured => zero outbound HTTP

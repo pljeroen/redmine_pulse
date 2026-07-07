@@ -8,7 +8,7 @@
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
 require 'minitest/autorun'
-require 'minitest/mock' # Resolv.stub / Object#stub — not auto-loaded standalone (WH-05).
+require 'minitest/mock' # Resolv.stub / Object#stub — not auto-loaded standalone.
 require 'resolv'
 require 'ipaddr'
 
@@ -19,7 +19,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 require 'pulse/adapters/ssrf_guard'
 
-# C7 / FR-C7-06(c) / FC-C7-06c / INV-C7-SSRF-DEFAULT / AC-C7-04 (TIER-1 SECURITY) —
+# SSRF DEFENCE (security-critical) —
 # SsrfGuard RESOLVE-THEN-CHECK: it resolves the target hostname to its IP(s) ONCE and
 # BLOCKS (typed error) by default when ANY resolved address is in a blocked category,
 # across BOTH families:
@@ -32,9 +32,9 @@ require 'pulse/adapters/ssrf_guard'
 # (proves it is not a string-only check). The connection is PINNED to the vetted IP (TOCTOU
 # closure) — the guard returns the resolved+approved address for the dispatcher to connect to.
 #
-# RED NOW: Pulse::Adapters::SsrfGuard does not exist (LoadError / NameError).
+# Requires Pulse::Adapters::SsrfGuard.
 class WebhookSsrfGuardTest < Minitest::Test
-  # Every required blocked address, per family (FC-C7-06c falsifier set).
+  # Every required blocked address, per family (the must-block falsifier set).
   BLOCKED_V4 = {
     'loopback 127.0.0.1'       => '127.0.0.1',
     'loopback 127.5.5.5 (/8)'  => '127.5.5.5',
@@ -128,7 +128,7 @@ class WebhookSsrfGuardTest < Minitest::Test
     end
   end
 
-  # ── WH-04: IPv4-mapped IPv6 is classified by its EMBEDDED v4, not blanket-blocked ─
+  # ── IPv4-mapped IPv6 is classified by its EMBEDDED v4, not blanket-blocked ─
   # A mapped PRIVATE/LOOPBACK/metadata address still BLOCKS (its embedded v4 is blocked);
   # a mapped PUBLIC address is ALLOWED (::ffff:0:0/96 is no longer a blanket block).
   MAPPED_BLOCKED = {

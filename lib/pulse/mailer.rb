@@ -8,12 +8,12 @@
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
 module Pulse
-  # Pulse::Mailer — the EMAIL-ONLY health-alert mailer (C6 / FC-C6-08 / FC-C6-09).
+  # Pulse::Mailer — the EMAIL-ONLY health-alert mailer.
   #
   # It INHERITS Redmine's own Mailer base (app/models/mailer.rb), so it reuses the existing
   # SMTP configuration, delivery_method, default_url_options, layout, and I18n locale
   # handling — it introduces NO new SMTP settings, env vars, or delivery_method
-  # (INV-LOW-FOOTPRINT / FC-C6-09). The Redmine base's #process requires the first action
+  # (low-footprint: it adds no new infrastructure). The Redmine base's #process requires the first action
   # argument to be a User (the recipient), which health_alert(user, event) satisfies; the
   # base then sets User.current + the recipient's language for the render.
   #
@@ -21,7 +21,7 @@ module Pulse
   # it is Zeitwerk eager-load-safe in production without an ignore (unlike the top-level
   # hooks). Its HTML + text views live at app/views/pulse/mailer/, resolved via the plugin's
   # view path. Reachable ONLY from RedmineAlertDelivery under the scan_and_alert rake task —
-  # never on a request-cycle path (INV-ADDITIVE).
+  # never on a request-cycle path (additive to the request path).
   class Mailer < ::Mailer
     # Render + return an ActionMailer::MessageDelivery for one alert to one recipient. The
     # caller invokes .deliver_now (RedmineAlertDelivery does so per recipient, best-effort).

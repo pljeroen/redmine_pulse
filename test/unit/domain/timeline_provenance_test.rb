@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'date'
 require 'pulse/domain/project_metrics'
@@ -8,10 +14,9 @@ require 'pulse/domain/timeline'
 require 'pulse/domain/retrospective_bucket'
 require 'pulse/domain/milestone_marker'
 
-# TL-14, TL-15 / TC-14, TC-15.
 # Closed-provenance enforcement: the domain emits ONLY {:derived_bucket,
 # :version_due_date}; :projected / :estimated NEVER appear; no :computed and no
-# computed_at field anywhere in Timeline output. RED until Timeline exists.
+# computed_at field anywhere in Timeline output.
 class TimelineProvenanceTest < Minitest::Test
   class FixedClock
     def initialize(date)
@@ -28,7 +33,7 @@ class TimelineProvenanceTest < Minitest::Test
   EMITTED_BY_DOMAIN = %i[derived_bucket version_due_date].freeze
   FORBIDDEN = %i[projected estimated].freeze
 
-  # Source files this contract adds (TC-14 static-literal complement).
+  # The timeline source files (static-literal complement).
   ROOT = File.expand_path('../../../..', __FILE__)
   TIMELINE_SOURCES = %w[
     lib/pulse/domain/timeline.rb
@@ -50,7 +55,7 @@ class TimelineProvenanceTest < Minitest::Test
         { version_id: 3, name: 'Sprint 3', due_date: TODAY + 5 },
         { version_id: 7, name: 'Sprint 7', due_date: TODAY - 2 }
       ],
-      open_issue_count: 0, covered_sum: 0.0 # C2 additive-required (inactive baseline)
+      open_issue_count: 0, covered_sum: 0.0 # additive coverage inputs (inactive baseline)
     )
     Pulse::Domain::Timeline.build(m, FixedClock.new(TODAY), Pulse::Domain::ScoringConfig.new)
   end
@@ -64,7 +69,7 @@ class TimelineProvenanceTest < Minitest::Test
     provs
   end
 
-  # --- TC-14: every reachable provenance is in the emitted-by-domain set ---
+  # --- every reachable provenance is in the emitted-by-domain set ---
   def test_reachable_provenance_subset_of_domain_emitted_set
     provs = reachable_provenance(build_result).uniq
     refute_empty provs, 'expected some provenance-tagged boundaries/markers'
@@ -93,7 +98,7 @@ class TimelineProvenanceTest < Minitest::Test
     refute_includes provs, :computed, ':computed is an adapter concern, not emitted by the domain'
   end
 
-  # --- TC-14: static-literal scan — :projected / :estimated never in source ---
+  # --- static-literal scan — :projected / :estimated never in source ---
   def test_no_forbidden_provenance_literals_in_timeline_source
     TIMELINE_SOURCES.each do |f|
       next unless File.exist?(f)
@@ -104,7 +109,7 @@ class TimelineProvenanceTest < Minitest::Test
     end
   end
 
-  # --- TC-15: no :computed provenance, no computed_at field anywhere ---
+  # --- no :computed provenance, no computed_at field anywhere ---
   def test_no_computed_at_field_on_any_value_object
     result = build_result
     refute_respond_to result, :computed_at, 'TimelineResult must not expose computed_at'

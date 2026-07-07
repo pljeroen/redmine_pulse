@@ -10,7 +10,7 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# C7 / FR-C7-09 / FC-C7-08 / AC-C7-07 / IT-C7-08 — the ADMIN-ONLY "send test event" action.
+# The ADMIN-ONLY "send test event" action.
 # It builds a SYNTHETIC AlertEvent (+ synthetic Project + HealthResult) OFF the domain path,
 # delivers to EXACTLY ONE operator-selected endpoint via the SAME HttpWebhookDispatcher pipeline
 # (HTTPS -> SSRF -> serialize -> HMAC -> POST, ~5s timeout), and SURFACES the resulting HTTP
@@ -23,8 +23,8 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 # Net::HTTP is intercepted so the action is hermetic. The test asserts EXACTLY ONE endpoint is
 # contacted, and the surfaced status matches the stubbed response. Postgres-gated for parity.
 #
-# RED until A9 adds the webhook_test action + route + admin gate. If the route does not exist
-# yet the request 404s / raises — a legitimate RED signal (the action is absent).
+# Requires the webhook_test action + route + admin gate. If the route does not exist
+# yet the request 404s / raises — a legitimate failure signal (the action is absent).
 class PulseWebhookTestEventTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -56,7 +56,7 @@ class PulseWebhookTestEventTest < ActionDispatch::IntegrationTest
     User.current = user
   end
 
-  # A recording Net::HTTP double that mirrors the WH-01 instance seam the production
+  # A recording Net::HTTP double that mirrors the instance seam the production
   # transport now uses: Net::HTTP.new(host, port) -> #ipaddr=/#open_timeout=/#read_timeout=/
   # #use_ssl=/#verify_mode= -> INSTANCE #start { |conn| conn.request(req) }. Records each POST
   # and returns the scripted response (or RAISES a genuine timeout from #start when hung).
@@ -102,8 +102,8 @@ class PulseWebhookTestEventTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # POST the test-event action. The exact route/param names are A9's to finalize; the test
-  # pins the CONTRACT: an admin POST that names one endpoint (index 0) triggers one delivery.
+  # POST the test-event action. Regardless of the exact route/param names, the test pins the
+  # behavior: an admin POST that names one endpoint (index 0) triggers one delivery.
   def post_test_event(endpoint_index: 0)
     post '/pulse/webhook_test', params: { endpoint: endpoint_index }
   end

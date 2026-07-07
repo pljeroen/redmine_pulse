@@ -8,7 +8,7 @@
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
 require 'minitest/autorun'
-require 'minitest/mock' # Object#stub / Class#stub — not auto-loaded standalone (WH-05).
+require 'minitest/mock' # Object#stub / Class#stub — not auto-loaded standalone.
 require 'json'
 require 'openssl'
 require 'net/http'
@@ -24,7 +24,7 @@ require 'pulse/adapters/ssrf_guard'
 require 'pulse/adapters/webhook_payload_serializer'
 require 'pulse/adapters/http_webhook_dispatcher'
 
-# C7 / FR-C7-05/06/07/08 + FC-C7-05/06(a,b,d)/07/09/11 — HttpWebhookDispatcher delivery
+# HttpWebhookDispatcher delivery
 # pipeline: event_filter -> HTTPS-only -> SSRF guard -> serialize -> HMAC-sign -> POST
 # with ~5s open+read timeout -> bounded ≤3 retry+backoff -> dead-letter (best-effort log,
 # NO secret). This suite drives the SINGLE-endpoint primitive #deliver and the fan-out
@@ -32,7 +32,7 @@ require 'pulse/adapters/http_webhook_dispatcher'
 # stubbed to a pass-through resolved IP for the non-SSRF cases (SSRF is covered in its own
 # suite). Backoff sleeps are stubbed to 0 so the retry test is fast + deterministic.
 #
-# RED NOW: Pulse::Adapters::HttpWebhookDispatcher (and its collaborators) do not exist.
+# Requires Pulse::Adapters::HttpWebhookDispatcher (and its collaborators).
 class HttpWebhookDispatcherTest < Minitest::Test
   OCC = Time.utc(2026, 7, 6, 9, 30, 0)
   SECRET = 'sentinel-secret-DO-NOT-LOG-1234567890'
@@ -92,9 +92,9 @@ class HttpWebhookDispatcherTest < Minitest::Test
   end
 
   # Build a dispatcher with the POST seam injected and SSRF resolving to a public IP.
-  # A9's constructor MUST accept a `post:` (or equivalent) injection seam so this suite is
-  # hermetic. If A9 names the seam differently the adapter is expected to still honor a
-  # keyword the test passes; the test pins the contract post: ->(**) at construction.
+  # The constructor MUST accept a `post:` (or equivalent) injection seam so this suite is
+  # hermetic. If the seam is named differently the adapter is expected to still honor a
+  # keyword the test passes; the test pins post: ->(**) at construction.
   def build(post_seam, resolved: PUBLIC_IP, logger: nil)
     Pulse::Adapters::HttpWebhookDispatcher.new(post: post_seam, logger: logger)
       .tap { stub_ssrf_pass(resolved) }
@@ -116,7 +116,7 @@ class HttpWebhookDispatcherTest < Minitest::Test
     ->(_secs) {}
   end
 
-  # ── HMAC over the EXACT sent bytes; single-byte mutation ⇒ digest differs (FC-C7-07) ─
+  # ── HMAC over the EXACT sent bytes; single-byte mutation ⇒ digest differs ─
   def test_hmac_signature_covers_exact_posted_body
     fp = FakePost.new(script: Resp.new('200'))
     d = build(fp)
@@ -137,7 +137,7 @@ class HttpWebhookDispatcherTest < Minitest::Test
   end
 
   # ── in-body signature is a GENUINE receiver-recomputable HMAC over the ─────────────
-  #    signature-EXCLUDED body (FC-C7-07 secondary mirror). NOT the self-referential
+  #    signature-EXCLUDED body (secondary mirror). NOT the self-referential
   #    "in-body == header" form (a keyed-hash fixed point — impossible; see T-HTTP-01
   #    for the primary control: header == HMAC over the EXACT posted bytes).
   def test_signed_body_equals_posted_body_bytes
@@ -172,7 +172,7 @@ class HttpWebhookDispatcherTest < Minitest::Test
                  'mutating a body byte must change the recomputed digest (non-tautological falsifier)'
   end
 
-  # ── ~5s open AND read timeout on every attempt (FC-C7-06b) ──────────────────
+  # ── ~5s open AND read timeout on every attempt ──────────────────
   def test_open_and_read_timeout_are_both_about_five_seconds
     fp = FakePost.new(script: Resp.new('200'))
     d = build(fp)
@@ -191,7 +191,7 @@ class HttpWebhookDispatcherTest < Minitest::Test
     assert_equal 3, fp.calls.size, 'a hung endpoint is retried up to the ≤3 cap, then dead-lettered'
   end
 
-  # ── HTTPS-only default + allow_http override (FC-C7-06a) ────────────────────
+  # ── HTTPS-only default + allow_http override ────────────────────
   def test_http_endpoint_rejected_by_default_no_post
     fp = FakePost.new(script: Resp.new('200'))
     d = build(fp)
@@ -206,7 +206,7 @@ class HttpWebhookDispatcherTest < Minitest::Test
     assert_equal 1, fp.calls.size, 'allow_http:true permits the http:// POST for THAT endpoint'
   end
 
-  # ── SSRF block is dead-lettered (not raised) by the dispatcher (FC-C7-06c wiring) ─
+  # ── SSRF block is dead-lettered (not raised) by the dispatcher ─
   def test_ssrf_block_is_dead_lettered_no_post_no_raise
     fp = FakePost.new(script: Resp.new('200'))
     d = Pulse::Adapters::HttpWebhookDispatcher.new(post: fp, logger: nil)
@@ -217,7 +217,7 @@ class HttpWebhookDispatcherTest < Minitest::Test
     assert_equal 0, fp.calls.size, 'an SSRF block short-circuits before any POST'
   end
 
-  # ── bounded ≤3 retry then dead-letter; success stops early (FC-C7-05) ───────
+  # ── bounded ≤3 retry then dead-letter; success stops early ───────
   def test_always_failing_endpoint_makes_exactly_three_attempts
     fp = FakePost.new(script: ->(_n) { Resp.new('503') })
     d = build(fp)
@@ -239,14 +239,14 @@ class HttpWebhookDispatcherTest < Minitest::Test
   def test_deliver_never_raises_out_on_terminal_failure
     fp = FakePost.new(script: ->(_n) { RuntimeError.new('connection refused') })
     d = build(fp)
-    # No assert_raises — the contract is that deliver returns normally (best-effort, GR-05).
+    # No assert_raises — deliver returns normally (best-effort).
     d.stub(:sleep, no_sleep) do
       run_deliver(d, event, endpoint)
     end
     assert_equal 3, fp.calls.size, 'a connection error is retried to the cap and then swallowed (no raise out)'
   end
 
-  # ── event_filter: only matching event types delivered; empty = all (FC-C7-11) ─
+  # ── event_filter: only matching event types delivered; empty = all ─
   def test_event_filter_skips_non_matching_type
     fp = FakePost.new(script: Resp.new('200'))
     d = build(fp)
@@ -270,7 +270,7 @@ class HttpWebhookDispatcherTest < Minitest::Test
     end
   end
 
-  # ── logging carries identifying fields but NEVER the secret (FC-C7-09 / RISK-C7-03) ─
+  # ── logging carries identifying fields but NEVER the secret ─
   def test_failure_log_never_contains_the_secret
     logged = []
     fake_logger = Object.new
@@ -284,14 +284,14 @@ class HttpWebhookDispatcherTest < Minitest::Test
       run_deliver(d, event, endpoint)
     end
     joined = logged.join("\n")
-    refute_empty logged, 'a terminal dead-letter must be logged (observability, FC-C7-09)'
-    refute_includes joined, SECRET, 'the endpoint secret must NEVER appear in any log line (RISK-C7-03)'
+    refute_empty logged, 'a terminal dead-letter must be logged (observability)'
+    refute_includes joined, SECRET, 'the endpoint secret must NEVER appear in any log line'
     assert_match(/hooks\.example/, joined, 'the log carries the url')
     assert_match(/rag_transition/, joined, 'the log carries the event_type')
     assert_match(/\b42\b/, joined, 'the log carries the project_id')
   end
 
-  # ── OFF-BY-DEFAULT structural short-circuit: empty endpoint list ⇒ zero POST (FC-C7-02) ─
+  # ── OFF-BY-DEFAULT structural short-circuit: empty endpoint list ⇒ zero POST ─
   # (Complements the harness scan_and_alert arm; here the dispatcher-level short-circuit.)
   def test_dispatch_with_empty_endpoint_list_makes_zero_posts
     fp = FakePost.new(script: ->(_n) { flunk 'no POST may occur with an empty endpoint list' })
@@ -307,10 +307,10 @@ class HttpWebhookDispatcherTest < Minitest::Test
     Pulse::Adapters::SsrfGuard.stub(:check, ->(*_a, **_k) { PUBLIC_IP }) do
       d.dispatch(event, project: project, health_result: health, previous: nil)
     end
-    assert_equal 0, fp.calls.size, 'a disabled (enabled:false) endpoint is skipped entirely (FC-C7-11)'
+    assert_equal 0, fp.calls.size, 'a disabled (enabled:false) endpoint is skipped entirely'
   end
 
-  # ── WH-01: the REAL transport (net_http_post) pins the socket to the vetted SSRF IP while ─
+  # ── the REAL transport (net_http_post) pins the socket to the vetted SSRF IP while ─
   #    keeping @address = the HOSTNAME, so TLS SNI + cert-hostname verification target the
   #    hostname (a real HTTPS cert, issued for the hostname, passes VERIFY_PEER) yet the
   #    connection opens to the pinned IP (no re-resolution — TOCTOU closure). This exercises
@@ -359,7 +359,7 @@ class HttpWebhookDispatcherTest < Minitest::Test
     refute_nil captured, 'the default seam must construct a Net::HTTP instance'
     assert_equal 'hooks.example', captured.address,
                  'the connect @address MUST be the HOSTNAME so TLS SNI + cert-hostname ' \
-                 'verification target the hostname (WH-01: NOT the pinned IP)'
+                 'verification target the hostname (NOT the pinned IP)'
     assert_equal PUBLIC_IP, captured.ipaddr,
                  'the socket MUST be pinned to the vetted SSRF IP via ipaddr= (TOCTOU closure)'
     assert_equal true, captured.use_ssl, 'https target => TLS enabled'

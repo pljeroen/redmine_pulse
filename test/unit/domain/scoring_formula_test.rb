@@ -1,16 +1,21 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 
-# FR-06..FR-24 / FC-12..FC-27.
 # Golden-formula tests for the five signals plus composite assembly.
 class ScoringFormulaTest < Minitest::Test
   include ScoringSupport
 
   S = Pulse::Domain::Signals
 
-  # ============ STALENESS (FR-06, FR-07 / FC-12, FC-13, FC-14) ============
+  # ============ STALENESS ============
   def test_staleness_formula
     m = metrics(reference_date: ScoringSupport::TODAY - 90)
     s = S.staleness(m, fixed_clock, config)
@@ -36,14 +41,14 @@ class ScoringFormulaTest < Minitest::Test
   end
 
   def test_staleness_clamp_when_clock_before_reference
-    # FC-13: days negative => n clamps to 1.0 (never > 1); raw_value reported as-is.
+    # days negative => n clamps to 1.0 (never > 1); raw_value reported as-is.
     m = metrics(reference_date: ScoringSupport::TODAY + 10)
     s = S.staleness(m, fixed_clock, config)
     assert_equal(-10, s.raw_value)
     assert_in_delta 1.0, s.n, 1e-12
   end
 
-  # ============ PROGRESS (FR-08, FR-09, FR-10 / FC-15, FC-16) ============
+  # ============ PROGRESS ============
   def test_progress_activation
     active = S.progress(metrics(effort_open: 2.0, effort_total: 10.0), config)
     assert active.active, 'progress active when effort_total > 0'
@@ -76,7 +81,7 @@ class ScoringFormulaTest < Minitest::Test
     assert_in_delta 0.0, s.n, 1e-12
   end
 
-  # ============ MOMENTUM — "Active = healthy" (momentum-broaden CT-02) ============
+  # ============ MOMENTUM — "Active = healthy" ============
   # NEW formula (lib/pulse/domain/signals.rb#momentum). For each in-window event:
   #   :issue_created -> opened, :issue_closed -> closed,
   #   :issue_commented -> comments, :commit -> commits.
@@ -160,7 +165,7 @@ class ScoringFormulaTest < Minitest::Test
   end
 
   def test_momentum_window_half_open_boundary
-    # event @ (today - W) IS in-window; event @ today is NOT (FC-18).
+    # event @ (today - W) IS in-window; event @ today is NOT.
     w = config.activity_window_days # 30
     in_window  = { date: ScoringSupport::TODAY - w, type: :issue_closed }
     excluded   = { date: ScoringSupport::TODAY,     type: :issue_closed }
@@ -198,12 +203,11 @@ class ScoringFormulaTest < Minitest::Test
     assert_equal 1, s.raw_value, 'only the in-window commit counts (activity 1)'
   end
 
-  # ============ MOMENTUM responds to config (settings-promote-momentum CT-02) ==
-  # momentum_activity_half and momentum_direction_bias are promoted from module
-  # constants to ScoringConfig fields. Signals.momentum must read them off `config`
-  # (config.momentum_activity_half / config.momentum_direction_bias) — NOT the (now
-  # removed) constants. Same metrics/events; only the config changes. RED now:
-  # ScoringConfig has no such kwargs and Signals.momentum still uses the constants.
+  # ============ MOMENTUM responds to config ==
+  # momentum_activity_half and momentum_direction_bias are ScoringConfig fields.
+  # Signals.momentum must read them off `config` (config.momentum_activity_half /
+  # config.momentum_direction_bias) — NOT module constants. Same metrics/events; only the
+  # config changes.
 
   def test_momentum_responds_to_activity_half_lower_half_yields_higher_n
     # Same events for both: opened 2, closed 8 => activity 10 ; direction = (8-2)/10 = 0.6.
@@ -249,12 +253,10 @@ class ScoringFormulaTest < Minitest::Test
   end
 
   # ============ dominant_signal on_track threshold responds to config ==========
-  # on_track_threshold is promoted from the ON_TRACK_THRESHOLD constant to a
-  # ScoringConfig field. Scoring.dominant_signal must compare the worst active n
-  # against config.on_track_threshold. Build a project whose worst active signal n
-  # is exactly 0.6 and assert the SAME project reads :on_track at threshold 0.5
-  # (default) but NAMES that signal at threshold 0.7. RED now: ScoringConfig has no
-  # on_track_threshold kwarg and Scoring uses the constant.
+  # on_track_threshold is a ScoringConfig field. Scoring.dominant_signal must compare the
+  # worst active n against config.on_track_threshold. Build a project whose worst active
+  # signal n is exactly 0.6 and assert the SAME project reads :on_track at threshold 0.5
+  # (default) but NAMES that signal at threshold 0.7.
   def worst_signal_six_tenths_metrics
     # staleness is the single worst active signal at n exactly 0.6; all others >= 0.8.
     #   staleness days 72 => n 1 - 72/180 = 0.6  (the worst)
@@ -284,7 +286,7 @@ class ScoringFormulaTest < Minitest::Test
                  'same project: worst active n 0.6 < on_track_threshold 0.7 => names the worst signal'
   end
 
-  # ============ RISK_LOAD (FR-15, FR-16 / FC-19) ============
+  # ============ RISK_LOAD ============
   def test_risk_load_formula
     s = S.risk_load(metrics(risk_mapped: true, risk_raw: 40.0), config)
     assert s.active
@@ -304,7 +306,7 @@ class ScoringFormulaTest < Minitest::Test
     assert_in_delta 0.0, s.n, 1e-12
   end
 
-  # ============ BLOCKED_LOAD (FR-17 / FC-20) ============
+  # ============ BLOCKED_LOAD ============
   def test_blocked_load_formula
     s = S.blocked_load(metrics(blocked_count: 12), config)
     assert s.active, 'blocked_load always active'
@@ -324,14 +326,14 @@ class ScoringFormulaTest < Minitest::Test
     assert_in_delta 0.0, s.n, 1e-12
   end
 
-  # ============ COMPOSITE: weight redistribution + contributions (FR-19) ======
+  # ============ COMPOSITE: weight redistribution + contributions ======
   def test_weight_redistribution_and_contributions
     h = Pulse::Domain::Scoring.score(pdfree_metrics, fixed_clock, config)
     active = h.breakdown.select(&:active)
     sum_eff = active.sum(&:effective_weight)
     assert_in_delta 1.0, sum_eff, 1e-9, 'effective weights sum to 1 over active set (CR-02)'
 
-    # inactive risk_load => effective_weight nil, contribution nil (FC-11).
+    # inactive risk_load => effective_weight nil, contribution nil.
     risk = signal(h, :risk_load)
     refute risk.active
     assert_nil risk.effective_weight
@@ -351,7 +353,7 @@ class ScoringFormulaTest < Minitest::Test
     assert_in_delta 0.15, signal(h, :blocked_load).effective_weight, 1e-9
   end
 
-  # ============ HEALTH SCORE round_half_up (FR-20 / FC-06) ============
+  # ============ HEALTH SCORE round_half_up ============
   def test_health_score_round_half_up_kernel_aios
     # NEW momentum: kernel_aios momentum n 0.425 (was 0.25). contributions
     #   s 100*0.25*0.166667=4.1667, p 100*0.25*0.30=7.5, m 100*0.20*0.425=8.5,
@@ -405,7 +407,7 @@ class ScoringFormulaTest < Minitest::Test
     assert_equal 3, h2.health_score, 'round_half_up(2.5) == 3 (banker\'s round-half-to-even would give 2)'
   end
 
-  # ============ RAG bands (FR-22 / FC-27) ============
+  # ============ RAG bands ============
   # Drives the REAL scoring path: kernel_aios yields health_score 29 deterministically
   # (NEW momentum formula); we move the RAG thresholds around 29 to exercise each band
   # boundary through the production rag computation (lower bounds inclusive).
@@ -454,7 +456,7 @@ class ScoringFormulaTest < Minitest::Test
     assert_equal :red, below.rag
   end
 
-  # ============ dominant_signal — SEVERITY-FIRST (FR-23 / FC-22; THAW-RA-001) ====
+  # ============ dominant_signal — SEVERITY-FIRST ====
   # dominant_signal := the ACTIVE signal with the LOWEST normalized health n
   # (argmin_{i∈A} n_i == argmax (1 - n_i)), WEIGHT-INDEPENDENT. Tie -> CANONICAL_ORDER
   # [staleness, progress, momentum, risk_load, blocked_load]. Never nil on a scoreable
@@ -613,7 +615,7 @@ class ScoringFormulaTest < Minitest::Test
     assert_equal :on_track, h2.dominant_signal
   end
 
-  # ============ signal_completeness (FR-24 / FC-26) ============
+  # ============ signal_completeness ============
   def test_signal_completeness_full
     h = Pulse::Domain::Scoring.score(kernel_aios_metrics, fixed_clock, config)
     assert_in_delta 1.0, h.signal_completeness, 1e-12
@@ -628,7 +630,7 @@ class ScoringFormulaTest < Minitest::Test
     # risk inactive AND progress inactive => 3 of 5 = 0.6. blocked_count:1 keeps the
     # project NON-EMPTY (a real blocker) so this is a minimal-active-set project, NOT the
     # no-data state (zero scoreable data) — the 0.6 floor applies to a project that has
-    # SOME data on its 3 always-active signals (THAW-RA-001 no-data boundary).
+    # SOME data on its 3 always-active signals (the no-data boundary).
     h = Pulse::Domain::Scoring.score(
       metrics(risk_mapped: false, effort_open: 0.0, effort_total: 0.0, blocked_count: 1),
       fixed_clock, config
@@ -637,7 +639,7 @@ class ScoringFormulaTest < Minitest::Test
     assert_operator h.signal_completeness, :>=, 0.6
   end
 
-  # ============ NO-DATA state (THAW-RA-001) ============
+  # ============ NO-DATA state ============
   # A project with ZERO scoreable data must render a DISTINCT no-data state, NOT a green
   # health score off a staleness-freshness floor. No-data trigger (pure-domain):
   #   effort_total == 0 (no issues / no mapped effort)  AND
@@ -680,7 +682,7 @@ class ScoringFormulaTest < Minitest::Test
 
   def test_no_data_state_lens_keys_present_but_nil
     h = Pulse::Domain::Scoring.score(no_data_metrics, fixed_clock, config)
-    assert_equal %i[at_risk blocked done health stale], h.lens_keys.keys.sort, 'lens key SET preserved (FC-23)'
+    assert_equal %i[at_risk blocked done health stale], h.lens_keys.keys.sort, 'lens key SET preserved'
     h.lens_keys.each_value { |v| assert_nil v, 'no-data lens values are nil (N/A)' }
   end
 
@@ -724,7 +726,7 @@ class ScoringFormulaTest < Minitest::Test
   end
 
   def test_no_data_not_triggered_by_risk_only_project
-    # [remediation R1 / RARB-INV-01] risk-ONLY boundary.
+    # risk-ONLY boundary.
     # A project with real risk DATA (risk_raw > 0, risk_mapped true) but zero effort, empty
     # events, and zero blockers must NOT enter the no-data branch: risk_raw > 0 breaks the
     # fourth no_data? conjunct, so the project is scoreable. risk_load is active/non-nil and

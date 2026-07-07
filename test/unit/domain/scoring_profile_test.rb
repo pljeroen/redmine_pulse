@@ -11,19 +11,16 @@ require_relative '../../domain_test_helper'
 require 'pulse/domain/scoring_config'
 require 'pulse/domain/scoring_profile'
 
-# IT-C4-03 (domain slice) — FR-C4-01 / FR-C4-07 / FC-C4-01, FC-C4-02, FC-C4-03,
-# FC-C4-04, FC-C4-16. The Pulse::Domain::ScoringProfile frozen value object:
+# The Pulse::Domain::ScoringProfile frozen value object:
 #   {id: String, name: String, config: ScoringConfig}
 #   * frozen at construction (FrozenError on mutation);
-#   * id/name stored as dup.freeze'd copies (THE immutability-hole lesson from
-#     timeline-engine — mutating the ORIGINAL String argument must NOT change p.id/p.name);
+#   * id/name stored as dup.freeze'd copies (mutating the ORIGINAL String argument must NOT
+#     change p.id/p.name);
 #   * invalid id / name / config => ArgumentError (no partial build);
 #   * config is a full, independently-validated ScoringConfig (two profiles MAY carry
 #     different enabled sets — one enables coverage_gap, another does not).
 #
-# RED NOW: Pulse::Domain::ScoringProfile is unimplemented -> `require` raises LoadError
-# (NameError on first reference). GREEN after A9 creates lib/pulse/domain/scoring_profile.rb
-# to the exact public API these tests pin. Pure-domain lane: ruby -Itest -Ilib.
+# Pure-domain lane: ruby -Itest -Ilib.
 class ScoringProfileTest < Minitest::Test
   SP = Pulse::Domain::ScoringProfile
   SC = Pulse::Domain::ScoringConfig
@@ -47,7 +44,7 @@ class ScoringProfileTest < Minitest::Test
                       risk_load: 0.1, blocked_load: 0.1 })
   end
 
-  # === FC-C4-01: valid construction ===========================================
+  # === valid construction ===========================================
   def test_valid_construction_exposes_id_name_config
     c = valid_config
     p = SP.new(id: 'balanced', name: 'Balanced', config: c)
@@ -64,13 +61,13 @@ class ScoringProfileTest < Minitest::Test
     assert p.config.is_a?(SC), 'config is a Pulse::Domain::ScoringConfig'
     assert_equal c.weights, p.config.weights,
                  'the profile carries the supplied config content'
-    assert p.config.frozen?, 'the config is frozen (FC-C4-01)'
+    assert p.config.frozen?, 'the config is frozen'
   end
 
-  # === FC-C4-01 / FC-C4-03: frozen VO =========================================
+  # === frozen VO =========================================
   def test_profile_is_frozen
     p = SP.new(id: 'x', name: 'X', config: valid_config)
-    assert p.frozen?, 'ScoringProfile must be frozen at construction (FC-C4-01/FC-C4-03)'
+    assert p.frozen?, 'ScoringProfile must be frozen at construction'
   end
 
   def test_instance_variable_mutation_raises_frozen_error
@@ -78,7 +75,7 @@ class ScoringProfileTest < Minitest::Test
     assert_raises(FrozenError) { p.instance_variable_set(:@id, 'other') }
   end
 
-  # === FC-C4-03: deep immutability — id/name are dup.freeze'd copies ===========
+  # === deep immutability — id/name are dup.freeze'd copies ===========
   # THE immutability-hole lesson: a frozen VO with a String field is still mutable
   # through the caller's retained reference unless the field is dup.freeze'd internally.
   def test_mutating_original_id_string_does_not_change_profile
@@ -114,7 +111,7 @@ class ScoringProfileTest < Minitest::Test
     assert_raises(FrozenError) { p.name << 'z' }
   end
 
-  # === FC-C4-02: invalid construction => ArgumentError (no partial build) ======
+  # === invalid construction => ArgumentError (no partial build) ======
   def test_nil_id_raises_argument_error
     assert_raises(ArgumentError) { SP.new(id: nil, name: 'X', config: valid_config) }
   end
@@ -155,9 +152,9 @@ class ScoringProfileTest < Minitest::Test
                        'a non-ScoringConfig config must fail loud as ArgumentError'
   end
 
-  # === FC-C4-04 / FC-C4-02: config validation is NOT bypassed by the profile ===
+  # === config validation is NOT bypassed by the profile ===
   # A ScoringConfig with Σweights != 1.0 raises at ScoringConfig.new, so no invalid
-  # config can reach ScoringProfile (validation reuse, unchanged C1 behavior).
+  # config can reach ScoringProfile (validation reuse, unchanged behavior).
   def test_invalid_config_weights_raise_at_config_construction
     assert_raises(ArgumentError) do
       SP.new(id: 'x', name: 'X',
@@ -165,7 +162,7 @@ class ScoringProfileTest < Minitest::Test
     end
   end
 
-  # === FC-C4-04: two profiles MAY carry DIFFERENT enabled sets =================
+  # === two profiles MAY carry DIFFERENT enabled sets =================
   def test_two_profiles_may_have_different_enabled_sets
     a = SP.new(id: 'cov', name: 'Coverage', config: coverage_gap_config)
     b = SP.new(id: 'base', name: 'Base', config: valid_config)
@@ -174,7 +171,7 @@ class ScoringProfileTest < Minitest::Test
     refute_includes b.config.enabled_signals, :coverage_gap,
                     'profile B does not enable coverage_gap'
     refute_equal a.config.enabled_signals, b.config.enabled_signals,
-                 'the two profiles carry different enabled sets (FC-C4-04)'
+                 'the two profiles carry different enabled sets'
   end
 
   def test_reweighted_profile_carries_its_own_weights
@@ -183,14 +180,14 @@ class ScoringProfileTest < Minitest::Test
                     'the profile carries its own (reweighted) config weights'
   end
 
-  # === FC-C4-16: pure domain — no adapter / AR / Setting reference =============
+  # === pure domain — no adapter / AR / Setting reference =============
   def test_source_is_pure_domain
     src = File.read(
       File.expand_path('../../../../lib/pulse/domain/scoring_profile.rb', __FILE__)
     )
     %w[ActiveRecord Setting Redmine Pulse::Adapters Pulse::Ports Rails].each do |tok|
       refute_match(/\b#{Regexp.escape(tok)}\b/, src,
-                   "scoring_profile.rb must not reference #{tok} (FC-C4-16 pure domain)")
+                   "scoring_profile.rb must not reference #{tok} (pure domain)")
     end
   end
 end

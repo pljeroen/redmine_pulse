@@ -9,8 +9,8 @@
 
 module Pulse
   module Adapters
-    # Clock port implementation backed by Redmine's instance-configured timezone
-    # (MS-31, FC-32). #today returns a plain Date in Time.zone — NOT the UTC date —
+    # Clock port implementation backed by Redmine's instance-configured timezone.
+    # #today returns a plain Date in Time.zone — NOT the UTC date —
     # so day-boundary cases respect the instance setting.
     class SystemClock
       # -> Date == Time.zone.today (instance tz, not UTC).

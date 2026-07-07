@@ -1,12 +1,17 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'json'
 
-# ADVERSARIAL multi-user permission/visibility leak suite (INV-PERMISSION-SAFE,
-# DEC-11). This is an ADDITIVE security guard — it modifies no frozen test and
-# stays in the suite as a permanent cross-user no-leak characterization.
+# Multi-user permission/visibility leak suite (permission-safe). This is a security
+# guard that stays in the suite as a permanent cross-user no-leak characterization.
 #
 # THREAT MODEL it falsifies:
 #   * portfolio_project_ids is `visible AND pulse-module-on AND view_pulse` subset
@@ -23,9 +28,9 @@ require 'json'
 # Each case is independently falsifiable; on a leak the assertion message captures
 # expected vs actual and the leaked identifier/value.
 #
-# COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — the Project.visible /
+# Runs on PostgreSQL (the production engine) — the Project.visible /
 # Issue.visible / allowed_to? SQL composition is verified on the deployed engine.
-# Skip (not fail) on non-Postgres adapters so the CI MySQL legs stay green.
+# Skip (not fail) on non-Postgres adapters so the other CI legs stay green.
 class PermissionLeakTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -177,7 +182,7 @@ class PermissionLeakTest < ActionDispatch::IntegrationTest
 
   # ── CASE 2: issue-level visibility inside the SHARED project P2 ───────────────
   # An issue visible to A but NOT B (private, authored by A) must not contribute to
-  # B's P2 projection, and vice versa (INV-PERMISSION-SAFE). A's and B's roles use
+  # B's P2 projection, and vice versa (permission-safe). A's and B's roles use
   # 'own' visibility so a private issue authored by the other is hidden.
 
   def test_case2_shared_project_issue_visibility_isolated

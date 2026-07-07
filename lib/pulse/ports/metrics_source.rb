@@ -18,12 +18,12 @@ module Pulse
     #     -> Array<Pulse::Domain::ProjectMetrics>
     #     project_ids nil   => every project visible + pulse-enabled + view_pulse
     #     project_ids Array => the visibility-filtered subset of those ids
-    #     result ALWAYS ordered by project_id ascending (FC-34).
+    #     result ALWAYS ordered by project_id ascending.
     #   access_decision(user, project_id) -> :ok | :forbidden | :not_found
     #   portfolio_project_ids(user)       -> Array<Integer>
     #
     # All aggregates are visibility-scoped for the requesting user; the returned
-    # ProjectMetrics are AR-free frozen value objects (FC-33). No ABC/inheritance.
+    # ProjectMetrics are AR-free frozen value objects. No ABC/inheritance.
     module MetricsSource
     end
   end

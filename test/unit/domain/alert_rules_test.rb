@@ -13,13 +13,13 @@ require 'pulse/domain/alert_event'
 require 'pulse/domain/health_result'
 require 'time'
 
-# C6 / FR-C6-02 / FR-C6-06 / FC-C6-01/02/03 — AlertRules pure transition detection.
+# AlertRules pure transition detection.
 #
 # Pulse::Domain::AlertRules.evaluate(prior_state, health_result) -> frozen Array<AlertEvent>.
 #   prior_state : Hash-or-nil {last_rag, last_dominant, last_no_data, last_score} (nil = first run)
 #   health_result : Pulse::Domain::HealthResult (.rag Symbol, .dominant_signal, .health_score)
 #
-# The RECONCILED predicates (post SAT-C6-01 / SAT-C6-02 closure) — for prior p, current c:
+# The reconciled predicates — for prior p, current c:
 #   (1) rag_transition   IFF prior_rag PRESENT AND prior_rag != rag AND rag != :no_data
 #   (2) dominant_change  IFF prior_dom PRESENT AND prior_dom != dom AND BOTH non-no-data
 #   (3) no_data_appeared IFF prior_rag PRESENT AND prior_rag != :no_data AND rag == :no_data
@@ -34,7 +34,7 @@ require 'time'
 # dominant_signal are nil (scoring.rb no_data_result) — the grounding for both SAT fixes.
 #
 # Pure lane: `ruby -Itest -Ilib test/unit/domain/alert_rules_test.rb`.
-# RED until lib/pulse/domain/alert_rules.rb + alert_event.rb exist (NameError).
+# Requires lib/pulse/domain/alert_rules.rb + alert_event.rb.
 class AlertRulesTest < Minitest::Test
   OCC = Time.utc(2026, 7, 6, 9, 0, 0)
   PID = 11
@@ -61,7 +61,7 @@ class AlertRulesTest < Minitest::Test
     Pulse::Domain::AlertRules.evaluate(prior_state, health_result, score_delta_threshold: n)
   end
 
-  # ── purity + determinism (FC-C6-01) ─────────────────────────────────────────
+  # ── purity + determinism ─────────────────────────────────────────
   def test_evaluate_is_deterministic_and_returns_frozen_array
     p = prior(rag: 'green', dominant: 'staleness', no_data: false, score: 80.0)
     c = hr(rag: :amber, dominant: :staleness, score: 55.0)
@@ -71,7 +71,7 @@ class AlertRulesTest < Minitest::Test
     assert a.frozen?, 'evaluate returns a FROZEN Array'
   end
 
-  # ── first-run baseline (FC-C6-03) ───────────────────────────────────────────
+  # ── first-run baseline ───────────────────────────────────────────
   def test_first_run_nil_prior_returns_empty
     c = hr(rag: :amber, dominant: :staleness, score: 55.0)
     assert_equal [], evaluate(nil, c), 'nil prior => baseline, nothing fires'
@@ -91,7 +91,7 @@ class AlertRulesTest < Minitest::Test
                  'baseline now armed: green->amber fires exactly one rag_transition'
   end
 
-  # ── (1) rag_transition: green -> amber (AC-C6-02) ───────────────────────────
+  # ── (1) rag_transition: green -> amber ───────────────────────────
   def test_green_to_amber_fires_exactly_one_rag_transition
     p = prior(rag: 'green', dominant: 'staleness', no_data: false, score: 70.0)
     c = hr(rag: :amber, dominant: :staleness, score: 60.0)
@@ -101,14 +101,14 @@ class AlertRulesTest < Minitest::Test
     assert_equal PID, ev.first.project_id
   end
 
-  # ── second run, no change => [] (FC-C6-15 idempotence at the rules layer) ────
+  # ── second run, no change => [] (idempotence at the rules layer) ────
   def test_second_run_no_change_returns_empty
     p = prior(rag: 'amber', dominant: 'staleness', no_data: false, score: 60.0)
     c = hr(rag: :amber, dominant: :staleness, score: 60.0)
     assert_equal [], evaluate(p, c), 'no band/dominant/score change => no events'
   end
 
-  # ── (3) into-no-data: green -> :no_data => [no_data_appeared] ONLY (SAT-C6-01)
+  # ── (3) into-no-data: green -> :no_data => [no_data_appeared] ONLY
   def test_green_to_no_data_fires_only_no_data_appeared
     p = prior(rag: 'green', dominant: 'staleness', no_data: false, score: 80.0)
     # :no_data band: health_score AND dominant_signal are nil (scoring grounding).
@@ -116,7 +116,7 @@ class AlertRulesTest < Minitest::Test
     ev = types(evaluate(p, c))
     assert_includes ev, :no_data_appeared, 'into-no-data must fire no_data_appeared'
     refute_includes ev, :rag_transition,
-                    'into-no-data must NOT fire rag_transition (rag != :no_data guard, SAT-C6-01)'
+                    'into-no-data must NOT fire rag_transition (rag != :no_data guard)'
     refute_includes ev, :dominant_change,
                     'into-no-data must NOT fire dominant_change (both must be non-no-data)'
     assert_equal [:no_data_appeared], ev, 'exactly [no_data_appeared] on the into-no-data step'
@@ -134,7 +134,7 @@ class AlertRulesTest < Minitest::Test
     assert_equal [:rag_transition], ev
   end
 
-  # ── (2) dominant_change with both active => [dominant_change] (AC-C6-03) ─────
+  # ── (2) dominant_change with both active => [dominant_change] ─────
   def test_dominant_change_both_active
     p = prior(rag: 'amber', dominant: 'staleness', no_data: false, score: 55.0)
     c = hr(rag: :amber, dominant: :risk_load, score: 55.0)
@@ -169,23 +169,23 @@ class AlertRulesTest < Minitest::Test
   def test_score_delta_never_fires_when_n_disabled_even_for_large_delta_nil_N
     p = prior(rag: 'green', dominant: 'staleness', no_data: false, score: 90.0)
     c = hr(rag: :green, dominant: :staleness, score: 10.0) # |delta| 80
-    assert_equal [], evaluate(p, c, n: nil), 'N nil (default disabled) => no score_delta (AC-C6-08)'
+    assert_equal [], evaluate(p, c, n: nil), 'N nil (default disabled) => no score_delta'
   end
 
   def test_score_delta_never_fires_when_n_zero_even_for_large_delta
     p = prior(rag: 'green', dominant: 'staleness', no_data: false, score: 90.0)
     c = hr(rag: :green, dominant: :staleness, score: 10.0)
-    assert_equal [], evaluate(p, c, n: 0), 'N 0 => disabled => no score_delta (AC-C6-08)'
+    assert_equal [], evaluate(p, c, n: 0), 'N 0 => disabled => no score_delta'
   end
 
-  # ── (4) nil-safety: into-no-data with N set => NO score_delta, NO raise (SAT-C6-02)
+  # ── (4) nil-safety: into-no-data with N set => NO score_delta, NO raise
   def test_score_delta_nil_safe_on_into_no_data_current_score_nil
     p = prior(rag: 'green', dominant: 'staleness', no_data: false, score: 80.0)
     c = hr(rag: :no_data, dominant: nil, score: nil) # current health_score nil
     ev = nil
     assert_silent { ev = evaluate(p, c, n: 15.0) } # must NOT raise on nil arithmetic
     refute_includes types(ev), :score_delta,
-                    'current score nil (no_data) => score_delta does not fire (SAT-C6-02)'
+                    'current score nil (no_data) => score_delta does not fire'
   end
 
   def test_score_delta_nil_safe_on_out_of_no_data_prior_score_nil
@@ -194,10 +194,10 @@ class AlertRulesTest < Minitest::Test
     ev = nil
     assert_silent { ev = evaluate(p, c, n: 15.0) }
     refute_includes types(ev), :score_delta,
-                    'prior score nil (was no_data) => score_delta does not fire (SAT-C6-02)'
+                    'prior score nil (was no_data) => score_delta does not fire'
   end
 
-  # ── independence: multiple events in one evaluate (FC-C6-02) ────────────────
+  # ── independence: multiple events in one evaluate ────────────────
   def test_rag_and_score_delta_fire_together_two_events
     p = prior(rag: 'green', dominant: 'staleness', no_data: false, score: 80.0)
     c = hr(rag: :amber, dominant: :staleness, score: 55.0) # band changed AND |delta| 25 >= 15

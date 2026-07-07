@@ -10,16 +10,16 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# FC-C6-07 / FR-C6-08 — Subscription = explicit "Watch project health" OR admin
-# auto-subscribe-role. RedmineSubscriptionStore#subscribers_for resolves the UNION of
+# Subscription = explicit "Watch project health" OR admin auto-subscribe-role.
+# RedmineSubscriptionStore#subscribers_for resolves the UNION of
 #   (1) explicit per-user watch records (Redmine Watcher idiom, pulse-health discriminator),
 #   (2) members of pulse_alert_auto_subscribe_role_id on the project (nil => off, DEFAULT).
-# Both sources feed the FC-C6-06 permission gate (covered exhaustively in
+# Both sources feed the permission gate (covered exhaustively in
 # pulse_alert_recipient_permission_test.rb). This suite covers the UNION composition:
 # watch-only, role-only, both (no duplicate), and nil-role => watchers-only.
 #
-# RED-by-construction: RedmineSubscriptionStore + the watch idiom are absent. A9 GREEN.
-# Postgres-gated.
+# Requires RedmineSubscriptionStore + the watch idiom.
+# Runs on PostgreSQL.
 class PulseSubscriptionStoreTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 

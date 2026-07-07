@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# redmine_pulse — portfolio / project-health cockpit for Redmine 6.x.
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 # run-tests.sh — Prepare the test DB and run plugin tests inside pulse_test_redmine.
 # Runs RAILS_ENV=test; touches only pulse_test_* containers.
 #

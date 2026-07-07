@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# redmine_pulse — portfolio / project-health cockpit for Redmine 6.x.
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 # up.sh — Bring up the isolated pulse_test_* Redmine 6.1.2 test harness.
 # SAFETY: this script ONLY creates/touches pulse_test_* resources; it never
 # touches any other container, network, or volume on the host.

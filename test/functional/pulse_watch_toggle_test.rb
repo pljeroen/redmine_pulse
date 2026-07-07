@@ -10,7 +10,7 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# C6 remediation (FR-C6-08): the USER-FACING "Watch project health" opt-in. A logged-in
+# The USER-FACING "Watch project health" opt-in. A logged-in
 # viewer with :view_pulse toggles the subscription from the cockpit:
 #   POST /projects/:id/pulse/watch    -> subscribe   (Watcher row 'PulseHealth')
 #   POST /projects/:id/pulse/unwatch  -> unsubscribe
@@ -22,7 +22,7 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #   (2) after POST watch, the viewer IS in subscribers_for and RECEIVES the scan email;
 #   (3) after POST unwatch, the viewer is again absent from subscribers_for and receives none.
 # The scan itself is driven separately (rake composition root) — the watch action starts NO
-# scan (INV-ADDITIVE), it only writes the viewer's own subscription record.
+# scan (additive), it only writes the viewer's own subscription record.
 #
 # Postgres-gated for parity with the sibling alert suites (the permission SQL is verified on
 # the engine).
@@ -84,7 +84,7 @@ class PulseWatchToggleTest < ActionDispatch::IntegrationTest
     # Not yet watching => the "Watch" (subscribe) button POSTs to pulse#watch.
     assert_select "form[action=?][method=post]", "/projects/#{@project.identifier}/pulse/watch",
                   { minimum: 1 },
-                  'the cockpit must offer a "Watch project health" toggle (FR-C6-08)'
+                  'the cockpit must offer a "Watch project health" toggle'
   end
 
   # ── POST watch => the viewer becomes a subscriber and RECEIVES the scan email ─
@@ -102,7 +102,7 @@ class PulseWatchToggleTest < ActionDispatch::IntegrationTest
 
     # The subscription is EXACTLY what subscribers_for reads.
     assert_includes subscriber_logins(@project), @user.login,
-                    'after POST watch, the viewer must be in subscribers_for (FR-C6-08)'
+                    'after POST watch, the viewer must be in subscribers_for'
     # ...and a subsequent scan delivers to them (the alert chain, driven separately).
     assert_includes scan_and_delivered_mails(@project), @user.mail,
                     'after watching, the transition scan must deliver the alert email to the watcher'
@@ -131,7 +131,7 @@ class PulseWatchToggleTest < ActionDispatch::IntegrationTest
   end
 
   # ── the watch action writes ONE subscription row and starts NO alert scan ────
-  # INV-ADDITIVE: the toggle must not read/write pulse_alert_states in the request cycle
+  # additive: the toggle must not read/write pulse_alert_states in the request cycle
   # (that is the scan's table; the watch action only touches the Watcher subscription row).
   def test_watch_toggle_does_not_touch_alert_state_table
     reads_or_writes = []
@@ -145,7 +145,7 @@ class PulseWatchToggleTest < ActionDispatch::IntegrationTest
     post "/projects/#{@project.identifier}/pulse/unwatch"
     assert_equal [], reads_or_writes,
                  "the Watch toggle must not read/write pulse_alert_states in the request cycle " \
-                 "(INV-ADDITIVE — the alert scan stays rake-only): #{reads_or_writes.inspect}"
+                 "(additive — the alert scan stays rake-only): #{reads_or_writes.inspect}"
   ensure
     ActiveSupport::Notifications.unsubscribe(sub) if sub
   end

@@ -7,19 +7,19 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
-# Creates the plugin-owned pulse_alert_states table (C6 / FC-C6-05 / FC-C6-12/13).
+# Creates the plugin-owned pulse_alert_states table.
 #
 # This is the per-project alert-state ledger the scan task compares against to detect a
 # transition. It is a SEPARATE table from pulse_snapshots (the projection cache) — no
 # cache impact, no schema change to pulse_snapshots. It is keyed by project_id ONLY (the
-# canonical/global profile; DEC-10 / FC-C6-12) — NEVER visibility_context_id / profile_id
+# canonical/global profile) — NEVER visibility_context_id / profile_id
 # (contrast pulse_snapshots, which partitions per viewer + profile). A UNIQUE index on
 # project_id guarantees exactly one canonical alert-state row per project (upsert, not
 # insert-a-second-row).
 #
 # NO foreign keys to Redmine domain tables (a dropped project simply orphans its row; the
 # scan only ever reads the row for a project it is actively scanning). Reversible: `down`
-# drops the table cleanly (drop_table drops its index too, matching the C5 idiom).
+# drops the table cleanly (drop_table drops its index too, matching the pulse_views idiom).
 class CreatePulseAlertStates < ActiveRecord::Migration[6.1]
   def up
     create_table :pulse_alert_states do |t|

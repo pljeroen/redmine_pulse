@@ -9,8 +9,8 @@
 
 module Pulse
   module Ports
-    # WebhookDispatcher — a duck-typed port (C7 / FC-C7-01c). Any object responding to
-    # #dispatch satisfies the contract. It depends ONLY on Pulse::Domain::AlertEvent (a pure
+    # WebhookDispatcher — a duck-typed port. Any object responding to
+    # #dispatch satisfies the protocol. It depends ONLY on Pulse::Domain::AlertEvent (a pure
     # value object); it names NO adapter constant, performs NO outbound HTTP, and touches no
     # persistence / plugin config — those live exclusively in the concrete adapter.
     #
@@ -18,9 +18,9 @@ module Pulse
     #   dispatch(alert_event, project:, health_result:, previous:) -> void
     #       Fan out the alert to EVERY configured, enabled, event-filter-matching endpoint
     #       (the settings-driven list). Best-effort per endpoint: a delivery failure is
-    #       dead-lettered (logged) and MUST NOT propagate out (GR-05). With an empty endpoint
-    #       list the loop body never runs (the OFF-by-default structural short-circuit,
-    #       FC-C7-02) — ZERO outbound HTTP.
+    #       dead-lettered (logged) and MUST NOT propagate out. With an empty endpoint
+    #       list the loop body never runs (the OFF-by-default structural short-circuit) —
+    #       ZERO outbound HTTP.
     #
     # The concrete adapter also exposes a single-endpoint primitive (#deliver) — the shared
     # work unit invoked by #dispatch (fan-out) AND by the admin test-event action (exactly ONE

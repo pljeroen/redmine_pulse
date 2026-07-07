@@ -11,14 +11,13 @@ require 'pulse/domain/scoring_config'
 
 module Pulse
   module Domain
-    # ScoringProfile (FR-C4-01 / FC-C4-01..04, FC-C4-16) — an immutable value object
-    # binding a human-facing {id, name} to a full, independently-validated ScoringConfig.
-    # A profile carries ONLY scoring shape (weights + enabled set + thresholds) — never a
-    # user / project / permission reference, so switching profiles can never change the
-    # visible issue set (INV-C4-PERM-UNCHANGED holds structurally: the profile is not even
-    # a visibility input).
+    # ScoringProfile — an immutable value object binding a human-facing {id, name} to a
+    # full, independently-validated ScoringConfig. A profile carries ONLY scoring shape
+    # (weights + enabled set + thresholds) — never a user / project / permission reference,
+    # so switching profiles can never change the visible issue set (structurally: the
+    # profile is not even a visibility input).
     #
-    # Immutability (FC-C4-03, the timeline-engine lesson): id and name are stored as
+    # Immutability: id and name are stored as
     # dup.freeze'd copies, so mutating the caller's ORIGINAL String never reaches the VO;
     # the whole object is frozen at construction. Invalid id/name/config => ArgumentError
     # (no partial build). Two profiles MAY carry different enabled sets (one enables
@@ -39,7 +38,7 @@ module Pulse
       private
 
       # A non-empty String, stored as a dup.freeze'd copy so the caller's original String
-      # is decoupled from the VO field (deep immutability, FC-C4-03).
+      # is decoupled from the VO field (deep immutability).
       def validate_string!(field, value)
         unless value.is_a?(String)
           raise ArgumentError, "#{field} must be a String (got #{value.class})"

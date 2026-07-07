@@ -12,10 +12,10 @@ require 'date'
 module Pulse
   module Domain
     # Immutable retrospective sparkline bucket (one 7-day half-open interval of the
-    # rolling window). Pure data — stdlib types only (Date/Symbol/Integer/Hash); no
-    # Rails/AR/IO (TC-07/TC-09). Each boundary is {at: Date, provenance: :derived_bucket}
-    # (TC-04). event_count is the REAL aggregate of in-window events (TC-06): a real
-    # Integer >= 0, never nil/interpolated. Fails loud (ArgumentError) on bad input (R7).
+    # rolling window). Pure data — standard-library types only (Date/Symbol/Integer/Hash);
+    # no Rails/AR/IO. Each boundary is {at: Date, provenance: :derived_bucket}. event_count
+    # is the REAL aggregate of in-window events: a real Integer >= 0, never
+    # nil/interpolated. Fails loud (ArgumentError) on bad input.
     class RetrospectiveBucket
       PROVENANCE = :derived_bucket
 
@@ -51,20 +51,20 @@ module Pulse
         unless boundary.is_a?(Hash)
           raise ArgumentError, "#{name} boundary must be a Hash (got #{boundary.class})"
         end
-        # instance_of? excludes DateTime (a Date subclass) — plain Date only (TC-04).
+        # instance_of? excludes DateTime (a Date subclass) — plain Date only.
         unless boundary[:at].instance_of?(Date)
           raise ArgumentError,
-                "#{name} boundary :at must be a plain Date (got #{boundary[:at].class}) (TC-04)"
+                "#{name} boundary :at must be a plain Date (got #{boundary[:at].class})"
         end
         unless boundary[:provenance] == PROVENANCE
           raise ArgumentError,
                 "#{name} boundary :provenance must be #{PROVENANCE.inspect} " \
-                "(got #{boundary[:provenance].inspect}) (TC-04)"
+                "(got #{boundary[:provenance].inspect})"
         end
       end
 
       def validate_non_negative_integer!(name, value)
-        # instance_of? excludes Float (2.0) and any non-Integer Numeric (TC-07).
+        # instance_of? excludes Float (2.0) and any non-Integer Numeric.
         unless value.instance_of?(Integer)
           raise ArgumentError, "#{name} must be an Integer (got #{value.class})"
         end
@@ -74,7 +74,7 @@ module Pulse
       end
 
       # The breakdown is optional. If EITHER count is present, BOTH are validated as
-      # non-negative Integers and their sum must equal event_count (TC-07).
+      # non-negative Integers and their sum must equal event_count.
       def validate_breakdown!(event_count, created, closed)
         return if created.nil? && closed.nil?
 
@@ -84,7 +84,7 @@ module Pulse
 
         raise ArgumentError,
               "issue_created_count + issue_closed_count (#{created + closed}) must equal " \
-              "event_count (#{event_count}) when breakdown present (TC-07)"
+              "event_count (#{event_count}) when breakdown present"
       end
     end
   end

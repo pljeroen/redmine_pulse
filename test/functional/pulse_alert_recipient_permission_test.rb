@@ -10,14 +10,14 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# ══ TIER-1 SECURITY (FR-C6-07 / INV-C6-PERM-AT-SEND / FC-C6-06) ════════════════
+# ══ SECURITY — permission re-checked at send time ══════════════════════════════
 #
-# IT-C6-02 — Recipient permission is re-checked at SEND time (dispatch), NOT at
+# Recipient permission is re-checked at SEND time (dispatch), NOT at
 # subscribe time. Pulse::Adapters::RedmineSubscriptionStore#subscribers_for(project)
 # returns a user U IFF (U is subscribed via explicit watch OR the auto-subscribe role)
 # AND U.allowed_to?(:view_pulse, project) is TRUE against LIVE permission state. The
 # gate is applied to EVERY candidate from BOTH sources; RedmineAlertDelivery receives
-# only the filtered set (RISK-C6-01: the gate must NOT live downstream in delivery).
+# only the filtered set (the gate must NOT live downstream in delivery).
 #
 # FIVE cases (the 5th locks the per-project-MODULE semantics):
 #   (a) subscribed + permitted                         => INCLUDED / receives
@@ -27,7 +27,7 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #   (e) subscribed + otherwise-permitted BUT the :pulse
 #       project MODULE is DISABLED on the project       => EXCLUDED / zero deliveries  ★LOAD-BEARING
 #
-# (b) is the load-bearing REVOCATION falsifier (the leak this tier-1 exists to prevent).
+# (b) is the load-bearing REVOCATION falsifier (the leak this suite exists to prevent).
 # (e) is the load-bearing MODULE-SCOPE falsifier: :view_pulse is a PROJECT_MODULE
 #     permission (init.rb project_module :pulse), so allowed_to?(:view_pulse, project)
 #     is FALSE when the module is disabled — a global/role-only reimplementation of the
@@ -37,10 +37,10 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 # scan_and_alert deliveries (ActionMailer::Base.deliveries) — the two load-bearing
 # cases assert ZERO deliveries to the excluded user.
 #
-# RED-by-construction on the harness: RedmineSubscriptionStore / the watch idiom /
-# scan_and_alert / Pulse::Mailer are absent (NameError / no route). A9 makes it GREEN.
+# Runs on the Redmine harness: exercises RedmineSubscriptionStore / the watch idiom /
+# scan_and_alert / Pulse::Mailer end to end.
 #
-# Postgres-gated: allowed_to? / module_enabled? SQL composition is verified on the engine.
+# Runs on PostgreSQL: allowed_to? / module_enabled? SQL composition is verified on the engine.
 class PulseAlertRecipientPermissionTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -68,7 +68,7 @@ class PulseAlertRecipientPermissionTest < ActiveSupport::TestCase
                   created_on: Time.utc(2026, 6, 1, 0), updated_on: Time.utc(2026, 6, 10, 0))
   end
 
-  # ── helpers (define the target API A9 implements) ───────────────────────────
+  # ── helpers (define the target API) ───────────────────────────
 
   def subscription_store
     Pulse::Adapters::RedmineSubscriptionStore.new
@@ -79,7 +79,7 @@ class PulseAlertRecipientPermissionTest < ActiveSupport::TestCase
   end
 
   # Explicit "Watch project health" subscription (Redmine Watcher idiom with the
-  # pulse-health discriminator; the exact watch mechanism is A9's, exercised here
+  # pulse-health discriminator; the exact watch mechanism is the adapter's, exercised here
   # via the store's own subscribe path so the test does not hard-code the schema).
   def watch_health!(user, project)
     subscription_store.watch!(user, project)

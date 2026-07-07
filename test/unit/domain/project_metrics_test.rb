@@ -1,10 +1,15 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'date'
 require 'pulse/domain/project_metrics'
 
-# FR-01, FR-37, FR-38 / FC-12, FC-28, FC-31, FC-21.
 # ProjectMetrics is an immutable value object carrying ALREADY-SUPPLIED,
 # ALREADY-VISIBILITY-SCOPED input aggregates for one project. No AR/Rails types.
 class ProjectMetricsTest < Minitest::Test
@@ -20,20 +25,20 @@ class ProjectMetricsTest < Minitest::Test
       effort_mapped: true,
       event_series: [{ date: Date.new(2026, 6, 10), type: :issue_closed }],
       version_due_dates: [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }],
-      # C2 additive-required coverage inputs (0/0.0 inactive baseline).
+      # additive-required coverage inputs (0/0.0 inactive baseline).
       open_issue_count: 0,
       covered_sum: 0.0
     }
     Pulse::Domain::ProjectMetrics.new(**defaults.merge(overrides))
   end
 
-  # --- FR-01: construction, field types, reference_date NON-NIL Date ---
+  # --- construction, field types, reference_date NON-NIL Date ---
   def test_construction_frozen_field_types_and_non_nil_reference_date
     m = build
-    assert m.frozen?, 'ProjectMetrics must be frozen at construction (FC-31)'
+    assert m.frozen?, 'ProjectMetrics must be frozen at construction'
     assert_kind_of Integer, m.project_id
     assert_kind_of Date, m.reference_date
-    refute_nil m.reference_date, 'reference_date is NON-NIL (CR-04 / FR-01)'
+    refute_nil m.reference_date, 'reference_date is NON-NIL'
     assert_kind_of Numeric, m.effort_open
     assert_kind_of Numeric, m.effort_total
     assert_operator m.effort_open, :>=, 0
@@ -47,7 +52,7 @@ class ProjectMetricsTest < Minitest::Test
   end
 
   def test_reference_date_must_not_be_nil
-    # CR-04: reference_date is outside the valid state space if nil; construction must fail loud.
+    # reference_date is outside the valid state space if nil; construction must fail loud.
     assert_raises(ArgumentError) { build(reference_date: nil) }
   end
 
@@ -56,9 +61,9 @@ class ProjectMetricsTest < Minitest::Test
     assert_raises(FrozenError) { m.instance_variable_set(:@project_id, 99) } if m.frozen?
   end
 
-  # --- FR-37 + momentum-broaden: event_series shape; the broadened type set ---
-  # EVENT_TYPES now = %i[issue_created issue_closed issue_commented commit] (momentum-broaden
-  # §6). The VO accepts all four; an unknown type is still rejected (below).
+  # --- event_series shape; the broadened type set ---
+  # EVENT_TYPES now = %i[issue_created issue_closed issue_commented commit]. The VO accepts
+  # all four; an unknown type is still rejected (below).
   ALLOWED_EVENT_TYPES = %i[issue_created issue_closed issue_commented commit].freeze
 
   def test_event_series_shape_and_arbitrary_length
@@ -73,7 +78,7 @@ class ProjectMetricsTest < Minitest::Test
     end
   end
 
-  # --- momentum-broaden §6: :issue_commented and :commit are accepted event types ---
+  # --- :issue_commented and :commit are accepted event types ---
   def test_event_series_accepts_issue_commented_type
     m = build(event_series: [{ date: Date.new(2026, 6, 10), type: :issue_commented }])
     assert_equal :issue_commented, m.event_series.first[:type]
@@ -94,23 +99,23 @@ class ProjectMetricsTest < Minitest::Test
     assert_equal [], m.event_series
   end
 
-  # --- FR-38: version_due_dates are plain Date; empty axis when none ---
+  # --- version_due_dates are plain Date; empty axis when none ---
   def test_version_due_dates_are_plain_dates_and_empty_axis
     m = build(version_due_dates: [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }])
     vd = m.version_due_dates.first
     assert_kind_of Integer, vd[:version_id]
     assert_kind_of Date, vd[:due_date]
-    refute_kind_of DateTime, vd[:due_date], 'due_date must be a plain Date, not DateTime (FC-28)'
-    # D-TL-C (TC-11c): each entry carries a non-empty String :name.
+    refute_kind_of DateTime, vd[:due_date], 'due_date must be a plain Date, not DateTime'
+    # each entry carries a non-empty String :name.
     assert_kind_of String, vd[:name]
-    refute_empty vd[:name], 'version_due_dates entry :name must be a non-empty String (TC-11c)'
+    refute_empty vd[:name], 'version_due_dates entry :name must be a non-empty String'
 
     empty = build(version_due_dates: [])
     assert_equal [], empty.version_due_dates, 'zero entries => empty array (empty forward axis)'
   end
 
-  # --- TC-11c (D-TL-C / OSI-01 Path A): version_due_dates :name is REQUIRED + non-empty.
-  # RED until validate_version_due_dates! gains the :name check (A9 amendment). ---
+  # --- version_due_dates :name is REQUIRED + non-empty (validated by
+  # validate_version_due_dates!). ---
   def test_version_due_dates_entry_missing_name_rejected
     assert_raises(ArgumentError) do
       build(version_due_dates: [{ version_id: 4, due_date: Date.new(2026, 7, 1) }])
@@ -123,7 +128,7 @@ class ProjectMetricsTest < Minitest::Test
     end
   end
 
-  # --- FR-18 backstop / FC-21: field surface contains only visibility-scoped aggregates ---
+  # --- field surface contains only visibility-scoped aggregates ---
   def test_field_surface_contains_no_blocker_encoding_fields
     m = build
     permitted = %i[project_id reference_date effort_open effort_total risk_raw
@@ -131,6 +136,6 @@ class ProjectMetricsTest < Minitest::Test
     permitted.each { |f| assert_respond_to m, f }
     # No field that could encode a non-visible blocker (e.g. raw issue ids/relations).
     forbidden = %i[issue_relations blockers hidden_blockers raw_issues issues]
-    forbidden.each { |f| refute_respond_to m, f, "ProjectMetrics must not expose #{f} (FC-21)" }
+    forbidden.each { |f| refute_respond_to m, f, "ProjectMetrics must not expose #{f}" }
   end
 end

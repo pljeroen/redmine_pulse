@@ -11,15 +11,15 @@ require 'pulse/domain/weight_set'
 
 module Pulse
   module Domain
-    # CustomLens — a frozen value object describing one ranking lens (FC-C3-05, FC-C3-06):
+    # CustomLens — a frozen value object describing one ranking lens:
     #   name           — a non-empty String (blank/whitespace/nil/non-String => ArgumentError);
     #                     stored as name.dup.freeze so post-construction mutation of the
-    #                     caller-owned String cannot change lens.name (FC-C3-06)
+    #                     caller-owned String cannot change lens.name
     #   weight_set     — a WeightSet instance (a raw Hash or nil => ArgumentError)
     #   sort_direction — :asc or :desc (anything else => ArgumentError)
     #   threshold      — nil OR a finite real Numeric (Integer | Rational | non-NaN/Inf
     #                    Float); NaN/Infinity/Complex/String/etc => ArgumentError, type-
-    #                    checked BEFORE any comparison (FC-C3-05, same guard as WeightSet)
+    #                    checked BEFORE any comparison (same guard as WeightSet)
     # Declarative fields only — no formula/expression surface. Frozen at construction;
     # mutation raises FrozenError.
     class CustomLens
@@ -43,7 +43,7 @@ module Pulse
         end
 
         # dup.freeze AFTER validation so the caller can't mutate the stored name via the
-        # original String reference (the frozen-VO immutability guarantee, FC-C3-06).
+        # original String reference (the frozen value-object immutability guarantee).
         @name = name.dup.freeze
         @weight_set = weight_set
         @sort_direction = sort_direction

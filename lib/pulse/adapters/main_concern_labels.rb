@@ -10,7 +10,7 @@
 module Pulse
   module Adapters
     # MainConcernLabels — the SINGLE authoritative dominant_signal -> localized "main
-    # concern" label mapping (FR-PLB-15 / D-PLB-C01 / DG-PLB-02). Both HtmlPresenter (the
+    # concern" label mapping. Both HtmlPresenter (the
     # cockpit) and JsonSerializer (the portfolio.json / project.json API + the inline
     # badge blob) delegate here, so the cockpit and the API can never drift in their
     # vocabulary (DRY single source of truth).

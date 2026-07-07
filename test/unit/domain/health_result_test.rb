@@ -1,12 +1,16 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 
-# FR-04, FR-21, FR-25, FR-30 / FC-01, FC-09, FC-22, FC-23, FC-31.
-# HealthResult VO field set; dominant_signal NON-NIL (CR-01); effort_open
-# passthrough (CR-03); breakdown length 5 canonical order; lens_keys 5 keys;
-# NO computed_at / Date field.
+# HealthResult VO field set; dominant_signal NON-NIL; effort_open passthrough;
+# breakdown length 5 canonical order; lens_keys 5 keys; NO computed_at / Date field.
 class HealthResultTest < Minitest::Test
   include ScoringSupport
 
@@ -20,12 +24,12 @@ class HealthResultTest < Minitest::Test
     assert_kind_of Integer, h.health_score
     assert_includes %i[green amber red], h.rag
     assert_kind_of Symbol, h.dominant_signal
-    refute_nil h.dominant_signal, 'dominant_signal is NEVER nil (CR-01)'
+    refute_nil h.dominant_signal, 'dominant_signal is NEVER nil'
     assert_includes ScoringSupport::CANONICAL_ORDER, h.dominant_signal
     assert_kind_of Float, h.signal_completeness
     assert_kind_of Array, h.breakdown
     assert_kind_of Hash, h.lens_keys
-    assert h.frozen?, 'HealthResult must be frozen (FC-31)'
+    assert h.frozen?, 'HealthResult must be frozen'
   end
 
   def test_project_id_passthrough
@@ -35,7 +39,7 @@ class HealthResultTest < Minitest::Test
 
   def test_breakdown_length_and_canonical_order
     h = result
-    assert_equal 5, h.breakdown.length, 'breakdown is exactly 5 (FC-09)'
+    assert_equal 5, h.breakdown.length, 'breakdown is exactly 5'
     assert_equal ScoringSupport::CANONICAL_ORDER, h.breakdown.map(&:key)
   end
 
@@ -51,17 +55,17 @@ class HealthResultTest < Minitest::Test
     assert_operator h.health_score, :<=, 100
   end
 
-  # --- CR-03: effort_open passthrough exposed for done-lens secondary sort ---
+  # --- effort_open passthrough exposed for done-lens secondary sort ---
   def test_exposes_effort_open_passthrough
     h = Pulse::Domain::Scoring.score(metrics(effort_open: 3.5, effort_total: 10.0), fixed_clock, config)
     assert_respond_to h, :effort_open
     assert_in_delta 3.5, h.effort_open, 1e-12
   end
 
-  # --- FC-31: no computed_at / Date field on HealthResult ---
+  # --- no computed_at / Date field on HealthResult ---
   def test_no_computed_at_or_date_field
     h = result
-    refute_respond_to h, :computed_at, 'HealthResult must not carry computed_at (OSD-08/FC-31)'
+    refute_respond_to h, :computed_at, 'HealthResult must not carry computed_at'
     refute_respond_to h, :reference_date
     refute_respond_to h, :date
     # No instance variable holding a Date object.

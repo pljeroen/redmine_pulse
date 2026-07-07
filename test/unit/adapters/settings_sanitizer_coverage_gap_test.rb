@@ -9,15 +9,15 @@
 
 require 'minitest/autorun'
 
-# C1 lesson: a bare `require 'pulse/...'` fails under the harness without -Ilib. This is a
+# Note: a bare `require 'pulse/...'` fails under the harness without -Ilib. This is a
 # pure-adapter unit test, so add lib/ to $LOAD_PATH before requiring the adapter.
 lib = File.expand_path('../../../lib', __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 require_relative '../../../lib/pulse/adapters/settings_sanitizer'
 
-# FC-C2-14 / IMPL-OBL-C2-001 — the concrete 6-key enable/disable sanitizer contract.
-# Discharges FR-C2-06. The enable_coverage_gap flag is AUTHORITATIVE:
+# The concrete 6-key enable/disable sanitizer behavior.
+# The enable_coverage_gap flag is AUTHORITATIVE:
 #   (a) DEFAULT (no/'0'/blank enable): required weight-key set = the 5 default_on keys; a
 #       5-key POST is accepted; NO coverage_gap key persisted.
 #   (b) ENABLE ('1'): required set = {5 + coverage_gap}; a 6-key POST summing 1.0 accepted.
@@ -28,10 +28,9 @@ require_relative '../../../lib/pulse/adapters/settings_sanitizer'
 #       coverage_gap weight is NOT persisted.
 # INVARIANT: coverage_gap MUST NEVER appear in the sanitized weights while disabled.
 #
-# RED NOW: the sanitizer sources WEIGHT_KEYS statically from SignalRegistry.keys (which will
-# include coverage_gap after C2) and does NOT read enable_coverage_gap — so the enable path,
-# the drop-on-disable, and the never-persist-while-disabled invariant are all absent. GREEN
-# after A9 threads enable_coverage_gap through sanitize per FC-C2-14.
+# This requires the sanitizer to thread enable_coverage_gap through sanitize (rather than
+# sourcing WEIGHT_KEYS statically from SignalRegistry.keys) so the enable path, the
+# drop-on-disable, and the never-persist-while-disabled invariant all hold.
 class SettingsSanitizerCoverageGapTest < Minitest::Test
   S = Pulse::Adapters::SettingsSanitizer
 
@@ -72,7 +71,7 @@ class SettingsSanitizerCoverageGapTest < Minitest::Test
     result, errors = S.sanitize(incoming, previous_disabled)
     w = result['weights']
     refute_includes string_keys(w), 'coverage_gap',
-                    'default path must NOT persist a coverage_gap weight (FC-C2-14 a)'
+                    'default path must NOT persist a coverage_gap weight'
     refute_includes errors, 'weights',
                     'a valid 5-key POST must not be rejected for a missing coverage_gap weight'
     assert_in_delta 1.0, w.values.map(&:to_f).sum, 1e-9, 'the 5 weights sum to 1.0'
@@ -84,7 +83,7 @@ class SettingsSanitizerCoverageGapTest < Minitest::Test
     result, errors = S.sanitize(incoming, previous_disabled)
     w = result['weights']
     assert_includes string_keys(w), 'coverage_gap',
-                    'enable path accepts the coverage_gap weight (FC-C2-14 b)'
+                    'enable path accepts the coverage_gap weight'
     refute_includes errors, 'weights', 'a valid 6-key POST must be accepted when enabled'
     assert_in_delta 1.0, w.values.map(&:to_f).sum, 1e-9, 'the 6 weights sum to 1.0'
   end
@@ -97,7 +96,7 @@ class SettingsSanitizerCoverageGapTest < Minitest::Test
     result, = S.sanitize(incoming, previous_enabled)
     w = result['weights']
     refute_includes string_keys(w), 'coverage_gap',
-                    'disable drops coverage_gap regardless of incoming/previous (FC-C2-14 c)'
+                    'disable drops coverage_gap regardless of incoming/previous'
     assert_equal 5, w.size, 'exactly the 5 default_on weights remain'
     assert_in_delta 1.0, w.values.map(&:to_f).sum, 1e-9, 'remaining 5 renormalized to Σ==1.0'
   end
@@ -108,7 +107,7 @@ class SettingsSanitizerCoverageGapTest < Minitest::Test
     result, = S.sanitize(incoming, previous_enabled)
     w = result['weights']
     refute_includes string_keys(w), 'coverage_gap',
-                    'disable never persists coverage_gap (FC-C2-14 c)'
+                    'disable never persists coverage_gap'
     assert_in_delta 1.0, w.values.map(&:to_f).sum, 1e-9
   end
 
@@ -122,7 +121,7 @@ class SettingsSanitizerCoverageGapTest < Minitest::Test
     result, errors = S.sanitize(incoming, previous_disabled)
     w = result['weights']
     refute_includes string_keys(w), 'coverage_gap',
-                    'a stale coverage_gap weight is never persisted while disabled (FC-C2-14 d)'
+                    'a stale coverage_gap weight is never persisted while disabled'
     assert_includes errors, 'weights',
                     'the 6-key incoming set is rejected against the 5-key required set'
     assert_equal FIVE, w, 'previous valid 5-key weights are retained on rejection'

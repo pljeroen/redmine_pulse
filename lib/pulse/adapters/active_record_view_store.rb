@@ -9,12 +9,12 @@
 
 module Pulse
   module Adapters
-    # ActiveRecordViewStore — the production ViewStore adapter (FC-C5-15/18). It owns ALL
-    # pulse_views database I/O; the ViewStore PORT stays stdlib-only. It is backed
-    # EXCLUSIVELY by the PulseView AR model (the pulse_views table) — it NEVER reads or
-    # writes pulse_snapshots (the snapshot cache is a distinct store owned by
-    # ActiveRecordSnapshotStore; INV-C5-CONFIG-NOT-CACHE). Config is written only in
-    # response to explicit user create/update/destroy/select actions.
+    # ActiveRecordViewStore — the production ViewStore adapter. It owns ALL pulse_views
+    # database I/O; the ViewStore PORT stays stdlib-only. It is backed EXCLUSIVELY by the
+    # PulseView AR model (the pulse_views table) — it NEVER reads or writes pulse_snapshots
+    # (saved-view config and the snapshot cache are distinct stores; the cache is owned by
+    # ActiveRecordSnapshotStore). Config is written only in response to explicit user
+    # create/update/destroy/select actions.
     #
     # The controller (PulseViewsController) calls THIS adapter through the @view_store
     # instance injected at the composition root, and never touches PulseView directly, so

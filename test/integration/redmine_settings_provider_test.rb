@@ -1,11 +1,17 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # RedmineSettingsProvider: builds ScoringConfig from plugin Settings (defaults when
 # absent) + a deterministic settings_version_hash. Also validates the effort field
-# is numeric-format at read time (FC-11 / MS-10). (MS-29/30, FC-30/31). RED until A9.
+# is numeric-format at read time.
 #
 # Canonical API:
 #   sp = Pulse::Adapters::RedmineSettingsProvider.new
@@ -31,7 +37,7 @@ class RedmineSettingsProviderTest < ActiveSupport::TestCase
     Setting.send("#{@plugin_key}=", hash)
   end
 
-  # --- MS-29 / FC-30: defaults when unconfigured ------------------------------
+  # --- defaults when unconfigured ------------------------------
 
   def test_scoring_config_uses_defaults_when_unconfigured
     set_settings({})
@@ -52,34 +58,34 @@ class RedmineSettingsProviderTest < ActiveSupport::TestCase
     assert_equal 45, cfg.activity_window_days
   end
 
-  # --- MS-29 / FC-30: configured horizons override engine defaults (A10-MS-003) -
-  # The ScoringConfig defaults are h_stale=180, h_risk=50, h_blocked=20 (DEC-13).
-  # FC-30 requires the provider to BUILD ScoringConfig from the configured horizons,
+  # --- configured horizons override engine defaults -
+  # The ScoringConfig defaults are h_stale=180, h_risk=50, h_blocked=20.
+  # The provider must BUILD ScoringConfig from the configured horizons,
   # not silently fall through to the engine defaults. Set NON-default values and
   # assert they survive into the ScoringConfig.
   def test_scoring_config_uses_configured_horizons
     set_settings({ 'h_stale' => 90, 'h_risk' => 25, 'h_blocked' => 10 })
     cfg = Pulse::Adapters::RedmineSettingsProvider.new.scoring_config
     assert_equal 90, cfg.h_stale,
-                 'configured h_stale must override the scoring-engine default 180 (FC-30)'
+                 'configured h_stale must override the scoring-engine default 180'
     assert_equal 25, cfg.h_risk,
-                 'configured h_risk must override the scoring-engine default 50 (FC-30)'
+                 'configured h_risk must override the scoring-engine default 50'
     assert_equal 10, cfg.h_blocked,
-                 'configured h_blocked must override the scoring-engine default 20 (FC-30)'
+                 'configured h_blocked must override the scoring-engine default 20'
   end
 
   def test_scoring_config_horizons_default_when_absent
     set_settings({})
     cfg = Pulse::Adapters::RedmineSettingsProvider.new.scoring_config
-    assert_equal 180, cfg.h_stale, 'absent h_stale -> DEC-13 default 180'
-    assert_equal 50, cfg.h_risk, 'absent h_risk -> DEC-13 default 50'
-    assert_equal 20, cfg.h_blocked, 'absent h_blocked -> DEC-13 default 20'
+    assert_equal 180, cfg.h_stale, 'absent h_stale -> default 180'
+    assert_equal 50, cfg.h_risk, 'absent h_risk -> default 50'
+    assert_equal 20, cfg.h_blocked, 'absent h_blocked -> default 20'
   end
 
-  # --- settings-promote-momentum (CT-02): the 3 promoted FLOAT fields ----------
+  # --- promoted momentum settings: the 3 promoted FLOAT fields ----------
   # The provider parses momentum_activity_half / momentum_direction_bias /
   # on_track_threshold via a float_setting helper (blank/absent -> default; else
-  # Float(raw) with a rescue -> default) into ScoringConfig. RED until A9.
+  # Float(raw) with a rescue -> default) into ScoringConfig.
 
   def test_scoring_config_momentum_onctrack_default_when_unconfigured
     set_settings({})
@@ -111,10 +117,10 @@ class RedmineSettingsProviderTest < ActiveSupport::TestCase
     assert_in_delta 0.5, cfg.on_track_threshold, 1e-9, 'blank on_track_threshold -> default 0.5'
   end
 
-  # --- snapshot-max-age-refresh (CT-02 EVOLUTION): the snapshot_max_age_minutes ----
+  # --- snapshot-max-age-refresh: the snapshot_max_age_minutes ----
   # OPERATIONAL cache knob. It lives on the settings provider (NOT on the pure-domain
   # ScoringConfig, which stays scoring-only). Read via the existing int_setting pattern
-  # (blank/absent -> shipped default 60; else raw.to_i). RED until GREEN adds the reader.
+  # (blank/absent -> shipped default 60; else raw.to_i). Requires the reader.
 
   def test_snapshot_max_age_minutes_default_when_unconfigured
     set_settings({})
@@ -144,7 +150,7 @@ class RedmineSettingsProviderTest < ActiveSupport::TestCase
                  'blank snapshot_max_age_minutes -> shipped default 60'
   end
 
-  # --- MS-30 / FC-31: settings_version_hash determinism + change --------------
+  # --- settings_version_hash determinism + change --------------
 
   def test_settings_version_hash_is_deterministic
     set_settings({ 'rag_green_min' => 70 })
@@ -159,10 +165,10 @@ class RedmineSettingsProviderTest < ActiveSupport::TestCase
     before = Pulse::Adapters::RedmineSettingsProvider.new.settings_version_hash
     set_settings({ 'rag_green_min' => 71 })
     after = Pulse::Adapters::RedmineSettingsProvider.new.settings_version_hash
-    refute_equal before, after, 'any settings change yields a different hash (FC-31 / FC-27 comp 7)'
+    refute_equal before, after, 'any settings change yields a different hash'
   end
 
-  # --- MS-10 / FC-11: effort field numeric-format validation at read time ------
+  # --- effort field numeric-format validation at read time ------
 
   def test_effort_mapped_true_for_numeric_field
     field = numeric_custom_field!(name: 'NumEffort', format: 'float')
@@ -176,7 +182,7 @@ class RedmineSettingsProviderTest < ActiveSupport::TestCase
     set_settings({ 'effort_field' => field.id.to_s })
     sp = Pulse::Adapters::RedmineSettingsProvider.new
     assert_equal false, sp.effort_mapped?,
-                 'text-format field rejected at read time -> effort_mapped false (FC-11/FC-13)'
+                 'text-format field rejected at read time -> effort_mapped false'
   end
 
   def test_effort_mapped_false_when_unconfigured

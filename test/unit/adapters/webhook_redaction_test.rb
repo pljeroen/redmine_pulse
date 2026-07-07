@@ -20,14 +20,14 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'pulse/domain/alert_event'
 require 'pulse/adapters/webhook_payload_serializer'
 
-# C7 / FR-C7-06(e) / FC-C7-06e / FC-C7-10 / IT-C7-10 — per-endpoint redaction OMITS
+# Per-endpoint redaction OMITS
 # (not placeholders) the schema's OPTIONAL fields ONLY — exactly { previous, health.delta }
 # — BEFORE serialization so the signature covers the redacted body and the reduced body
 # STILL validates against the frozen schema. Required fields are NOT redactable (guarded at
 # settings write time — see the sanitizer suite). This suite exercises the serializer's
 # redact: seam directly (pure lane; structural schema check reused from the serializer suite).
 #
-# RED NOW: WebhookPayloadSerializer does not exist.
+# Requires WebhookPayloadSerializer.
 class WebhookRedactionTest < Minitest::Test
   SCHEMA_PATH = File.expand_path(
     '../../../docs/specs/pulse-roadmap/contracts/schemas/webhook-payload.json', __dir__
@@ -105,7 +105,7 @@ class WebhookRedactionTest < Minitest::Test
     assert body['health'].key?('delta'), 'un-redacted: health.delta present'
   end
 
-  # ── the redacted body STILL validates against the frozen schema (FC-C7-06e) ─
+  # ── the redacted body STILL validates against the frozen schema ─
   def test_redacted_body_still_validates
     body = JSON.parse(serialize(redact: true))
     assert_empty schema_errors(body),

@@ -12,7 +12,7 @@ require 'pulse/domain/signal_registry'
 module Pulse
   module Domain
     # WeightSet — a frozen value object mapping registered-signal-key => weight over a
-    # SUBSET of the registered signals (FC-C3-01..FC-C3-04). NOT a probability simplex:
+    # SUBSET of the registered signals. NOT a probability simplex:
     # there is NO sum==1.0 requirement (that constraint lives in ScoringConfig, layered on
     # top). Validation, in order: keys must be registered (else ArgumentError); the map must
     # be non-empty; each weight must be a finite real Numeric (Integer | Rational | non-
@@ -20,10 +20,10 @@ module Pulse
     # fails loud as ArgumentError, never leaking a TypeError/NoMethodError at `< 0` — and
     # >= 0; at least one weight must be > 0. Frozen at construction (the internal Hash is
     # deep-frozen). #to_h returns a plain frozen Hash preserving input insertion order.
-    # The formal read surface (FC-C3-03) is #[](key) (weight or nil), #keys (frozen,
+    # The formal read surface is #[](key) (weight or nil), #keys (frozen,
     # ordered) and #values (frozen, ordered) — all delegating to the frozen internal Hash,
     # non-mutating. #== is Hash-aware and order-independent (WeightSet == Hash and WeightSet
-    # == WeightSet both compare by content) for downstream (C4) reuse.
+    # == WeightSet both compare by content) for downstream reuse.
     class WeightSet
       def initialize(weights)
         validate!(weights)
@@ -36,7 +36,7 @@ module Pulse
         @weights
       end
 
-      # Formal read surface (FC-C3-03): ws[key], ws.keys, ws.values — all delegating to
+      # Formal read surface: ws[key], ws.keys, ws.values — all delegating to
       # the frozen internal Hash, insertion-order-preserving, non-mutating.
 
       # The weight for +key+, or nil if the key is absent. Delegates to the frozen Hash.

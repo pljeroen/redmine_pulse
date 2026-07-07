@@ -1,16 +1,17 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 
-# TL-09, TL-17 / TC-09, TC-17.
-# Static source-scan of the NEW timeline domain files: no framework/ORM/IO requires
-# (TC-09) and no system-time/entropy tokens (TC-17). The suite loads + runs in a bare
-# Ruby process (no Rails/Redmine/DB). Mirrors the scoring-engine domain_purity_test
-# idiom (FC-29/FC-05/FC-30) but scoped to the timeline sources.
-#
-# RED before GREEN: test_timeline_domain_files_exist fails until the timeline sources
-# are created; the require in test_suite_loads_without_rails_or_redmine also raises
-# LoadError until lib/pulse/domain/timeline.rb exists.
+# Static source-scan of the timeline domain files: no framework/ORM/IO requires and no
+# system-time/entropy tokens. The suite loads + runs in a bare Ruby process
+# (no Rails/Redmine/DB) — the domain layer uses only the standard library. Mirrors the
+# scoring-engine domain-purity check, scoped to the timeline sources.
 class TimelineDomainPurityTest < Minitest::Test
   ROOT = File.expand_path('../../../..', __FILE__)
   TIMELINE_FILES = %w[
@@ -23,14 +24,14 @@ class TimelineDomainPurityTest < Minitest::Test
     TIMELINE_FILES.select { |f| File.exist?(f) }
   end
 
-  # --- RED driver: the timeline domain files must exist ---
+  # --- the timeline domain files must exist ---
   def test_timeline_domain_files_exist
     missing = TIMELINE_FILES.reject { |f| File.exist?(f) }
     assert_empty missing,
-                 "expected timeline domain files to exist (drives RED before GREEN): #{missing.map { |f| File.basename(f) }.join(', ')}"
+                 "expected timeline domain files to exist: #{missing.map { |f| File.basename(f) }.join(', ')}"
   end
 
-  # --- TC-09: no forbidden framework/ORM/IO requires ---
+  # --- no forbidden framework/ORM/IO requires ---
   def test_no_forbidden_requires_in_timeline_sources
     forbidden = [
       %r{require(_relative)?\s+['"]rails['"]},
@@ -67,7 +68,7 @@ class TimelineDomainPurityTest < Minitest::Test
     end
   end
 
-  # --- TC-17: no system-time / randomness / entropy / IO tokens ---
+  # --- no system-time / randomness / entropy / IO tokens ---
   def test_no_system_time_or_entropy_tokens
     banned = [
       /\bTime\.now\b/, /\bTime\.current\b/, /\bDate\.today\b/, /\bDateTime\.now\b/,
@@ -84,9 +85,9 @@ class TimelineDomainPurityTest < Minitest::Test
     end
   end
 
-  # --- TC-09: the timeline domain loads in a bare process (no Rails/Redmine/DB) ---
+  # --- the timeline domain loads in a bare process (no Rails/Redmine/DB) ---
   def test_suite_loads_without_rails_or_redmine
-    # Bare-process purity guard (FC-30 / TC-09): only meaningful in the pure-domain
+    # Bare-process purity guard: only meaningful in the pure-domain
     # lane, where Rails/Redmine are genuinely absent. Under the Redmine rake harness
     # the whole app is booted first, so Rails is present regardless of the domain --
     # the assertion would test the harness, not the domain. Skip there; the domain

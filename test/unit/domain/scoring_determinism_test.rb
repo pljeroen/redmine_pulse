@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 
-# FR-31, FR-05, FR-35 / FC-04, FC-05.
 # Determinism: identical (ProjectMetrics, clock value, ScoringConfig) computed
 # N>=50 times yields identical HealthResult; clock injection used for `today`;
 # no reliance on Time.now / hash ordering.
@@ -37,7 +42,7 @@ class ScoringDeterminismTest < Minitest::Test
     end
   end
 
-  # --- FR-05: clock injection is the sole source of `today` ---
+  # --- clock injection is the sole source of `today` ---
   def test_clock_injection_used_for_today
     m = metrics(reference_date: Date.new(2026, 1, 1))
     # Two different injected clocks must produce different staleness raw_value.

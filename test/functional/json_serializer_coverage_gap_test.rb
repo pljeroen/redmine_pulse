@@ -9,12 +9,12 @@
 
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 
-# FC-C2-15 (presentation, JSON side) — JsonSerializer.signal_set includes a 'coverage_gap'
-# entry (raw_value emitted VERBATIM, FC-CA-23 passthrough) when coverage_gap is in the
-# breakdown, and OMITS the key when absent. Discharges FR-C2-07.
+# Presentation (JSON side) — JsonSerializer.signal_set includes a 'coverage_gap'
+# entry (raw_value emitted VERBATIM, passthrough) when coverage_gap is in the
+# breakdown, and OMITS the key when absent.
 #
-# HARNESS lane (RED-by-construction): JsonSerializer resolves plugin constants via Zeitwerk.
-# RED until A9 extends JsonSerializer.SIGNAL_ORDER to include coverage_gap.
+# Runs on the Redmine harness: JsonSerializer resolves plugin constants via Zeitwerk.
+# Requires JsonSerializer.SIGNAL_ORDER to include coverage_gap.
 class JsonSerializerCoverageGapTest < ActiveSupport::TestCase
   JS = Pulse::Adapters::JsonSerializer
   SR = Pulse::Domain::SignalResult
@@ -55,7 +55,7 @@ class JsonSerializerCoverageGapTest < ActiveSupport::TestCase
     assert_equal true, entry['active'], 'coverage_gap entry active == true'
     # raw_value emitted VERBATIM (the gap fraction), NOT the planning-coverage percentage.
     assert_in_delta r, entry['raw_value'].to_f, 1e-12,
-                    'JSON raw_value is the verbatim gap fraction (FC-CA-23 passthrough)'
+                    'JSON raw_value is the verbatim gap fraction (passthrough)'
   end
 
   # --- coverage_gap ABSENT => no 'coverage_gap' key (default-OFF byte-identical payload) -
@@ -63,6 +63,6 @@ class JsonSerializerCoverageGapTest < ActiveSupport::TestCase
     set = JS.signal_set(projection_for(breakdown_without_coverage_gap), with_drill: false)
     refute_includes set.keys, 'coverage_gap',
                     "signal_set must NOT include a 'coverage_gap' key when it is absent"
-    assert_equal 5, set.size, 'only the 5 C1 entries appear when coverage_gap is off'
+    assert_equal 5, set.size, 'only the 5 default entries appear when coverage_gap is off'
   end
 end

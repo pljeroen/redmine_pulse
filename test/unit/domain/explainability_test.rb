@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 
-# FR-21, FR-36 / FC-03, FC-07.
 # round_half_up(Σ active contributions) == health_score; all contributions >= 0;
 # holds across active/inactive combos, edge n, and tuned configs.
 class ExplainabilityTest < Minitest::Test
@@ -29,7 +34,7 @@ class ExplainabilityTest < Minitest::Test
     combos = [
       kernel_aios_metrics,
       pdfree_metrics,
-      metrics(risk_mapped: false, effort_open: 0.0, effort_total: 0.0, blocked_count: 1), # only 3 active (non-empty: a blocker; not no-data, THAW-RA-001)
+      metrics(risk_mapped: false, effort_open: 0.0, effort_total: 0.0, blocked_count: 1), # only 3 active (non-empty: a blocker; not no-data)
       metrics(reference_date: ScoringSupport::TODAY, effort_open: 0.0, effort_total: 10.0,
               risk_mapped: true, risk_raw: 0.0, blocked_count: 0, event_series: []), # near-healthy
       metrics(reference_date: ScoringSupport::TODAY - 365, effort_open: 10.0, effort_total: 10.0,

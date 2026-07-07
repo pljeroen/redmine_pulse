@@ -1,10 +1,16 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # SystemClock#today returns a Date in the instance-configured timezone, NOT UTC
-# (MS-31, FC-32). RED until A9 builds Pulse::Adapters::SystemClock.
+# Requires Pulse::Adapters::SystemClock.
 #
 # Canonical API: Pulse::Adapters::SystemClock.new.today -> Date (== Time.zone.today)
 class SystemClockTest < ActiveSupport::TestCase
@@ -37,9 +43,9 @@ class SystemClockTest < ActiveSupport::TestCase
     end
   end
 
-  # ── snapshot-max-age-refresh (CT-02 EVOLUTION): the age check uses @clock.now,
+  # ── snapshot-max-age-refresh: the age check uses @clock.now,
   # an absolute instant (UTC), NOT a bare Time.now. SystemClock must expose #now
-  # returning a Time ~ Time.now.utc. RED until GREEN adds SystemClock#now.
+  # returning a Time ~ Time.now.utc.
 
   def test_now_returns_a_time
     now = Pulse::Adapters::SystemClock.new.now

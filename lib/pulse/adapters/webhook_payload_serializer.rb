@@ -15,12 +15,12 @@ module Pulse
   module Adapters
     # WebhookPayloadSerializer — maps a domain AlertEvent + duck-typed Project +
     # HealthResult (+ the prior alert-state row) into the FROZEN, versioned JSON webhook
-    # body (C7 / FR-C7-03 / FC-C7-03). Adapter layer: it does NO I/O and reaches no
+    # body. Adapter layer: it does NO I/O and reaches no
     # Redmine constant — it reads plain readers off the composition-root-supplied inputs
     # (identifier/name; health_score/rag/dominant_signal) so it is unit-testable off the
     # domain path and against Structs.
     #
-    # Field -> source map (A7 GR-01..GR-06):
+    # Field -> source map:
     #   version           const "1"
     #   event             AlertEvent#event_type.to_s
     #   project.id        AlertEvent#project_id (== Project#id)
@@ -30,11 +30,11 @@ module Pulse
     #   health.dominant_signal   HealthResult#dominant_signal&.to_s (String | null)
     #   health.delta      AlertEvent#delta (Numeric | nil) — OPTIONAL, redactable
     #   previous          prior alert-state row {rag, dominant_signal} | null — OPTIONAL,
-    #                     redactable (GR-03: sourced from the prior state row, not HealthResult)
+    #                     redactable (sourced from the prior state row, not HealthResult)
     #   occurred_at       AlertEvent#occurred_at.utc.iso8601 (RFC3339)
-    #   signature         HMAC-SHA256 hexdigest over the exact emitted body (FC-C7-07)
+    #   signature         HMAC-SHA256 hexdigest over the exact emitted body
     #
-    # REDACTION (FC-C7-06e): the redactable set is PINNED to the schema's OPTIONAL fields
+    # REDACTION: the redactable set is PINNED to the schema's OPTIONAL fields
     # ONLY — { previous, health.delta }. Redaction OMITS (never placeholders) them BEFORE
     # signing so the signature covers the redacted body and the reduced body still validates.
     module WebhookPayloadSerializer
@@ -92,7 +92,7 @@ module Pulse
       # Resolve the redaction request into the concrete set of dotted paths to omit. A truthy
       # boolean redacts the WHOLE redactable set; an Array is intersected with the redactable
       # set (a request naming a non-redactable field is ignored here — the sanitizer already
-      # rejects it at settings write time, FC-C7-10). Falsy => nothing redacted.
+      # rejects it at settings write time). Falsy => nothing redacted.
       def redacted_fields(redact)
         return [] if redact.nil? || redact == false
         return REDACTABLE_FIELDS.dup if redact == true
@@ -120,7 +120,7 @@ module Pulse
         value.nil? ? nil : value.to_s
       end
 
-      # UTC RFC3339/ISO8601 (GR-06). Accepts a Time; a String is passed through when already
+      # UTC RFC3339/ISO8601. Accepts a Time; a String is passed through when already
       # ISO8601-shaped (defensive — the domain injects a Time).
       def iso8601(occurred_at)
         return occurred_at if occurred_at.is_a?(String)

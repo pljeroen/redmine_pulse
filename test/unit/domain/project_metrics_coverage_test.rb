@@ -1,23 +1,25 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'date'
 require 'pulse/domain/project_metrics'
 
-# FC-C2-08 — ProjectMetrics additive thaw validity. Discharges FR-C2-03, FR-C2-04.
+# ProjectMetrics additive coverage-field validity.
 #
 # Two REQUIRED keyword fields:
 #   open_issue_count : non-negative Integer (validate_non_negative_integer!)
 #   covered_sum      : finite real Numeric, 0 <= covered_sum <= open_issue_count
 # Additive + required (no Ruby defaults) so a MISSED construction site fails LOUD.
 # Existing fields are byte-unchanged (their validators are covered by the existing
-# ProjectMetricsTest / ValueObjectValidationTest, which stay GREEN verbatim).
-#
-# RED NOW: ProjectMetrics.new does not yet accept open_issue_count:/covered_sum: — the
-# happy-path construction raises ArgumentError (unknown keyword), and the pre-C2 field
-# set (minus the two new keys) currently CONSTRUCTS instead of raising. GREEN after A9.
+# ProjectMetricsTest / ValueObjectValidationTest, which stay verbatim).
 class ProjectMetricsCoverageTest < Minitest::Test
-  # A pre-C2 field set (WITHOUT the two new keys). After A9 this must raise ArgumentError
+  # The original field set (WITHOUT the two new keys). This must raise ArgumentError
   # (missing required keyword) — catching any construction site that forgot the new fields.
   PRE_C2_ARGS = {
     project_id: 11,
@@ -84,13 +86,13 @@ class ProjectMetricsCoverageTest < Minitest::Test
     assert_equal 0.0, zero.covered_sum
   end
 
-  # --- (d) the pre-C2 field set (minus the two new keys) fails LOUD --------------------
+  # --- (d) the original field set (minus the two new keys) fails LOUD --------------------
   def test_construction_without_new_keys_raises
-    # This is the loud-failure contract: a missed site must ArgumentError, not silently build.
+    # This is the loud-failure requirement: a missed site must ArgumentError, not silently build.
     assert_raises(ArgumentError) { Pulse::Domain::ProjectMetrics.new(**PRE_C2_ARGS) }
   end
 
-  # --- existing fields byte-unchanged (spot check the pre-C2 validators still fire) -----
+  # --- existing fields byte-unchanged (spot check the original validators still fire) -----
   def test_existing_field_validators_unchanged
     assert_raises(ArgumentError) { build(effort_open: -1.0) }
     assert_raises(ArgumentError) { build(blocked_count: 12.0) }

@@ -14,17 +14,14 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 require_relative '../../../lib/pulse/adapters/settings_sanitizer'
 
-# IT-C1-05 / FR-C1-09 / FC-C1-16 / AC-C1-06 — adapter-layer proportional renormalization.
+# Adapter-layer proportional renormalization.
 #
 # When the settings adapter toggles a signal's enabled state, the remaining enabled
 # weights are renormalized by DETERMINISTIC PROPORTIONAL scaling:
 #   w_i_new = w_i_old / Σ_{remaining} w_j_old
 # Consequently Σ w_new == 1.0 (within 1e-9), and every remaining weight keeps its
 # pre-toggle proportion relative to the others. This is an ADAPTER-layer write-path
-# behavior distinct from the pure-domain VO strictness (FC-C1-04..07).
-#
-# RED NOW: SettingsSanitizer has no renormalization entry point yet -> the call raises
-# NoMethodError. GREEN after A9 adds the proportional-scaling method to the sanitizer.
+# behavior distinct from the pure-domain value-object strictness.
 class SettingsSanitizerRenormalizeTest < Minitest::Test
   S = Pulse::Adapters::SettingsSanitizer
 
@@ -34,7 +31,7 @@ class SettingsSanitizerRenormalizeTest < Minitest::Test
   }.freeze
 
   # Invoke the renormalization entry point. The exact method name is defined by this
-  # test (A9 implements to match). It takes the current weights + the key being
+  # test. It takes the current weights + the key being
   # disabled and returns the renormalized remaining set.
   def renormalize(weights, disable:)
     S.renormalize_on_toggle(weights, disable)
@@ -71,7 +68,7 @@ class SettingsSanitizerRenormalizeTest < Minitest::Test
 
   def test_disabling_a_non_always_active_signal_keeps_positive_always_active_subset
     # disabling progress (non-always-active) leaves the always-active subset intact,
-    # so the renormalized set still satisfies the domain RC-07 guard downstream.
+    # so the renormalized set still satisfies the domain always-active-subset guard downstream.
     result = renormalize(DEFAULT, disable: 'progress').transform_keys(&:to_s)
     always_active = %w[staleness momentum blocked_load]
     assert_operator always_active.sum { |k| result[k] }, :>, 0.0

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2026 Jeroen
+
 # Nederlandse locale. De structuur volgt config/locales/en.yml; een pariteitstest
 # (test/unit/nl_locale_parity_test.rb) bewaakt dat beide locales exact dezelfde sleutels
 # dekken en dezelfde %{...}-variabelen behouden.
@@ -65,18 +68,18 @@ nl:
 
   error_pulse_settings_rejected: "Sommige Pulse-instellingen vielen buiten het bereik en zijn niet opgeslagen (de vorige waarde is behouden): %{fields}."
 
-  # ── scoringprofielen (C4) ────────────────────────────────────────────────────
+  # ── scoringprofielen ────────────────────────────────────────────────────
   label_pulse_scored_under: "Gescoord onder"
   label_pulse_profile_switcher: "Scoringprofiel"
   label_pulse_apply: "Toepassen"
-  # FC-C4-12 / FR-C4-09: de getoonde terugval-waarschuwing + de onderwerpfragmenten.
+  # De getoonde terugval-waarschuwing + de onderwerpfragmenten.
   label_pulse_profile_subject_selected: "het geselecteerde profiel"
   label_pulse_profile_subject_role_bound: "het aan de rol gekoppelde profiel"
   pulse_profile_dangling_warning: "%{subject} %{id} is geen gepubliceerd profiel — er wordt teruggevallen op het standaardprofiel."
-  # C5 (RC-C5-06 / FC-C5-16): de getoonde waarschuwing voor een ontbrekende lens_ref.
+  # De getoonde waarschuwing voor een ontbrekende lens_ref.
   pulse_lens_dangling_warning: "%{lens} is geen bekende lens — er wordt teruggevallen op de standaardlens (health)."
 
-  # ── opgeslagen weergaven (C5) ────────────────────────────────────────────────
+  # ── opgeslagen weergaven ────────────────────────────────────────────────
   label_pulse_views: "Opgeslagen weergaven"
   label_pulse_views_empty: "Je hebt nog geen opgeslagen weergaven."
   label_pulse_view_new: "Nieuwe opgeslagen weergave"
@@ -120,7 +123,7 @@ nl:
   label_pulse_role_binding_profile_id: "Profiel-id (of \"default\")"
   label_pulse_role_binding_new: "Rolkoppeling toevoegen"
 
-  # E1 self-service-overzicht: de begrijpelijke banner bovenaan het formulier.
+  # Self-service-overzicht: de begrijpelijke banner bovenaan het formulier.
   label_pulse_settings_overview: "Pulse geeft elk project een eenvoudige gezondheidsscore en een rood/oranje/groen-indicator op je portfolio-dashboard, zodat je in één oogopslag ziet welke projecten aandacht nodig hebben. Het werkt meteen goed met verstandige standaardwaarden, dus je kunt elk veld op deze pagina leeg laten en het werkt gewoon. Verander hier alleen iets als je wilt bijsturen hoe een score wordt berekend - en twijfel je, laat het dan leeg."
   label_pulse_settings_enrichment: "Verrijking"
   label_pulse_settings_weights: "Gewichten"
@@ -173,7 +176,7 @@ nl:
   label_pulse_help_momentum_direction_bias: "Hoeveel meer afronden dan starten (of andersom) de momentumtrend omhoog of omlaag duwt. Zet 0 om richting te negeren en alleen op drukte te scoren. Laat leeg voor de standaard: 0,15."
   label_pulse_help_on_track_threshold: "Hoe gezond een project moet zijn voordat zijn \"belangrijkste aandachtspunt\" gewoon \"Op koers\" leest in plaats van een zwak punt te noemen. Verhoog het en minder projecten verdienen \"Op koers\". Laat leeg voor de standaard: 0,5."
   label_pulse_help_snapshot_max_age_minutes: "Hoe lang Pulse een opgeslagen score hergebruikt voordat deze opnieuw wordt berekend, zodat het dashboard snel laadt. Een lager getal houdt scores verser maar herberekent vaker; 0 betekent alleen verversen wanneer de gegevens van het project daadwerkelijk wijzigen. Laat leeg voor de standaard: 60 minuten."
-  # alerting contract (C6): gezondheidswaarschuwing e-mail + instellingslabels.
+  # waarschuwingen: gezondheidswaarschuwing e-mail + instellingslabels.
   label_pulse_settings_alerting: "Gezondheidswaarschuwingen"
   label_pulse_help_group_alerting: "Dit kan je team een e-mail sturen wanneer de gezondheid van een project verandert, zodat niemand het dashboard hoeft te blijven checken. Het staat uit totdat je het instelt, en je beheerder moet ook de reguliere scan inplannen. Laat beide velden leeg als je nog geen waarschuwingen gebruikt."
   label_pulse_alert_auto_subscribe_role_id: "Automatisch-abonneren rol"
@@ -181,7 +184,7 @@ nl:
   label_pulse_alert_score_delta_threshold: "Scoreverschil-waarschuwingsdrempel"
   label_pulse_help_alert_score_delta_threshold: "Hoe grote sprong of daling in de score van een project een waarschuwing moet activeren - een hoger getal betekent dat alleen grote schommelingen worden gemeld. Weet je het niet zeker, laat leeg of 0; deze waarschuwing blijft uit. Standaard: leeg (uit)."
   label_pulse_alert_auto_subscribe_disabled: "(uitgeschakeld — niet automatisch abonneren)"
-  # C6 (FR-C6-08): de per-project "Projectgezondheid volgen" opt-in-schakelaar op de cockpit.
+  # de per-project "Projectgezondheid volgen" opt-in-schakelaar op de cockpit.
   label_pulse_watch_health: "Projectgezondheid volgen"
   label_pulse_unwatch_health: "Projectgezondheid niet meer volgen"
   notice_pulse_health_watched: "Je volgt nu de gezondheidswaarschuwingen van dit project."
@@ -194,7 +197,7 @@ nl:
   label_pulse_alert_event_no_data_appeared: "geen scoorbare gegevens"
   label_pulse_alert_event_score_delta: "gezondheidsscore sterk veranderd"
 
-  # webhooks-contract (C7 / FR-C7-02/06/09): de sectie voor uitgaande webhooks + de
+  # webhooks: de sectie voor uitgaande webhooks + de
   # flash-teksten van de admin-testgebeurtenis. Alle endpoints staan standaard UIT; er wordt
   # niets verzonden totdat de beheerder een bestemming instelt. Veilige standaarden
   # (alleen HTTPS, SSRF-bewaking aan) zijn per endpoint te overschrijven.

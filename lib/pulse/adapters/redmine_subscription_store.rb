@@ -9,9 +9,8 @@
 
 module Pulse
   module Adapters
-    # RedmineSubscriptionStore — the SubscriptionStore port over Redmine (C6 / FC-C6-07 /
-    # FC-C6-06). Resolves the recipient set for a project's alert and applies the
-    # PERMISSION-AT-SEND gate.
+    # RedmineSubscriptionStore — the SubscriptionStore port over Redmine. Resolves the
+    # recipient set for a project's alert and applies the permission-at-send gate.
     #
     # Subscription is the UNION of two sources:
     #   (1) explicit "Watch project health" watchers — a Redmine Watcher record with the
@@ -21,18 +20,18 @@ module Pulse
     #   (2) members of the admin-configured pulse_alert_auto_subscribe_role_id on the
     #       project (nil => auto-subscribe OFF, the DEFAULT — role members are NOT candidates).
     #
-    # The PERMISSION-AT-SEND gate (INV-C6-PERM-AT-SEND / FC-C6-06) is applied HERE, at
+    # The permission-at-send gate is applied HERE, at
     # resolution time, to EVERY candidate from BOTH sources: a user is a recipient IFF
     # user.allowed_to?(:view_pulse, project) is TRUE against LIVE permission state. Because
     # :view_pulse is a PROJECT_MODULE permission (init.rb project_module :pulse), this is
     # FALSE both when the user's :view_pulse was revoked AND when the :pulse module is
     # disabled on the project — so a revoked user OR a module-disabled project yields zero
-    # recipients (the two load-bearing falsifiers). The gate MUST NOT live downstream in
-    # delivery (RISK-C6-01) — delivery receives only the already-filtered set.
+    # recipients (the two load-bearing cases). The gate MUST NOT live downstream in
+    # delivery — delivery receives only the already-filtered set.
     #
     # Reachable ONLY from the scan_and_alert composition root + the Watch-toggle controller
     # action (which calls watch!/unwatch! and touches no scoring/alert symbol) — NEVER from
-    # the scoring request cycle (INV-ADDITIVE).
+    # the scoring request cycle (it is additive to the request path).
     class RedmineSubscriptionStore
       # Plugin-private polymorphic discriminator for the "Watch project health" opt-in. It
       # is NOT a real AR model — Watcher stores it as a bare string and we never call

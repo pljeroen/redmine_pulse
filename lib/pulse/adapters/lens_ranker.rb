@@ -10,9 +10,9 @@
 module Pulse
   module Adapters
     # LensRanker — re-RANKS (re-orders) the portfolio projections by the selected lens,
-    # worst-first, with a total + stable tie-break by project_id ascending (FC-CA-24det).
+    # worst-first, with a total + stable tie-break by project_id ascending (deterministic).
     # It NEVER re-scores: every project keeps its already-computed health_score /
-    # lens_keys; only the ORDER changes (CA-10d). A lens that re-scored would be a bug.
+    # lens_keys; only the ORDER changes. A lens that re-scored would be a bug.
     module LensRanker
       LENSES = %w[health at_risk stale done blocked].freeze
       DEFAULT_LENS = 'health'
@@ -24,7 +24,7 @@ module Pulse
 
       # A no-data project carries nil for EVERY lens value (Scoring no-data shape). It is
       # "unscored", not the answer to any "which is most X" question, so it sorts
-      # CONSISTENTLY LAST in every lens-ordered portfolio (CR-RA-1). The sort is
+      # CONSISTENTLY LAST in every lens-ordered portfolio. The sort is
       # ascending (worst-first), so a nil lens value gets a +infinity primary key to sit
       # at the bottom regardless of lens direction; scoreable projects keep their exact
       # prior ordering + project_id tie-break.
@@ -39,7 +39,7 @@ module Pulse
 
       # normalize_lens_with_warning(raw) -> [normalized_lens, warning_or_nil]
       #
-      # C5 (RC-C5-06 / FC-C5-16): the dangling-lens_ref case must degrade to the default lens
+      # The dangling-lens_ref case must degrade to the default lens
       # WITH a surfaced warning — the silent default alone (normalize_lens) is not sufficient
       # for a saved view whose lens_ref points at a removed user-authored lens. This is a pure,
       # stateless companion to normalize_lens (no module-level mutable state — consistent with
@@ -55,7 +55,7 @@ module Pulse
         [DEFAULT_LENS, dangling_lens_warning(s)]          # a removed/unknown key — warn
       end
 
-      # The human-readable, LOCALIZED dangling-lens warning (RC-C5-06). Names the dangling key so
+      # The human-readable, LOCALIZED dangling-lens warning. Names the dangling key so
       # the operator can diagnose it; falls back to the English default when I18n is unavailable so
       # the warning is ALWAYS a non-empty readable String (the presenter renders it verbatim).
       def dangling_lens_warning(key)

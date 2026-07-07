@@ -1,13 +1,18 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'date'
 require 'pulse/domain/milestone_marker'
 
-# TL-11 / TC-11a (version_id + due_date) + TC-11b (name — UNCONDITIONAL under D-TL-C).
 # MilestoneMarker value object: frozen; exact shape {version_id:Integer,
 # name:String(non-empty), due_date:{date:Date, provenance::version_due_date}}.
-# The :name field is NOT gated — D-TL-C resolved OSI-01 as Path A. RED until the VO exists.
+# The :name field is NOT gated — it is always present.
 class TimelineMilestoneValueObjectTest < Minitest::Test
   DUE = Date.new(2026, 7, 1)
 
@@ -20,7 +25,7 @@ class TimelineMilestoneValueObjectTest < Minitest::Test
     Pulse::Domain::MilestoneMarker.new(**args)
   end
 
-  # --- TC-11a: immutability ---
+  # --- immutability ---
   def test_marker_is_frozen_at_construction
     assert build.frozen?, 'MilestoneMarker must be frozen at construction'
   end
@@ -30,7 +35,7 @@ class TimelineMilestoneValueObjectTest < Minitest::Test
     assert_raises(FrozenError) { mk.instance_variable_set(:@version_id, 99) } if mk.frozen?
   end
 
-  # --- TC-11a: version_id Integer passthrough ---
+  # --- version_id Integer passthrough ---
   def test_version_id_is_integer
     assert_instance_of Integer, build.version_id
     assert_equal 3, build.version_id
@@ -40,7 +45,7 @@ class TimelineMilestoneValueObjectTest < Minitest::Test
     assert_raises(ArgumentError) { build(version_id: '3') }
   end
 
-  # --- TC-11a: due_date is a plain Date tagged :version_due_date ---
+  # --- due_date is a plain Date tagged :version_due_date ---
   def test_due_date_is_plain_date
     mk = build
     assert_instance_of Date, mk.due_date[:date]
@@ -63,7 +68,7 @@ class TimelineMilestoneValueObjectTest < Minitest::Test
     end
   end
 
-  # --- TC-11b: name is a REQUIRED non-empty String (passthrough), UNCONDITIONAL ---
+  # --- name is a REQUIRED non-empty String (passthrough), UNCONDITIONAL ---
   def test_name_is_non_empty_string_passthrough
     mk = build(name: 'Sprint 7')
     assert_instance_of String, mk.name
@@ -71,12 +76,12 @@ class TimelineMilestoneValueObjectTest < Minitest::Test
     refute_empty mk.name
   end
 
-  # --- TC-11b / A10-TL-002 + TL-003: name String is frozen (defensive copy) ---
-  # Uses +"..." (mutable String) so the assertion is RED against production regardless of
-  # frozen_string_literal: true in this file.
+  # --- name String is frozen (defensive copy) ---
+  # Uses +"..." (mutable String) so the assertion fails against an implementation that does
+  # not defensively copy, regardless of frozen_string_literal: true in this file.
   def test_name_is_frozen
     mk = build(name: +'Sprint 7')
-    assert mk.name.frozen?, 'mk.name must be frozen (TC-11b / A10-TL-002)'
+    assert mk.name.frozen?, 'mk.name must be frozen'
   end
 
   def test_caller_mutation_of_name_string_does_not_change_marker
@@ -84,7 +89,7 @@ class TimelineMilestoneValueObjectTest < Minitest::Test
     mk = build(name: orig)
     orig << '-MUTATED'
     assert_equal 'Sprint 7', mk.name,
-                 'MilestoneMarker must defensively copy name — caller mutation must not reach mk.name (A10-TL-002)'
+                 'MilestoneMarker must defensively copy name — caller mutation must not reach mk.name'
   end
 
   def test_rejects_missing_name
@@ -112,11 +117,11 @@ class TimelineMilestoneValueObjectTest < Minitest::Test
     assert_raises(ArgumentError) { build(name: "   \t ") }
   end
 
-  # --- TC-11b: complete shape is EXACTLY {version_id, name, due_date} ---
+  # --- complete shape is EXACTLY {version_id, name, due_date} ---
   def test_marker_exposes_exactly_version_id_name_due_date
     mk = build
     %i[version_id name due_date].each { |f| assert_respond_to mk, f }
-    # No provenance/field outside the closed milestone shape (no computed_at — TL-15).
-    refute_respond_to mk, :computed_at, 'marker must NOT expose computed_at (TL-15)'
+    # No provenance/field outside the closed milestone shape (no computed_at).
+    refute_respond_to mk, :computed_at, 'marker must NOT expose computed_at'
   end
 end

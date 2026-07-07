@@ -1,3 +1,5 @@
+<%# SPDX-License-Identifier: GPL-2.0-only
+    Copyright (C) 2026 Jeroen %>
 <%# Shared create/edit form for a saved view. Server-inline, no-JS (native <select>/<input>
     controls), matching the project idiom (app/views/settings/_pulse_settings.html.erb). `@view`
     is the PulseView being created/edited.
@@ -5,12 +7,12 @@
     Publishing (visibility public/roles) is gated SERVER-SIDE by the GLOBAL
     :manage_public_pulse_views permission — the form offers the options, the controller enforces
     the gate. The role_ids / scope_params / sort / prefs controls below let a user AUTHOR every
-    in-scope entity-CRUD condition through the GUI (A10-C5-001 / Rule 40 completeness): a
+    saved-view option through the GUI: a
     role-scoped view (role_ids), a selected- or status-filtered project scope (scope_params), a
     sort preference (sort), and threshold/column preferences (prefs). All controls are always
     rendered (no-JS): the model persists role_ids only when visibility=='roles' and consults
     scope_params only for the matching project_scope, so the extra inputs are inert unless
-    selected. Option lists come from PulseViewsHelper (Rule 18 — no AR query in the ERB). %>
+    selected. Option lists come from PulseViewsHelper (no AR query in the ERB). %>
 <%= error_messages_for @view if respond_to?(:error_messages_for) %>
 
 <div class="box tabular">
@@ -89,7 +91,7 @@
     <%= text_field_tag 'pulse_view[profile_ref]', @view.profile_ref, id: 'pulse_view_profile_ref' %>
   </p>
 
-  <%# sort — the saved-view lens/column sort preference (FR-C5-03). Persisted as a 2-element
+  <%# sort — the saved-view lens/column sort preference. Persisted as a 2-element
       Array [column, direction]; index 0 is the sort column, index 1 the direction. %>
   <p>
     <label for="pulse_view_sort_column"><%= t(:label_pulse_view_sort) %></label>
@@ -102,7 +104,7 @@
     <em class="info"><%= t(:label_pulse_view_sort_help) %></em>
   </p>
 
-  <%# prefs — threshold / column preferences (FR-C5-03). Minimally the RAG green/amber
+  <%# prefs — threshold / column preferences. Minimally the RAG green/amber
       thresholds the cockpit reads; persisted as a Hash. Blank keeps the plugin defaults. %>
   <p>
     <label for="pulse_view_prefs_rag_green_min"><%= t(:label_pulse_view_prefs_rag_green_min) %></label>

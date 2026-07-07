@@ -15,8 +15,8 @@ module Pulse
   module Domain
     # Immutable composite timeline result for one project: a retrospective sparkline
     # axis (rolling 7-day buckets) and a forward milestone-marker axis. Both arrays are
-    # frozen so the exposed collections raise FrozenError on mutation (TC-16). Carries
-    # NO computed_at / :computed (TC-15). Pure data — stdlib types only.
+    # frozen so the exposed collections raise FrozenError on mutation. Carries NO
+    # computed_at / :computed. Pure data — standard-library types only.
     class TimelineResult
       attr_reader :retrospective, :forward
 
@@ -29,9 +29,9 @@ module Pulse
     end
 
     # Pure-domain timeline construction over already-supplied, already-visibility-scoped
-    # aggregates. Reads 'today' ONLY via clock.today (TC-01/TC-17); event dates ONLY via
+    # aggregates. Reads 'today' ONLY via clock.today; event dates ONLY via
     # metrics.event_series; due dates ONLY via metrics.version_due_dates. Deterministic /
-    # referentially transparent (TC-08): no system time, no entropy, no global state.
+    # referentially transparent: no system time, no entropy, no global state.
     module Timeline
       BUCKET_WIDTH_DAYS = 7
       BOUNDARY_PROVENANCE = :derived_bucket
@@ -51,14 +51,14 @@ module Pulse
         )
       end
 
-      # ── Retrospective axis (D-TL-A half-open today-exclusive; D-TL-B oldest-first) ──
+      # ── Retrospective axis (half-open today-exclusive buckets; oldest-first) ──
 
       # ceil(W / 7) buckets, each [start, end) of width 7, contiguous, anchored so the
       # most-recent bucket is [today-7, today) (today exclusive). Oldest-first array.
       def build_retrospective(metrics, today, config)
         n = bucket_count(config.activity_window_days)
         (0...n).map do |k|
-          # k == 0 is the OLDEST bucket (D-TL-B): start == today - 7*(n-k).
+          # k == 0 is the OLDEST bucket: start == today - 7*(n-k).
           start_at = today - BUCKET_WIDTH_DAYS * (n - k)
           end_at = start_at + BUCKET_WIDTH_DAYS
           RetrospectiveBucket.new(
@@ -74,15 +74,15 @@ module Pulse
         (window_days + BUCKET_WIDTH_DAYS - 1) / BUCKET_WIDTH_DAYS
       end
 
-      # Sparkline event types (momentum-broaden D3): the timeline/sparkline counts ONLY
-      # issue lifecycle events — the broadened momentum activity types (:issue_commented,
-      # :commit) are deliberately EXCLUDED so the sparkline output is preserved exactly.
+      # Sparkline event types: the timeline/sparkline counts ONLY issue lifecycle events —
+      # the broadened momentum activity types (:issue_commented, :commit) are deliberately
+      # EXCLUDED so the sparkline output is preserved exactly.
       SPARKLINE_EVENT_TYPES = %i[issue_created issue_closed].freeze
 
       # Half-open membership: start <= e[:date] < end (start inclusive, end exclusive).
-      # Counts ONLY SPARKLINE_EVENT_TYPES (momentum-broaden D3 behaviour-preserving guard:
-      # broadening the sparkline is a separate opt-in, NOT in this contract). Real aggregate
-      # (no smoothing, no interpolation) over THIS bucket's interval only.
+      # Counts ONLY SPARKLINE_EVENT_TYPES (behaviour-preserving: broadening the sparkline is
+      # a separate opt-in, out of scope here). Real aggregate (no smoothing, no
+      # interpolation) over THIS bucket's interval only.
       def count_events_in(event_series, start_at, end_at)
         event_series.count do |e|
           next false unless SPARKLINE_EVENT_TYPES.include?(e[:type])
@@ -92,10 +92,10 @@ module Pulse
         end
       end
 
-      # ── Forward axis (TC-10 bijective / TC-12 [due_date ASC, version_id ASC] / TC-13) ──
+      # ── Forward axis (one marker per due date, sorted [due_date ASC, version_id ASC]) ──
 
       # One MilestoneMarker per version_due_dates entry; empty axis => []. NO past-due
-      # filtering (TC-13). Sorted [due_date ASC, version_id ASC] by the domain (TC-12).
+      # filtering. Sorted [due_date ASC, version_id ASC] by the domain.
       def build_forward(metrics)
         metrics.version_due_dates
                .map { |entry| to_marker(entry) }

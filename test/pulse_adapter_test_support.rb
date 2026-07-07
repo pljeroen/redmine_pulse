@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
-# Shared scenario-builder + helpers for the metrics-source RED functional /
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
+# Shared scenario-builder + helpers for the metrics-source functional /
 # integration suites. Builds KNOWN-VALUE Redmine scenarios programmatically in
 # setup (the standard Redmine plugin functional-test idiom) so every aggregate
 # has a hand-computable expected value, independent of Redmine's shipped fixtures.
@@ -8,13 +14,13 @@
 # This file defines NO assertions of its own; it is required by the suite files.
 # It also registers the `pulse` project module + `:view_pulse` permission for the
 # test environment, because init.rb deliberately defers that registration until
-# the controllers contract (the adapter under test must still honour it).
+# the controllers are wired up (the adapter under test must still honour it).
 module PulseAdapterTestSupport
   # Register the pulse module + view_pulse permission once, for the test env only.
-  # MS-04/MS-05/FC-04/FC-05 reference these; init.rb registers them later with the
+  # The metrics-source suites reference these; init.rb registers them later with the
   # controllers. Re-registration is idempotent (guarded on AccessControl state).
   def self.ensure_pulse_permission!
-    # init.rb registers the full C5 permission surface (:view_pulse expanded to the
+    # init.rb registers the full permission surface (:view_pulse expanded to the
     # pulse_views actions + the GLOBAL :manage_public_pulse_views) at plugin load, before any
     # test runs on the harness — so this early-return normally fires and we never
     # double-register (AccessControl#permission does NOT dedupe; a re-map would duplicate the
@@ -24,8 +30,8 @@ module PulseAdapterTestSupport
 
     Redmine::AccessControl.map do |map|
       map.project_module :pulse do |pm|
-        # BR-01 (controllers-api): the action map MUST include :refresh to match init.rb.
-        # C5: :view_pulse covers the pulse_views CRUD + select actions; :manage_public_pulse_views
+        # the action map MUST include :refresh to match init.rb.
+        # :view_pulse covers the pulse_views CRUD + select actions; :manage_public_pulse_views
         # is a GLOBAL permission — mirroring init.rb so the functional/integration suites see the
         # same permission surface.
         pm.permission :view_pulse,
@@ -113,7 +119,7 @@ module PulseAdapterTestSupport
 
   # Force created_on/updated_on without firing callbacks (so reference_date /
   # event_series have deterministic timestamps). These are Redmine *fixture-setup*
-  # writes, NOT adapter writes — FC-02 guards the adapter only.
+  # writes, NOT adapter writes — the read-only guard applies to the adapter only.
   #
   # NOTE: an instance #update_column on an Issue *immediately after*
   # save!(validate: false) is a silent DB no-op under Redmine 6.1.2 / Rails 7.2.3,
@@ -139,7 +145,7 @@ module PulseAdapterTestSupport
   end
 
   # Append a status-change journal that flips is_closed false->true (a closing
-  # event per §4.1 / FC-19), timestamped at `at`.
+  # event), timestamped at `at`.
   def add_close_journal!(issue:, user:, from_status:, to_status:, at:)
     j = Journal.new(journalized: issue, user: user, notes: '')
     j.details << JournalDetail.new(property: 'attr', prop_key: 'status_id',
@@ -172,7 +178,7 @@ module PulseAdapterTestSupport
     Version.create!(project: project, name: name, effective_date: effective_date)
   end
 
-  # ---- query-write guard (FC-02) ------------------------------------------
+  # ---- query-write guard (read-only) --------------------------------------
 
   REDMINE_DOMAIN_TABLES = %w[
     projects issues journals journal_details issue_statuses changesets
@@ -209,17 +215,17 @@ module PulseAdapterTestSupport
     # #now — the absolute instant on the fixed date (midnight UTC). Required by the
     # Clock port (snapshot-max-age-refresh); the projection Engine calls @clock.now on
     # every cache HIT (age_stale?), so the double must answer #now, not only #today —
-    # otherwise a warm-cache re-read NoMethodErrors (A10 C-1).
+    # otherwise a warm-cache re-read NoMethodErrors.
     def now
       Time.utc(date.year, date.month, date.day)
     end
   end
 
-  # ---- controllers-api support (BR-01 / controller + store suites) ----------
+  # ---- controllers-api support (controller + store suites) ----------
 
   # Write the plugin settings hash (the ONE permitted settings-table write — it is
   # the admin form's persistence mechanism, exercised here as test setup, NOT a
-  # pulse GET/POST action body; FC-CA-11 confines GET/refresh writes to
+  # pulse GET/POST action body; GET/refresh writes are confined to
   # pulse_snapshots). Merges over the init.rb defaults.
   def pulse_settings!(overrides = {})
     base = {
@@ -239,7 +245,7 @@ module PulseAdapterTestSupport
 
   # The full set of Redmine domain tables the read-only guard must see ZERO writes
   # on — pulse_snapshots is NOT in this set (it is the plugin-owned cache table the
-  # GET/refresh paths are permitted to write; FC-CA-11/12).
+  # GET/refresh paths are permitted to write).
   def redmine_domain_write_tables
     REDMINE_DOMAIN_TABLES
   end

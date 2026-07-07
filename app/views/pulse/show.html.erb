@@ -1,5 +1,7 @@
+<%# SPDX-License-Identifier: GPL-2.0-only
+    Copyright (C) 2026 Jeroen %>
 <%# Per-project health panel (HTML). Renders ONLY the precomputed HtmlPresenter
-    view-model (@view). No scoring/timeline/AR access here — COND-A4-001/002. %>
+    view-model (@view). No scoring/timeline/AR access here — the view is a pure renderer. %>
 <% content_for :header_tags do %>
   <%= stylesheet_link_tag 'redmine_pulse', plugin: 'redmine_pulse' %>
 <% end %>
@@ -13,17 +15,17 @@
 
 <p class="pulse-visibility-note"><%= @view.visibility_note %></p>
 
-<%# C4 (FC-C4-12 / FR-C4-09): a SURFACED dangling-fallback warning. Rendered ONLY when the
+<%# A surfaced dangling-fallback warning. Rendered ONLY when the
     provider reported that an explicit / role-bound profile selection referenced an unpublished
-    profile (scoring fell back to the system default). Precomputed on @view (COND-A4-001). %>
+    profile (scoring fell back to the system default). Precomputed on @view. %>
 <% if @view.profile_warning %>
   <div class="flash warning pulse-profile-warning" role="alert"><%= @view.profile_warning %></div>
 <% end %>
 
-<%# C4 (FC-C4-17): the active-profile display + a no-JS switcher. Renders ONLY when the
+<%# The active-profile display + a no-JS switcher. Renders ONLY when the
     presenter surfaced a profile context (profile_options non-empty). The switcher is a plain
     GET form that re-requests the panel with ?profile_id=<id> (server-inline, no JS); the active
-    option is pre-flagged selected. All state is precomputed on @view (COND-A4-001). %>
+    option is pre-flagged selected. All state is precomputed on @view. %>
 <% if @view.profile_options && !@view.profile_options.empty? %>
   <div class="pulse-profile-switcher">
     <% if @view.active_profile_name %>
@@ -41,7 +43,7 @@
   </div>
 <% end %>
 
-<%# finding 5: a refresh control that POSTs to /pulse/refresh (CSRF-protected via
+<%# A refresh control that POSTs to /pulse/refresh (CSRF-protected via
     button_to's hidden token). Lets the operator recompute the cached snapshot. %>
 <div class="pulse-refresh">
   <%= button_to t(:label_pulse_refresh),
@@ -51,10 +53,10 @@
                 class: 'pulse-refresh-button' %>
 </div>
 
-<%# C6 (FR-C6-08): the "Watch project health" opt-in toggle. Rendered ONLY for a real
+<%# The "Watch project health" opt-in toggle. Rendered ONLY for a real
     logged-in viewer (watch_offer); a plain CSRF-protected POST to pulse#watch / #unwatch that
     flips the viewer's own health-alert subscription. State is precomputed on @view
-    (COND-A4-001) — no AR/subscription access in this view. Clicking toggles the record the
+    — no AR/subscription access in this view. Clicking toggles the record the
     scan reads; it starts NO scan (the scan is rake-only). %>
 <% if @view.watch_offer %>
   <div class="pulse-watch">

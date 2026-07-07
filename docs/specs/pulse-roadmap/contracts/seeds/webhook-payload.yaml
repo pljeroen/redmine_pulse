@@ -1,4 +1,4 @@
-# Validating example payloads for contracts/schemas/webhook-payload.json (C7).
+# Validating example payloads for contracts/schemas/webhook-payload.json.
 # Each entry is a concrete instance that MUST validate against the schema.
 
 - # rag_transition: green -> amber, dominant flips to risk_load

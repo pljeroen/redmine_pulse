@@ -107,7 +107,7 @@ ul.projects a.project + .pulse-rag {
   color: #888;
 }
 
-/* ── settings self-service copy (E1) ─────────────────────────────────────────
+/* ── settings self-service copy ──────────────────────────────────────────────
    A muted, slightly-indented intro block so a non-technical manager reads the
    "works out of the box, leave blank" reassurance without it shouting like a
    banner. The top overview sits above the first fieldset; the per-section intros
@@ -135,7 +135,7 @@ ul.projects a.project + .pulse-rag {
    grouped labels so the multi-control rows read as a legible inline list, while the
    row's FIRST (unclassed) label keeps the normal floated grid position. */
 
-/* Event-filter row (C7 webhooks): the four event-type checkbox labels lay out as a
+/* Event-filter row (webhook settings): the four event-type checkbox labels lay out as a
    wrapped inline list in the field area instead of stacking in the grid column. */
 .pulse-settings-webhooks .pulse-webhook-event-filter {
   float: none;
@@ -146,7 +146,7 @@ ul.projects a.project + .pulse-rag {
   font-weight: normal;
 }
 
-/* Role-binding row (C4): the SECOND (profile_id) label sits inline next to its input
+/* Role-binding row (scoring profiles): the SECOND (profile_id) label sits inline next to its input
    in the field area; the first (role_id) label stays the single floated grid label. */
 .pulse-settings-profiles .pulse-inline-label {
   float: none;

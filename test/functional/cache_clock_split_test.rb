@@ -1,10 +1,16 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'json'
 
-# CA-21 / FC-CA-21: THE DEFINING CACHE/CLOCK SPLIT INVARIANT. When the snapshot
+# THE DEFINING CACHE/CLOCK SPLIT INVARIANT. When the snapshot
 # fingerprint is UNCHANGED (zero data change) and ONLY Clock.today advances, the
 # controller re-projects staleness/momentum/sparkline and re-derives health_score
 # WITHOUT calling MetricsSource and WITHOUT inserting a new pulse_snapshots row. The
@@ -12,7 +18,7 @@ require 'json'
 # the snapshot is byte-identical — correct, not a cache bug.
 #
 # Asserts OBSERVABLE POST-STATE: pulse_snapshots.count is unchanged on the 2nd day,
-# and the fingerprint is equal across both days. COND-A8-004: Postgres 16. RED.
+# and the fingerprint is equal across both days. Runs on PostgreSQL 16.
 class CacheClockSplitTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -21,8 +27,8 @@ class CacheClockSplitTest < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # this suite runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the other CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
@@ -62,10 +68,10 @@ class CacheClockSplitTest < ActionDispatch::IntegrationTest
   end
 
   def test_clock_advance_no_recompute_no_new_row
-    # snapshot-max-age-refresh (CT-02 EVOLUTION): SCOPE the pure clock-split property so
+    # snapshot-max-age-refresh: SCOPE the pure clock-split property so
     # the age-refresh cannot interfere. With snapshot_max_age_minutes = 0 the freshness
     # cap is DISABLED, so a clock #today advance with ZERO data change re-projects
-    # WITHOUT a recompute and WITHOUT a new row — the core FC-CA-21 invariant, unweakened.
+    # WITHOUT a recompute and WITHOUT a new row — the core cache/clock-split invariant, unweakened.
     pulse_settings!('snapshot_max_age_minutes' => 0)
     login_as(@user)
     # Day N: cold GET stores exactly one snapshot row.
@@ -79,10 +85,10 @@ class CacheClockSplitTest < ActionDispatch::IntegrationTest
       get "/projects/#{@project.identifier}/pulse"
     end
     assert_equal 1, snapshot_count(@project),
-                 'day N+1 (clock advanced, no data change): NO new snapshot row (FC-CA-21)'
+                 'day N+1 (clock advanced, no data change): NO new snapshot row'
   end
 
-  # snapshot-max-age-refresh (CT-02 EVOLUTION): the DOCUMENTED NEW EXCEPTION to the
+  # snapshot-max-age-refresh: the DOCUMENTED NEW EXCEPTION to the
   # split. A request whose clock #now is BEYOND the freshness cap past the stored
   # computed_at triggers exactly ONE in-place overwrite (same key, NO new row) — the
   # row's computed_at is bumped so "computed X ago" never exceeds the cap. This does NOT

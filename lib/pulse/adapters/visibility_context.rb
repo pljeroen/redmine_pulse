@@ -11,9 +11,9 @@ require 'digest'
 
 module Pulse
   module Adapters
-    # VisibilityContext (MS-23/24/25, FC-24/25/26) — a deterministic fingerprint of
-    # the FULL resolved Redmine visibility predicate for a requester on a project
-    # (DEC-11 / spec §6.4). It is the cache-partition key: two requesters who would
+    # VisibilityContext — a deterministic fingerprint of
+    # the FULL resolved Redmine visibility predicate for a requester on a project.
+    # It is the cache-partition key: two requesters who would
     # see EXACTLY the same issue set share an id; any predicate-affecting change
     # (role/group/membership/tracker-permission/module/admin/:view_changesets) moves
     # the id. There is NO view_private_issues dimension (it does not exist in 6.1).
@@ -33,7 +33,7 @@ module Pulse
         Digest::SHA256.hexdigest(serialized_dimensions)
       end
 
-      # OPTIONAL falsification surface (FC-24/MS-25): the input dimensions. MUST NOT
+      # OPTIONAL falsification surface: the input dimensions. MUST NOT
       # contain a view_private_issues dimension.
       def dimensions
         dims = base_dimensions
@@ -68,16 +68,16 @@ module Pulse
       end
 
       # Permissions whose state participates in the visibility predicate (view_issues
-      # gates the issue set; :view_changesets gates changeset dates per THAW-001;
+      # gates the issue set; :view_changesets gates changeset dates;
       # :view_private_notes gates private-note momentum journals in event_series, so a
       # change to it must move the cache-partition id — otherwise a stale snapshot warmed
-      # while permitted leaks private-note momentum after the revoke, RT-01).
+      # while permitted leaks private-note momentum after the revoke).
       PREDICATE_PERMISSIONS = %i[view_issues view_changesets view_private_notes].freeze
 
       # Sorted, deterministic descriptor for each effective role on the project.
       # Permission flags are read from a FRESH Role load (not the user-cached role
       # objects from roles_for_project, which can be stale after a permission grant)
-      # so a :view_changesets grant moves the id (FC-26 / THAW-001).
+      # so a :view_changesets grant moves the id.
       def role_descriptors
         fresh = Role.where(id: roles_for_project.map(&:id)).index_by(&:id)
         roles_for_project.sort_by(&:id).map do |cached|
@@ -93,7 +93,7 @@ module Pulse
       end
 
       # Per-tracker view restriction: 'all' when the role views all trackers, else the
-      # sorted set of permitted tracker ids (FC-24 dimension 3).
+      # sorted set of permitted tracker ids.
       def tracker_restriction(role)
         return 'all' if !role.respond_to?(:permissions_all_trackers?) ||
                         role.permissions_all_trackers?(:view_issues)
@@ -103,7 +103,7 @@ module Pulse
       end
 
       # Identity is part of the predicate whenever ANY applicable role resolves
-      # identity-dependently (own/default), per DEC-11.
+      # identity-dependently (own/default).
       def identity_dependent?
         roles_for_project.any? do |role|
           ROLE_IDENTITY_VISIBILITY.include?(role.issues_visibility.to_s)

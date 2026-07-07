@@ -15,7 +15,7 @@ module Pulse
     # Immutable scoring configuration value object. Weights, RAG thresholds, signal
     # horizons and the activity window. Fails loud (ArgumentError) on invalid weights.
     #
-    # C1 generalization: the ENABLED signal set is the DOMAIN of `weights`. Weight keys
+    # The ENABLED signal set is the DOMAIN of `weights`. Weight keys
     # must be a non-empty subset of the SignalRegistry-registered signals; validation
     # generalizes from "exactly the 5 REQUIRED keys" to "dom(w) == enabled set, each a
     # finite real Numeric >= 0, Σ == 1.0, and Σ over the enabled ∩ always-active subset
@@ -38,11 +38,11 @@ module Pulse
                      momentum_direction_bias: DEFAULT_MOMENTUM_DIRECTION_BIAS,
                      on_track_threshold: DEFAULT_ON_TRACK_THRESHOLD)
         # Default (no-arg) construction resolves the built-ins from the registry: the
-        # 5-signal enabled set with today's default weights (the C1 default-all path).
+        # 5-signal enabled set with today's default weights (the default-all path).
         weights = weights.nil? ? SignalRegistry.default_weights : weights
         # The enabled set is the DOMAIN of weights. An explicit enabled_signals: must
         # exactly cover dom(w) (checked in validate_weights!); nil => derive from weights.
-        # C3 (OBL-C3-01): base weight validation is delegated to a WeightSet constructed
+        # Base weight validation is delegated to a WeightSet constructed
         # INTERNALLY — registered keys, finite real Numeric >= 0, at-least-one > 0, all
         # fail-loud as ArgumentError — then ScoringConfig layers its OWN constraints
         # (dom(w) == enabled set, Σ == 1.0, enabled ∩ always-active weight-sum > 0) on top.
@@ -72,7 +72,7 @@ module Pulse
 
       private
 
-      # C3: construct a WeightSet from the incoming weights for base validation (registered
+      # Construct a WeightSet from the incoming weights for base validation (registered
       # keys, finite real Numeric >= 0, at-least-one > 0 — all ArgumentError). Its #to_h is
       # a plain frozen Hash (dup.freeze of the input, insertion order preserved) that becomes
       # @weights — so the public attr_reader stays a plain frozen Hash byte-identical to the
@@ -81,7 +81,7 @@ module Pulse
         WeightSet.new(weights)
       end
 
-      # C1: the enabled set is the domain of weights. Weight keys must be a NON-EMPTY
+      # The enabled set is the domain of weights. Weight keys must be a NON-EMPTY
       # subset of the registered signals; when an explicit enabled_signals is supplied it
       # must EXACTLY cover dom(w) (no under-cover / over-cover). Each weight is then
       # type/finiteness-checked BEFORE any sum so NaN/Inf/Complex/String/nil fail loud.
@@ -117,7 +117,7 @@ module Pulse
 
       # Central guard: a weight must be a finite, real, ordered Numeric — an
       # Integer, a Rational, or a Float that is neither NaN nor Infinite. This is
-      # checked BEFORE the sum/non-negative/RC-07 checks so a NaN (which makes the
+      # checked BEFORE the sum/non-negative/always-active checks so a NaN (which makes the
       # sum NaN and slips past the tolerance test) and a Complex (unordered, which
       # would leak NoMethodError at `< 0.0`) both fail loud with ArgumentError.
       def finite_real_numeric!(key, value)
@@ -130,7 +130,7 @@ module Pulse
         end
       end
 
-      # FR-02: every non-weight field is a plain Integer. Type is checked BEFORE any
+      # Every non-weight field is a plain Integer. Type is checked BEFORE any
       # numeric comparison so a String/nil/Float never reaches `<`/`>=` and leaks a
       # TypeError/ArgumentError-from-coercion instead of the required fail-loud message.
       def integer_field!(name, value)
@@ -139,7 +139,7 @@ module Pulse
         raise ArgumentError, "#{name} must be an Integer (got #{value.class})"
       end
 
-      # FR-02/FR-06/FR-11/FR-22: validate the six non-weight config fields. All must be
+      # Validate the six non-weight config fields. All must be
       # Integer; horizons (denominators in n = 1 - x/H) and the activity window must be
       # >= 1; the RAG bounds must lie in [0,100] with rag_amber_min <= rag_green_min for
       # coherent bands. Fails loud (ArgumentError) at the value-object boundary.
@@ -152,24 +152,24 @@ module Pulse
         integer_field!(:h_blocked, h_blocked)
         integer_field!(:activity_window_days, activity_window_days)
 
-        # FR-06: horizons are denominators => must be >= 1 (positive).
+        # Horizons are denominators => must be >= 1 (positive).
         { h_stale: h_stale, h_risk: h_risk, h_blocked: h_blocked }.each do |name, value|
           raise ArgumentError, "#{name} must be >= 1 (got #{value})" if value < 1
         end
 
-        # FR-11: activity window size must be >= 1.
+        # Activity window size must be >= 1.
         if activity_window_days < 1
           raise ArgumentError, "activity_window_days must be >= 1 (got #{activity_window_days})"
         end
 
-        # FR-22: RAG band bounds must be within [0,100].
+        # RAG band bounds must be within [0,100].
         { rag_green_min: rag_green_min, rag_amber_min: rag_amber_min }.each do |name, value|
           unless value.between?(0, 100)
             raise ArgumentError, "#{name} must be within [0,100] (got #{value})"
           end
         end
 
-        # FR-22: coherent bands require rag_amber_min <= rag_green_min.
+        # Coherent bands require rag_amber_min <= rag_green_min.
         if rag_amber_min > rag_green_min
           raise ArgumentError,
                 "rag_amber_min must be <= rag_green_min for coherent bands " \
@@ -214,26 +214,26 @@ module Pulse
       end
 
       def validate_weights!(weights, enabled_signals)
-        # C1: subset of registered signals, non-empty, dom(w) == enabled set, each a
+        # Subset of registered signals, non-empty, dom(w) == enabled set, each a
         # finite real Numeric — checked BEFORE summing so a nil/non-numeric/NaN/Inf/
         # Complex weight fails loud with ArgumentError rather than leaking a TypeError.
         validate_weight_keys!(weights, enabled_signals)
 
-        # FR-39a: weight-sum must be 1.0 within 1e-9.
+        # Weight-sum must be 1.0 within 1e-9.
         if (weights.values.sum - 1.0).abs >= 1e-9
           raise ArgumentError, "weights must sum to 1.0 (got #{weights.values.sum})"
         end
-        # FR-39a: no negative weights.
+        # No negative weights.
         if weights.values.any? { |w| w < 0.0 }
           raise ArgumentError, 'weights must all be >= 0.0'
         end
-        # FR-39b / RC-07 (generalized): the ENABLED ∩ always-active subset weight-sum must
-        # be > 0, so a non-empty active set is guaranteed. Drives off the registry's
-        # always_active flags restricted to the enabled set (dom of weights).
+        # The ENABLED ∩ always-active subset weight-sum must be > 0, so a non-empty active
+        # set is guaranteed. Drives off the registry's always_active flags restricted to the
+        # enabled set (dom of weights).
         subset = weights.sum { |k, w| SignalRegistry.fetch(k).always_active? ? w : 0.0 }
         if subset <= 0.0
           raise ArgumentError,
-                'enabled ∩ always-active subset weight-sum must be > 0 (generalized RC-07)'
+                'enabled ∩ always-active subset weight-sum must be > 0'
         end
       end
     end

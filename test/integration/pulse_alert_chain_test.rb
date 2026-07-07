@@ -10,23 +10,23 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# IT-C6-CHAIN — END-TO-END alert chain (the integration lesson: green tests can pass
-# per-unit while the composed pipeline leaks or double-fires; this suite drives the
-# WHOLE chain through the scan_and_alert composition root).
+# END-TO-END alert chain (per-unit tests can pass while the composed pipeline leaks or
+# double-fires; this suite drives the WHOLE chain through the scan_and_alert composition
+# root).
 #
 # Scenario: seed a project's PulseAlertState (green); the health changes (amber) =>
 # run scan_and_alert =>
 #   - a subscribed + permitted watcher receives EXACTLY ONE email;
 #   - the alert-state advances to amber;
-#   - an immediate re-run (unchanged health) sends NOTHING (ONCE, FC-C6-15);
-#   - a revoked-permission watcher receives NONE (FC-C6-06 case b);
-#   - a module-disabled watcher receives NONE (FC-C6-06 case e).
+#   - an immediate re-run (unchanged health) sends NOTHING (fires once);
+#   - a revoked-permission watcher receives NONE (case b);
+#   - a module-disabled watcher receives NONE (case e).
 #
 # This composes AlertRules (domain) + ActiveRecordAlertStateStore + RedmineSubscriptionStore
 # (permission-at-send) + RedmineAlertDelivery + Pulse::Mailer end-to-end.
 #
-# RED-by-construction: the whole pipeline is absent. A9 makes it GREEN.
-# Postgres-gated.
+# Exercises the whole pipeline end-to-end.
+# Runs on PostgreSQL.
 class PulseAlertChainTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -92,7 +92,7 @@ class PulseAlertChainTest < ActiveSupport::TestCase
 
     # The revoked watcher got NONE.
     refute_includes delivered_mails, revoked.mail,
-                    'a revoked-permission watcher receives NONE (FC-C6-06 b)'
+                    'a revoked-permission watcher receives NONE (case b)'
 
     # State advanced to amber.
     assert_equal 'amber', alert_store.find_by_project(@project.id)[:last_rag],
@@ -118,6 +118,6 @@ class PulseAlertChainTest < ActiveSupport::TestCase
     run_scan!
 
     refute_includes delivered_mails, watcher.mail,
-                    'a module-disabled-project watcher receives NONE (FC-C6-06 e)'
+                    'a module-disabled-project watcher receives NONE (case e)'
   end
 end

@@ -1,6 +1,8 @@
-<%# Retrospective sparkline as an inline <svg> polyline + bars (finding 6). Driven by
+<%# SPDX-License-Identifier: GPL-2.0-only
+    Copyright (C) 2026 Jeroen %>
+<%# Retrospective sparkline as an inline <svg> polyline + bars. Driven by
     the presenter's bucket values (each {start:, end:, value:}); state -> markup only,
-    no domain/AR logic (COND-A4-002). Accessible: role=img + a <title>. Degrades to a
+    no domain/AR logic in the view. Accessible: role=img + a <title>. Degrades to a
     "no activity" note when there is nothing to draw. %>
 <%
   values   = Array(buckets).map { |b| b[:value].to_i }

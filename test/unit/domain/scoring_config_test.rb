@@ -1,16 +1,21 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'pulse/domain/scoring_config'
 
-# FR-02, FR-39 / FC-31, FC-33.
 # ScoringConfig: immutable VO; defaults; weight-sum==1.0(1e-9); weights>=0;
-# RC-07 guard (always-active subset {staleness,momentum,blocked_load} sum > 0).
+# always-active weight-sum guard (always-active subset {staleness,momentum,blocked_load} sum > 0).
 class ScoringConfigTest < Minitest::Test
-  # --- FR-02: defaults (DEC-13) ---
+  # --- defaults ---
   def test_defaults_and_weight_sum_and_type_constraints
     cfg = Pulse::Domain::ScoringConfig.new
-    assert cfg.frozen?, 'ScoringConfig must be frozen (FC-31)'
+    assert cfg.frozen?, 'ScoringConfig must be frozen'
     assert_in_delta 0.25, cfg.weights[:staleness], 1e-12
     assert_in_delta 0.25, cfg.weights[:progress], 1e-12
     assert_in_delta 0.20, cfg.weights[:momentum], 1e-12
@@ -36,7 +41,7 @@ class ScoringConfigTest < Minitest::Test
     assert_raises(FrozenError) { cfg.weights[:staleness] = 0.9 }
   end
 
-  # --- FR-39 (a): weight-sum must be 1.0 within 1e-9; weights >= 0 ---
+  # --- weight-sum must be 1.0 within 1e-9; weights >= 0 ---
   def test_accepts_weight_sum_one_within_tolerance
     w = { staleness: 0.25, progress: 0.25, momentum: 0.20, risk_load: 0.15, blocked_load: 0.15 }
     cfg = Pulse::Domain::ScoringConfig.new(weights: w)
@@ -55,7 +60,7 @@ class ScoringConfigTest < Minitest::Test
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(weights: w) }
   end
 
-  # --- FR-39 (b): RC-07 guard — always-active subset weight-sum must be > 0 ---
+  # --- always-active subset weight-sum must be > 0 ---
   def test_rejects_zero_always_active_subset_weight_sum
     # staleness=momentum=blocked_load=0, sum kept 1.0 via progress+risk_load.
     w = { staleness: 0.0, progress: 0.6, momentum: 0.0, risk_load: 0.4, blocked_load: 0.0 }
@@ -72,7 +77,7 @@ class ScoringConfigTest < Minitest::Test
     refute_nil cfg
   end
 
-  # === settings-promote-momentum (CT-02 EVOLUTION) ============================
+  # === promoted momentum/on-track shape constants ============================
   # 3 momentum/on-track shape constants promoted to ScoringConfig kwargs:
   #   momentum_activity_half  default 8.0  range > 0 (strictly positive)
   #   momentum_direction_bias default 0.15 range [0.0, 0.5] inclusive
@@ -92,14 +97,13 @@ class ScoringConfigTest < Minitest::Test
   end
 
   # --- range rejections (ArgumentError, fail-loud at the VO boundary) --------
-  # Each reject test FIRST asserts a VALID value constructs cleanly. That guard makes
-  # the test RED now (the kwarg is unknown -> the valid construction itself raises),
-  # so the test cannot pass on the spurious "unknown keyword" ArgumentError; it goes
-  # GREEN only once the kwarg exists AND the range guard rejects the bad value.
+  # Each reject test FIRST asserts a VALID value constructs cleanly. That guard means the
+  # test cannot pass on a spurious "unknown keyword" ArgumentError; it passes only once the
+  # kwarg exists AND the range guard rejects the bad value.
   def assert_field_rejected(field, bad_value, good_value)
     # The good value must construct cleanly (no exception). Plain Minitest has no
     # assert_nothing_raised, so we assert the constructed object exists instead — any
-    # raise (incl. the RED-phase "unknown keyword" ArgumentError) propagates and fails.
+    # raise (incl. a stray "unknown keyword" ArgumentError) propagates and fails.
     cfg = Pulse::Domain::ScoringConfig.new(field => good_value)
     refute_nil cfg, "#{field}=#{good_value.inspect} must be accepted (in-range)"
     assert_raises(ArgumentError, "#{field}=#{bad_value.inspect} must be rejected (out of range/invalid)") do

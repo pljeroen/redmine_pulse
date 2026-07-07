@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'date'
 require 'pulse/domain/project_metrics'
@@ -7,16 +13,14 @@ require 'pulse/domain/scoring_config'
 require 'pulse/domain/signals'
 require 'pulse/domain/scoring'
 
-# A10 fix-cycle tests. Pins the value-object fail-loud (FR-01/FR-39) and
-# deep-immutability (FR-01 immutable-VO + INV-DETERMINISTIC) contracts that the
-# original 97 tests did not cover. These are EXPECTED RED against the too-permissive
-# current implementation until A9 hardens it.
+# Value-object hardening tests. Pins the value-object fail-loud and deep-immutability
+# (immutable value objects + deterministic scoring) guarantees that the original
+# behavioural tests did not cover:
 #
-#   A10-002  ProjectMetrics full FR-01 field validation (ArgumentError)
-#   A10-001  ProjectMetrics deep immutability (defensive copy + deep freeze)
-#   A10-003  ScoringConfig weight-set validity — C1-generalized (DEC-01): the enabled
-#            set is dom(weights); a non-empty registered SUBSET summing to 1.0 with a
-#            positive always-active intersection is valid (FC-C1-04/07/08).
+#   * ProjectMetrics full field validation (ArgumentError on bad input)
+#   * ProjectMetrics deep immutability (defensive copy + deep freeze)
+#   * ScoringConfig weight-set validity: the enabled set is dom(weights); a non-empty
+#     registered SUBSET summing to 1.0 with a positive always-active intersection is valid.
 class ValueObjectValidationTest < Minitest::Test
   # ---- builders -----------------------------------------------------------
   def valid_metrics_args(**overrides)
@@ -31,7 +35,7 @@ class ValueObjectValidationTest < Minitest::Test
       effort_mapped: true,
       event_series: [{ date: Date.new(2026, 6, 10), type: :issue_closed }],
       version_due_dates: [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }],
-      # C2 additive-required coverage inputs. A non-zero pair exercises covered_sum
+      # coverage inputs. A non-zero pair exercises covered_sum
       # validation on the happy path (0 <= covered_sum <= open_issue_count).
       open_issue_count: 12,
       covered_sum: 6.0
@@ -47,8 +51,8 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   # =====================================================================
-  # A10-002 — ProjectMetrics full FR-01 fail-loud field validation.
-  # FR-01: project_id Integer; reference_date Date NON-NIL; effort_open/effort_total/
+  # ProjectMetrics full fail-loud field validation.
+  # project_id Integer; reference_date Date NON-NIL; effort_open/effort_total/
   # risk_raw Numeric >= 0; blocked_count Integer >= 0; risk_mapped/effort_mapped Boolean;
   # event_series entries {date: Date, type: in [:issue_created,:issue_closed]};
   # version_due_dates entries {version_id: Integer, due_date: Date}.
@@ -111,7 +115,7 @@ class ValueObjectValidationTest < Minitest::Test
     assert_raises(ArgumentError) { build_metrics(event_series: bad) }
   end
 
-  # --- momentum-broaden §6: EVENT_TYPES broadened to include :issue_commented + :commit ---
+  # --- EVENT_TYPES broadened to include :issue_commented + :commit ---
   # The fail-loud validation auto-covers the new symbols (positive controls); an unknown
   # type is still rejected (the negative control above).
   def test_accepts_event_series_entry_with_issue_commented_type
@@ -127,7 +131,7 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   def test_rejects_version_due_dates_entry_with_non_date_due_date
-    # A Time (not a plain Date) must be rejected per FR-38 (no DateTime/Time/String).
+    # A Time (not a plain Date) must be rejected (no DateTime/Time/String).
     bad = [{ version_id: 3, name: 'v1.0', due_date: Time.new(2026, 7, 1) }]
     assert_raises(ArgumentError) { build_metrics(version_due_dates: bad) }
   end
@@ -138,10 +142,10 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   # =====================================================================
-  # TC-11c (D-TL-C / OSI-01 Path A) — ProjectMetrics#version_due_dates entries MUST
-  # carry a REQUIRED non-empty String :name, fail-loud at construction, MIRRORING the
-  # version_id (Integer) and due_date (Date) checks. RED until validate_version_due_dates!
-  # gains the :name check (A9 amends lib/pulse/domain/project_metrics.rb lines 128-146).
+  # ProjectMetrics#version_due_dates entries MUST carry a REQUIRED non-empty String
+  # :name, fail-loud at construction, MIRRORING the version_id (Integer) and due_date
+  # (Date) checks — enforced by validate_version_due_dates! in
+  # lib/pulse/domain/project_metrics.rb.
   # =====================================================================
 
   def test_rejects_version_due_dates_entry_missing_name
@@ -170,23 +174,23 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   def test_accepts_version_due_dates_entry_with_valid_name
-    # Positive control: a valid non-empty String :name constructs (stays GREEN post-A9).
+    # Positive control: a valid non-empty String :name constructs.
     good = [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }]
     m = build_metrics(version_due_dates: good)
     assert_equal 'v1.0', m.version_due_dates.first[:name]
   end
 
   def test_accepts_empty_version_due_dates_axis
-    # Positive control: empty array needs no :name (TC-10/TC-11c).
+    # Positive control: empty array needs no :name.
     m = build_metrics(version_due_dates: [])
     assert_equal [], m.version_due_dates
   end
 
   # =====================================================================
-  # A10-001 — ProjectMetrics deep immutability.
+  # ProjectMetrics deep immutability.
   # Caller-owned arrays/hashes must be defensively copied and deep-frozen so a
   # later mutation of the originals cannot change ProjectMetrics state or a
-  # subsequent Scoring.score result (INV-DETERMINISTIC at the VO boundary).
+  # subsequent Scoring.score result (deterministic at the value-object boundary).
   # =====================================================================
 
   class FixedClock
@@ -205,7 +209,7 @@ class ValueObjectValidationTest < Minitest::Test
     before = m.event_series.length
     series << { date: Date.new(2026, 6, 11), type: :issue_created } # mutate the ORIGINAL array
     assert_equal before, m.event_series.length,
-                 'ProjectMetrics must defensively copy event_series (A10-001)'
+                 'ProjectMetrics must defensively copy event_series'
   end
 
   def test_mutating_caller_event_series_element_hash_does_not_change_metrics
@@ -213,7 +217,7 @@ class ValueObjectValidationTest < Minitest::Test
     m = build_metrics(event_series: [entry])
     entry[:type] = :issue_created # mutate the ORIGINAL element hash
     assert_equal :issue_closed, m.event_series.first[:type],
-                 'ProjectMetrics must deep-copy event_series element hashes (A10-001)'
+                 'ProjectMetrics must deep-copy event_series element hashes'
   end
 
   def test_mutating_caller_version_due_dates_does_not_change_metrics
@@ -223,7 +227,7 @@ class ValueObjectValidationTest < Minitest::Test
     vd.first[:version_id] = 999
     assert_equal 1, m.version_due_dates.length
     assert_equal 3, m.version_due_dates.first[:version_id],
-                 'ProjectMetrics must deep-copy version_due_dates (A10-001)'
+                 'ProjectMetrics must deep-copy version_due_dates'
   end
 
   def test_score_is_stable_after_mutating_caller_event_series
@@ -231,42 +235,42 @@ class ValueObjectValidationTest < Minitest::Test
     config = Pulse::Domain::ScoringConfig.new
     # Empty in-window momentum (n == 0.5). Adding three in-window :issue_created events
     # drops momentum n and flips the integer health_score (31 -> 21) IF the array is
-    # stored by reference — so this is genuinely RED against the aliasing impl.
+    # stored by reference — so this genuinely fails against an aliasing implementation.
     series = []
     m = build_metrics(event_series: series)
     before = Pulse::Domain::Scoring.score(m, clock, config).health_score
     3.times { series << { date: Date.new(2026, 6, 19), type: :issue_created } }
     after = Pulse::Domain::Scoring.score(m, clock, config).health_score
     assert_equal before, after,
-                 'subsequent Scoring.score must be unaffected by caller mutation (A10-001/INV-DETERMINISTIC)'
+                 'subsequent Scoring.score must be unaffected by caller mutation (deterministic)'
   end
 
   def test_exposed_event_series_collection_is_frozen
     m = build_metrics(event_series: [{ date: Date.new(2026, 6, 10), type: :issue_closed }])
-    assert m.event_series.frozen?, 'exposed event_series must be frozen (A10-001)'
+    assert m.event_series.frozen?, 'exposed event_series must be frozen'
     assert_raises(FrozenError) { m.event_series << { date: Date.new(2026, 6, 11), type: :issue_created } }
   end
 
   def test_exposed_event_series_element_hashes_are_frozen
     m = build_metrics(event_series: [{ date: Date.new(2026, 6, 10), type: :issue_closed }])
-    assert m.event_series.first.frozen?, 'event_series element hashes must be frozen (A10-001)'
+    assert m.event_series.first.frozen?, 'event_series element hashes must be frozen'
     assert_raises(FrozenError) { m.event_series.first[:type] = :issue_created }
   end
 
   def test_exposed_version_due_dates_collection_is_frozen
     m = build_metrics(version_due_dates: [{ version_id: 3, name: 'v1.0', due_date: Date.new(2026, 7, 1) }])
-    assert m.version_due_dates.frozen?, 'exposed version_due_dates must be frozen (A10-001)'
+    assert m.version_due_dates.frozen?, 'exposed version_due_dates must be frozen'
     assert_raises(FrozenError) { m.version_due_dates << { version_id: 4, name: 'v2.0', due_date: Date.new(2026, 8, 1) } }
     assert_raises(FrozenError) { m.version_due_dates.first[:version_id] = 999 }
   end
 
-  # --- A10-TL-001 + TL-004: version_due_dates :name String is frozen (deep-freeze) ---
-  # Uses +"..." (mutable String) so the assertion is RED against production regardless of
-  # frozen_string_literal: true in this file.
+  # --- version_due_dates :name String is frozen (deep-freeze) ---
+  # Uses +"..." (mutable String) so the assertion fails against an implementation that does
+  # not deep-freeze, regardless of frozen_string_literal: true in this file.
   def test_version_due_dates_name_string_is_frozen
     m = build_metrics(version_due_dates: [{ version_id: 3, name: +'v1.0', due_date: Date.new(2026, 7, 1) }])
     assert m.version_due_dates.first[:name].frozen?,
-           'version_due_dates entry :name must be a frozen String (A10-TL-001 / TC-11c deep-freeze)'
+           'version_due_dates entry :name must be a frozen String (deep-freeze)'
   end
 
   def test_caller_mutation_of_version_due_dates_name_string_does_not_change_metrics
@@ -275,44 +279,43 @@ class ValueObjectValidationTest < Minitest::Test
     m = build_metrics(version_due_dates: vd)
     orig_name << '-MUTATED'
     assert_equal 'v1.0', m.version_due_dates.first[:name],
-                 'ProjectMetrics must defensively copy :name Strings — caller mutation must not reach stored entry (A10-TL-001)'
+                 'ProjectMetrics must defensively copy :name Strings — caller mutation must not reach stored entry'
   end
 
   # =====================================================================
-  # A10-003 (C1-GENERALIZED, DEC-01) — ScoringConfig weight-set validity.
-  # PRE-C1 this pinned "weights must contain EXACTLY the 5 signal keys". Under C1
-  # (DEC-01, FC-C1-02/03/04/08) the ENABLED set is the DOMAIN of weights: a NON-EMPTY
-  # SUBSET of the REGISTERED signals is VALID, provided the weights sum to 1.0 (±1e-9)
-  # and the enabled ∩ always-active weight-sum is > 0. So a proper subset no longer
-  # fails loud. The still-invalid cases are: empty weights; an UNREGISTERED key; a
-  # sum != 1.0; and a subset whose always-active intersection weight-sum is 0.
+  # ScoringConfig weight-set validity.
+  # The ENABLED set is the DOMAIN of weights: a NON-EMPTY SUBSET of the REGISTERED
+  # signals is VALID, provided the weights sum to 1.0 (±1e-9) and the enabled ∩
+  # always-active weight-sum is > 0. So a proper subset does not fail loud. The
+  # still-invalid cases are: empty weights; an UNREGISTERED key; a sum != 1.0; and a
+  # subset whose always-active intersection weight-sum is 0.
   # =====================================================================
 
   def test_accepts_valid_subset_of_registered_signals
-    # C1 (FC-C1-04): a 3-signal subset (all registered, sum 1.0, includes always-active
+    # a 3-signal subset (all registered, sum 1.0, includes always-active
     # staleness/momentum/blocked_load) is VALID — it does NOT raise. The enabled set is
     # dom(weights); construction succeeds and enabled_signals == the weight keys.
     w = { staleness: 0.5, momentum: 0.25, blocked_load: 0.25 }
     assert_in_delta 1.0, w.values.sum, 1e-9
     cfg = Pulse::Domain::ScoringConfig.new(weights: w)
     assert_equal %i[staleness momentum blocked_load].sort, cfg.enabled_signals.sort,
-                 'enabled_signals == dom(weights) for a valid subset (FC-C1-04)'
+                 'enabled_signals == dom(weights) for a valid subset'
   end
 
   def test_rejects_empty_weights
-    # FC-C1-04: an EMPTY weights hash is not a valid (non-empty) enabled set.
+    # an EMPTY weights hash is not a valid (non-empty) enabled set.
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(weights: {}) }
   end
 
   def test_rejects_weights_subset_summing_not_to_one
-    # FC-C1-07: a subset that does NOT sum to 1.0 (±1e-9) still fails loud.
+    # a subset that does NOT sum to 1.0 (±1e-9) still fails loud.
     w = { staleness: 0.30, progress: 0.30, momentum: 0.25 } # Σ 0.85 != 1.0
     refute_in_delta 1.0, w.values.sum, 1e-9
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(weights: w) }
   end
 
   def test_rejects_subset_with_zero_always_active_weight
-    # FC-C1-08 (generalized RC-07): an enabled subset {progress, risk_load} whose
+    # an enabled subset {progress, risk_load} whose
     # always-active intersection is EMPTY (weight-sum 0) still fails loud — otherwise
     # the active set could be empty and completeness divide-by-zero.
     w = { progress: 0.5, risk_load: 0.5 } # neither is always-active
@@ -321,7 +324,7 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   def test_rejects_weights_with_extra_bogus_key
-    # FC-C1-04: an UNREGISTERED weight key (not in the SignalRegistry) still fails loud.
+    # an UNREGISTERED weight key (not in the SignalRegistry) still fails loud.
     w = valid_weights.merge(bogus: 0.0)
     assert_in_delta 1.0, w.values.select { |v| v }.sum, 1e-9
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(weights: w) }
@@ -338,12 +341,12 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   # =====================================================================
-  # A10-005 — ProjectMetrics non-finite / unordered Numeric fail-loud.
-  # FR-01: effort_open/effort_total/risk_raw must be FINITE REAL Numeric >= 0.
+  # ProjectMetrics non-finite / unordered Numeric fail-loud.
+  # effort_open/effort_total/risk_raw must be FINITE REAL Numeric >= 0.
   # Float::NAN is Numeric but (NaN < 0) is false, so the naive `return unless value < 0`
   # check lets it through; Float::INFINITY likewise passes. A Complex is Numeric but
   # UNORDERED, so `value < 0` raises NoMethodError instead of the required ArgumentError.
-  # All of these are invalid states under FR-01 and MUST raise ArgumentError at
+  # All of these are invalid states and MUST raise ArgumentError at
   # construction (NOT NoMethodError, NOT FloatDomainError, NOT silently construct).
   # =====================================================================
 
@@ -385,8 +388,8 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   # =====================================================================
-  # A10-006 — ScoringConfig non-finite / unordered Numeric weight fail-loud.
-  # FR-39: each weight must be a FINITE REAL numeric. A Float::NAN weight makes the
+  # ScoringConfig non-finite / unordered Numeric weight fail-loud.
+  # Each weight must be a FINITE REAL numeric. A Float::NAN weight makes the
   # sum NaN, and (NaN - 1.0).abs >= 1e-9 is false, so the naive sum check lets it
   # through. A Complex weight is Numeric but unordered: when its real part keeps the
   # sum at 1.0 it reaches `w < 0.0` and raises NoMethodError instead of ArgumentError.
@@ -412,27 +415,26 @@ class ValueObjectValidationTest < Minitest::Test
   end
 
   # =====================================================================
-  # A10-007 — ScoringConfig non-weight field fail-loud validation.
-  # FR-02 declares rag_green_min, rag_amber_min, h_stale, h_risk, h_blocked and
-  # activity_window_days as Integer configuration fields. The current impl validates
-  # ONLY weights and accepts strings/nil/Float for these, which either crashes later
-  # in Scoring.score (Integer/String comparison, Date arithmetic) or silently distorts
-  # the formulas (to_f / zero-like behaviour). They MUST fail loud (ArgumentError) at
-  # construction at the value-object boundary.
-  #   FR-02: all six are Integer.
-  #   FR-06: h_stale/h_risk/h_blocked are denominators in n = 1 - x/H  => must be > 0.
-  #   FR-11: activity_window_days is the window size                   => must be > 0.
-  #   FR-22: coherent RAG bands require rag_green_min >= rag_amber_min, both in [0,100].
+  # ScoringConfig non-weight field fail-loud validation.
+  # rag_green_min, rag_amber_min, h_stale, h_risk, h_blocked and activity_window_days
+  # are Integer configuration fields. Accepting strings/nil/Float for these either
+  # crashes later in Scoring.score (Integer/String comparison, Date arithmetic) or
+  # silently distorts the formulas (to_f / zero-like behaviour). They MUST fail loud
+  # (ArgumentError) at construction at the value-object boundary.
+  #   * all six are Integer.
+  #   * h_stale/h_risk/h_blocked are denominators in n = 1 - x/H  => must be > 0.
+  #   * activity_window_days is the window size                   => must be > 0.
+  #   * coherent RAG bands require rag_green_min >= rag_amber_min, both in [0,100].
   # =====================================================================
 
   NON_WEIGHT_INTEGER_FIELDS = %i[
     rag_green_min rag_amber_min h_stale h_risk h_blocked activity_window_days
   ].freeze
 
-  # ---- TYPE / nil: each field must be a plain Integer (FR-02) ----
+  # ---- TYPE / nil: each field must be a plain Integer ----
   def test_rejects_string_for_each_non_weight_field
     NON_WEIGHT_INTEGER_FIELDS.each do |field|
-      assert_raises(ArgumentError, "#{field}='30' must raise (FR-02)") do
+      assert_raises(ArgumentError, "#{field}='30' must raise") do
         Pulse::Domain::ScoringConfig.new(field => '30')
       end
     end
@@ -440,25 +442,25 @@ class ValueObjectValidationTest < Minitest::Test
 
   def test_rejects_nil_for_each_non_weight_field
     NON_WEIGHT_INTEGER_FIELDS.each do |field|
-      assert_raises(ArgumentError, "#{field}=nil must raise (FR-02)") do
+      assert_raises(ArgumentError, "#{field}=nil must raise") do
         Pulse::Domain::ScoringConfig.new(field => nil)
       end
     end
   end
 
   def test_rejects_float_for_each_non_weight_field
-    # A Float (even an integral-valued one like 30.5) is NOT an Integer per FR-02.
+    # A Float (even an integral-valued one like 30.5) is NOT an Integer.
     NON_WEIGHT_INTEGER_FIELDS.each do |field|
-      assert_raises(ArgumentError, "#{field}=30.5 must raise (FR-02)") do
+      assert_raises(ArgumentError, "#{field}=30.5 must raise") do
         Pulse::Domain::ScoringConfig.new(field => 30.5)
       end
     end
   end
 
-  # ---- RANGE: horizons are denominators (FR-06) => must be > 0 ----
+  # ---- RANGE: horizons are denominators => must be > 0 ----
   def test_rejects_zero_horizons
     %i[h_stale h_risk h_blocked].each do |field|
-      assert_raises(ArgumentError, "#{field}=0 must raise (FR-06 divisor)") do
+      assert_raises(ArgumentError, "#{field}=0 must raise (divisor)") do
         Pulse::Domain::ScoringConfig.new(field => 0)
       end
     end
@@ -466,13 +468,13 @@ class ValueObjectValidationTest < Minitest::Test
 
   def test_rejects_negative_horizons
     %i[h_stale h_risk h_blocked].each do |field|
-      assert_raises(ArgumentError, "#{field}=-1 must raise (FR-06 divisor)") do
+      assert_raises(ArgumentError, "#{field}=-1 must raise (divisor)") do
         Pulse::Domain::ScoringConfig.new(field => -1)
       end
     end
   end
 
-  # ---- RANGE: activity_window_days is the window size (FR-11) => must be > 0 ----
+  # ---- RANGE: activity_window_days is the window size => must be > 0 ----
   def test_rejects_zero_activity_window_days
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(activity_window_days: 0) }
   end
@@ -481,7 +483,7 @@ class ValueObjectValidationTest < Minitest::Test
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(activity_window_days: -5) }
   end
 
-  # ---- RANGE: RAG band bounds must be in [0,100] (FR-22) ----
+  # ---- RANGE: RAG band bounds must be in [0,100] ----
   def test_rejects_rag_green_min_out_of_range
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(rag_green_min: -1) }
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(rag_green_min: 101) }
@@ -492,7 +494,7 @@ class ValueObjectValidationTest < Minitest::Test
     assert_raises(ArgumentError) { Pulse::Domain::ScoringConfig.new(rag_amber_min: 101) }
   end
 
-  # ---- RANGE: incoherent ordering rag_amber_min > rag_green_min (FR-22) ----
+  # ---- RANGE: incoherent ordering rag_amber_min > rag_green_min ----
   def test_rejects_incoherent_rag_band_ordering
     # amber band would be empty/inverted: green_min must be >= amber_min for coherent bands.
     assert_raises(ArgumentError) do

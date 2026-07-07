@@ -9,18 +9,18 @@
 
 module Pulse
   module Adapters
-    # HtmlPresenter — the explicit view-model layer (COND-A4-001/002). It precomputes
+    # HtmlPresenter — the explicit view-model layer. It precomputes
     # ALL display state for the HTML surfaces so the ERB templates consume ONLY plain
     # precomputed fields and never call Scoring/Timeline/MetricsSource/SnapshotStore/
     # SnapshotFingerprint/VisibilityContext or any ActiveRecord query / score recompute.
     #
     # All user-facing strings are localized here via I18n (the views read the already-
     # localized strings); RAG chips carry a non-color cue + accessible label (WCAG
-    # 1.4.1 / D-CA-OQ04). Pure presentation — it reads the already-computed domain
+    # 1.4.1). Pure presentation — it reads the already-computed domain
     # results off the Projection. The view-model structs are NESTED so the file name
     # matches its single primary constant (Zeitwerk autoload-naming).
     module HtmlPresenter
-      # C2 (FC-C2-15): coverage_gap is appended LAST. A row is rendered ONLY for the keys
+      # coverage_gap is appended LAST. A row is rendered ONLY for the keys
       # actually present in the breakdown (coverage_gap is absent on the default-OFF path, so
       # the panel stays byte-identical), in this canonical order.
       SIGNAL_KEYS = %w[staleness progress momentum risk_load blocked_load coverage_gap].freeze
@@ -30,23 +30,23 @@ module Pulse
       RagChip = Struct.new(:state, :word, :aria_label, keyword_init: true)
 
       # One signal row for the panel (active or inactive-with-enable-hint). `label` is the
-      # localized display name for the signal column (A10-C2-004): coverage_gap shows the
-      # localized "Planning coverage" label; the 5 C1 signals keep their raw-key label text
+      # localized display name for the signal column: coverage_gap shows the localized
+      # "Planning coverage" label; the 5 built-in signals keep their raw-key label text
       # (byte-identical default panel).
       SignalRow = Struct.new(:key, :label, :active, :raw_value, :n, :effective_weight,
                              :contribution, :enable_hint, :drill_url, keyword_init: true)
 
       # One project row for the portfolio overview. `main_concern` carries the
-      # lens-vocabulary label for the severity-first dominant signal (R-A relabel);
+      # lens-vocabulary label for the severity-first dominant signal;
       # `no_data` flags the 0-issue state (nil score, rag :no_data).
       PortfolioRow = Struct.new(:project_id, :identifier, :name, :url, :health_score,
                                 :rag_chip, :dominant_signal, :main_concern, :computed_ago,
                                 :sparkline, :no_data, keyword_init: true)
 
       # The whole portfolio overview view-model. `profile_warning` carries the human-readable
-      # dangling-fallback warning (FC-C4-12 / FR-C4-09) when the viewer's ?profile_id selection
-      # referenced an unpublished profile (scoring fell back to the system default); nil / blank
-      # otherwise (no banner rendered). `lens_warning` (C5 / RC-C5-06) carries the analogous
+      # dangling-fallback warning when the viewer's ?profile_id selection referenced an
+      # unpublished profile (scoring fell back to the system default); nil / blank
+      # otherwise (no banner rendered). `lens_warning` carries the analogous
       # dangling-lens_ref warning when an active saved view's lens_ref referenced a removed lens.
       PortfolioView = Struct.new(:rows, :lens, :lenses, :default_lens, :visibility_note,
                                  :empty, :profile_warning, :lens_warning, keyword_init: true)
@@ -63,14 +63,14 @@ module Pulse
                              :watching, :watch_offer,
                              keyword_init: true)
 
-      # C4 (FC-C4-17): one precomputed switcher option — plain presentation values (id/label/
+      # one precomputed switcher option — plain presentation values (id/label/
       # selected), NEVER a domain ScoringProfile object, so the ERB reads only presenter
-      # output (COND-A4-001). `value` == the profile id (the ?profile query param value).
+      # output. `value` == the profile id (the ?profile query param value).
       ProfileOption = Struct.new(:value, :label, :selected, keyword_init: true)
 
       module_function
 
-      # Build the portfolio overview view-model from ranked projections. `lens_warning` (C5) is
+      # Build the portfolio overview view-model from ranked projections. `lens_warning` is
       # an optional surfaced dangling-lens_ref warning; nil / blank => no banner rendered.
       def portfolio_view(ranked_projections, lens:, now:, lens_warning: nil)
         rows = ranked_projections.map { |p| portfolio_row(p, now) }
@@ -109,11 +109,11 @@ module Pulse
       # nil) supplied by the controller — the controller owns Redmine authorization
       # (User.current.allowed_to?(:view_gantt, project), which also covers the :gantt
       # module) and route generation, so the presenter stays free of Redmine auth/routing.
-      # `watching` / `watch_offer` (C6 / FR-C6-08) are precomputed scalars the controller
+      # `watching` / `watch_offer` are precomputed scalars the controller
       # supplies (the controller owns Redmine's subscription + logged-in state, exactly as it
       # owns gantt_url auth): `watch_offer` is whether to render the toggle at all (a real
       # logged-in user), `watching` its current on/off state. The presenter stays free of any
-      # Redmine AR/auth access (COND-A4-001).
+      # Redmine AR/auth access.
       def panel_view(projection, now:, gantt_url: nil, watching: false, watch_offer: false)
         h = projection.health
         no_data = h.dominant_signal.nil? && h.health_score.nil?
@@ -142,9 +142,9 @@ module Pulse
         )
       end
 
-      # C4 (FC-C4-12 / FR-C4-09): the human-readable dangling-fallback warning for the panel,
-      # read off the precomputed projection.profile_warning (nil / blank => no banner). A
-      # pre-C4-shaped projection that carries no such field degrades to nil (no crash).
+      # The human-readable dangling-fallback warning for the panel, read off the precomputed
+      # projection.profile_warning (nil / blank => no banner). An older projection shape that
+      # predates scoring profiles carries no such field and degrades to nil (no crash).
       def profile_warning(projection)
         return nil unless projection.respond_to?(:profile_warning)
 
@@ -163,9 +163,9 @@ module Pulse
         nil
       end
 
-      # C4 (FC-C4-17 a): the ACTIVE profile's display name for the "scored under: <name>"
-      # header. Reads the precomputed projection.active_profile_name (or the active_profile's
-      # name); nil when no profile context is present (default-only / pre-C4-shaped projection).
+      # The ACTIVE profile's display name for the "scored under: <name>" header. Reads the
+      # precomputed projection.active_profile_name (or the active_profile's name); nil when no
+      # profile context is present (default-only / older projection shape without profiles).
       def active_profile_name(projection)
         if projection.respond_to?(:active_profile_name) && projection.active_profile_name
           return projection.active_profile_name
@@ -177,10 +177,10 @@ module Pulse
         nil
       end
 
-      # C4 (FC-C4-17 b): the switcher options — one PLAIN precomputed value per published
-      # profile (value == profile.id, label == profile.name, selected == it is the active
-      # profile). NEVER a domain ScoringProfile (COND-A4-001). Empty when the projection
-      # carries no published set (default-only / pre-C4-shaped projection).
+      # The switcher options — one PLAIN precomputed value per published profile (value ==
+      # profile.id, label == profile.name, selected == it is the active profile). NEVER a
+      # domain ScoringProfile. Empty when the projection carries no published set (default-only
+      # / older projection shape without profiles).
       def profile_options(projection)
         return [] unless projection.respond_to?(:published_profiles)
 
@@ -199,9 +199,9 @@ module Pulse
         projection.active_profile.id
       end
 
-      # ── R-A "Main concern" lens-vocabulary mapping ──────────────────────────────
+      # ── "Main concern" lens-vocabulary mapping ──────────────────────────────
       # The dominant_signal -> localized lens label mapping is the SINGLE authoritative
-      # source Pulse::Adapters::MainConcernLabels (FR-PLB-15 / DG-PLB-02). HtmlPresenter
+      # source Pulse::Adapters::MainConcernLabels. HtmlPresenter
       # (the cockpit) and JsonSerializer (the API + inline badge blob) BOTH delegate to
       # it, so the cockpit and the API can never drift. MAIN_CONCERN_KEYS is retained as
       # an alias of the shared mapping for backward compatibility with any reader.
@@ -211,7 +211,7 @@ module Pulse
         MainConcernLabels.label(dominant_signal)
       end
 
-      # ── display rounding (finding 3, HTML side) ─────────────────────────────────
+      # ── display rounding (HTML side) ─────────────────────────────────
       # health_score is already an integer (or nil for no-data); pass through.
       def display_score(score)
         score
@@ -219,7 +219,7 @@ module Pulse
 
       # Round a raw float for DISPLAY only (1-2 decimals). Never touches the JSON
       # explainability passthrough (json_serializer emits verbatim contribution /
-      # effective_weight — FC-CA-23). nil passes through.
+      # effective_weight). nil passes through.
       def display_round(value, decimals = 2)
         return value if value.nil?
         return value unless value.is_a?(Numeric)
@@ -235,7 +235,7 @@ module Pulse
         "#{(value.to_f * 100).round(1)}%"
       end
 
-      # ── RAG accessibility (D-CA-OQ04): non-color localized word + aria label ────
+      # ── RAG accessibility: non-color localized word + aria label ────
       def rag_chip(rag)
         state = rag.to_s
         word = I18n.t("label_pulse_rag_#{state}")
@@ -246,11 +246,11 @@ module Pulse
         )
       end
 
-      # ── signal rows incl. inactive-with-enable-hint (CA-26 / FC-CA-26) ──────────
+      # ── signal rows incl. inactive-with-enable-hint ──────────
       def signal_rows(projection)
         by_key = projection.health.breakdown.to_h { |s| [s.key.to_s, s] }
         # Render ONLY the keys present in the breakdown, in canonical order. coverage_gap is
-        # absent on the default-OFF path, so no coverage_gap row appears then (FC-C2-15) and
+        # absent on the default-OFF path, so no coverage_gap row appears then and
         # the 5-row panel is byte-identical.
         SIGNAL_KEYS.select { |key| by_key.key?(key) }.map do |key|
           s = by_key[key]
@@ -258,10 +258,10 @@ module Pulse
             key: key,
             label: signal_label(key),
             active: s.active,
-            # finding 3 (HTML side): round value / effective_weight / contribution for
-            # DISPLAY only. The JSON serializer keeps emitting these verbatim (FC-CA-23).
-            # coverage_gap displays PLANNING COVERAGE = 100×(1−raw_value), NOT the raw gap
-            # fraction (FC-C2-15) — the row shows how planned the open work is.
+            # round value / effective_weight / contribution for DISPLAY only. The JSON
+            # serializer keeps emitting these verbatim. coverage_gap displays PLANNING
+            # COVERAGE = 100×(1−raw_value), NOT the raw gap fraction — the row shows how
+            # planned the open work is.
             raw_value: display_row_value(key, s),
             n: s.active ? display_round(s.n) : nil,
             effective_weight: s.active ? display_percent(s.effective_weight) : nil,
@@ -272,9 +272,9 @@ module Pulse
         end
       end
 
-      # A10-C2-004: the localized signal-column display name. coverage_gap resolves the
-      # dedicated localized "Planning coverage" label (label_pulse_planning_coverage, defined
-      # in en.yml + nl.yml); the 5 C1 signals keep their raw-key text (default panel unchanged).
+      # The localized signal-column display name. coverage_gap resolves the dedicated
+      # localized "Planning coverage" label (label_pulse_planning_coverage, defined in
+      # en.yml + nl.yml); the 5 built-in signals keep their raw-key text (default panel unchanged).
       def signal_label(key)
         return I18n.t(:label_pulse_planning_coverage) if key == COVERAGE_GAP_KEY
 
@@ -282,7 +282,7 @@ module Pulse
       end
 
       # The DISPLAYED value for a signal row. coverage_gap renders the planning-coverage
-      # percentage 100×(1−raw_value) (FC-C2-15); every other signal renders its rounded
+      # percentage 100×(1−raw_value); every other signal renders its rounded
       # raw_value. Inactive => nil.
       def display_row_value(key, signal)
         return nil unless signal.active
@@ -313,7 +313,7 @@ module Pulse
         end
       end
 
-      # ── "computed N <unit> ago" (CA-10e / FC-CA-10b) ────────────────────────────
+      # ── "computed N <unit> ago" ────────────────────────────
       def computed_ago(at, now)
         seconds = (now - at).to_i
         seconds = 0 if seconds.negative?

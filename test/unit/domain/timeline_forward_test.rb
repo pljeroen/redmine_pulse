@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'date'
 require 'pulse/domain/project_metrics'
@@ -8,9 +14,8 @@ require 'pulse/domain/timeline'
 require 'pulse/domain/retrospective_bucket'
 require 'pulse/domain/milestone_marker'
 
-# TL-10, TL-12, TL-13 / TC-10, TC-12, TC-13.
 # Forward milestone axis: bijective from version_due_dates, empty-when-none, sorted
-# [due_date ASC, version_id ASC], NO past-due filtering. RED until Timeline exists.
+# [due_date ASC, version_id ASC], NO past-due filtering.
 class TimelineForwardTest < Minitest::Test
   class FixedClock
     def initialize(date)
@@ -24,7 +29,7 @@ class TimelineForwardTest < Minitest::Test
 
   TODAY = Date.new(2026, 6, 20)
 
-  # version_due_dates entries carry :name per D-TL-C.
+  # version_due_dates entries carry :name.
   def metrics(version_due_dates:)
     Pulse::Domain::ProjectMetrics.new(
       project_id: 1,
@@ -33,7 +38,7 @@ class TimelineForwardTest < Minitest::Test
       blocked_count: 0, risk_mapped: true, effort_mapped: true,
       event_series: [],
       version_due_dates: version_due_dates,
-      open_issue_count: 0, covered_sum: 0.0 # C2 additive-required (inactive baseline)
+      open_issue_count: 0, covered_sum: 0.0 # additive coverage inputs (inactive baseline)
     )
   end
 
@@ -45,14 +50,14 @@ class TimelineForwardTest < Minitest::Test
     ).forward
   end
 
-  # --- TC-10: empty version_due_dates ⇒ [] (an Array, not nil) ---
+  # --- empty version_due_dates ⇒ [] (an Array, not nil) ---
   def test_empty_version_due_dates_yields_empty_array
     f = forward([])
     assert_instance_of Array, f
     assert_equal [], f, 'empty version_due_dates => empty forward axis (not nil)'
   end
 
-  # --- TC-10: one marker per entry (bijection, no synthesis, no drop) ---
+  # --- one marker per entry (bijection, no synthesis, no drop) ---
   def test_forward_is_bijective_with_version_due_dates
     entries = [
       { version_id: 3, name: 'Sprint 3', due_date: TODAY + 5 },
@@ -71,7 +76,7 @@ class TimelineForwardTest < Minitest::Test
     assert_equal 1, f.first.version_id
   end
 
-  # --- TC-12: ordering [due_date ASC, version_id ASC] ---
+  # --- ordering [due_date ASC, version_id ASC] ---
   def test_forward_sorted_by_due_date_ascending
     entries = [
       { version_id: 1, name: 'late',  due_date: TODAY + 30 },
@@ -107,7 +112,7 @@ class TimelineForwardTest < Minitest::Test
     end
   end
 
-  # --- TC-13: NO past-due filtering ---
+  # --- NO past-due filtering ---
   def test_past_due_markers_are_not_filtered
     entries = [
       { version_id: 1, name: 'past',   due_date: TODAY - 100 },

@@ -1,20 +1,26 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require 'minitest/autorun'
 
-# STATIC source-scan guards (no Redmine env; path-based). Covers the AGENT_CHECK /
-# static-mechanism tier-1 obligations + the binding T1 static conditions:
-#   FC-CA-13 / COND-A8-003(b) — forbidden Redmine-domain write methods in
-#       controllers/adapter/views (the static complement to the runtime write-guard).
-#   COND-A4-002 — view purity: no business/scoring logic or AR access in ERB.
-#   COND-CA-02 — settings partial exposes ONLY the CA-23 field set; no
+# STATIC source-scan guards (no Redmine env; path-based). Covers the static source-scan
+# obligations:
+#   forbidden-write — no Redmine-domain write methods in controllers/adapter/views (the
+#       static complement to the runtime write-guard).
+#   view purity — no business/scoring logic or AR access in ERB.
+#   settings field set — the settings partial exposes ONLY the sanctioned field set; no
 #       deliverables_field / coverage_gap control.
-#   D-CA-OQ02 — risk_trackers multi-select; select2 asset vendored LOCAL (no CDN).
-#   FC-CA-29 / CA-29-OPEN — GPL-2.0 header on every new .rb; no network callout.
-#   FC-CA-04 / FC-CA-25 — SnapshotStore port is stdlib-only; domain never requires it.
+#   multi-select — risk_trackers multi-select; select2 asset vendored LOCAL (no CDN).
+#   open — GPL-2.0 header on every new .rb; no network callout.
+#   port purity — SnapshotStore port is stdlib-only; domain never requires it.
 #
-# RED until A9 writes the files. Where a target file is ABSENT, the test FAILS
-# (flunk) so the obligation is live, not silently skipped.
+# Where a target file is ABSENT, the test FAILS (flunk) so the obligation is live, not
+# silently skipped.
 class StaticSourceGuardsTest < Minitest::Test
   ROOT = File.expand_path('../../..', __FILE__)
 
@@ -28,12 +34,12 @@ class StaticSourceGuardsTest < Minitest::Test
   SETTINGS_PARTIAL = 'app/views/settings/_pulse_settings.html.erb'
   VIEW_GLOB = 'app/views/**/*.erb'
 
-  # CA-A10-004: the COMPLETE set of new production Ruby files introduced by this
-  # contract — the six new adapters + the snapshot-store port + both controllers.
-  # The read-only forbidden-write scan and the no-network scan apply to ALL of them,
-  # not just the two controllers + active_record_snapshot_store. (The prior-contract
-  # adapters redmine_metrics_source/redmine_settings_provider/snapshot_fingerprint/
-  # visibility_context/system_clock are out of THIS contract's scope.)
+  # The COMPLETE set of new production Ruby files in this area — the six new adapters +
+  # the snapshot-store port + both controllers. The read-only forbidden-write scan and the
+  # no-network scan apply to ALL of them, not just the two controllers +
+  # active_record_snapshot_store. (The pre-existing adapters redmine_metrics_source/
+  # redmine_settings_provider/snapshot_fingerprint/visibility_context/system_clock are out
+  # of scope here.)
   NEW_ADAPTERS = %w[
     lib/pulse/adapters/active_record_snapshot_store.rb
     lib/pulse/adapters/html_presenter.rb
@@ -43,7 +49,7 @@ class StaticSourceGuardsTest < Minitest::Test
     lib/pulse/adapters/lens_ranker.rb
   ].freeze
 
-  # Every new production Ruby file in this contract (controllers + adapters + port).
+  # Every new production Ruby file in this area (controllers + adapters + port).
   ALL_NEW_RUBY = (NEW_CONTROLLERS + NEW_ADAPTERS + [NEW_PORT]).freeze
 
   # Redmine domain model receivers that must never be written to.
@@ -65,16 +71,16 @@ class StaticSourceGuardsTest < Minitest::Test
 
   def read_or_flunk(rel)
     p = path(rel)
-    flunk "expected file missing (RED until A9): #{rel}" unless File.exist?(p)
+    flunk "expected file missing: #{rel}" unless File.exist?(p)
     File.read(p)
   end
 
-  # ───────────── FC-CA-13 / COND-A8-003(b): forbidden write scan ─────────────
+  # ───────────── forbidden write scan ─────────────
 
-  # CA-A10-004: apply the forbidden-Redmine-domain-write scan to the COMPLETE set of
-  # new production Ruby files (controllers + all six adapters + port), not just the two
-  # controllers + active_record_snapshot_store. A future forbidden write/callout in any
-  # new adapter must be caught.
+  # Apply the forbidden-Redmine-domain-write scan to the COMPLETE set of new production
+  # Ruby files (controllers + all six adapters + port), not just the two controllers +
+  # active_record_snapshot_store. A future forbidden write/callout in any new adapter must
+  # be caught.
   def test_controllers_and_all_new_adapters_contain_no_domain_write_calls
     ALL_NEW_RUBY.each do |rel|
       src = read_or_flunk(rel)
@@ -83,7 +89,7 @@ class StaticSourceGuardsTest < Minitest::Test
           # Match e.g. `Issue.update_all` / `project.save!` / `Version.create`.
           pattern = /\b#{model}(\.[a-z_]+)*\.#{Regexp.escape(m)}\b/
           refute_match(pattern, src,
-                       "#{rel}: forbidden write #{model}...#{m} on a Redmine domain receiver (FC-CA-13)")
+                       "#{rel}: forbidden write #{model}...#{m} on a Redmine domain receiver (must stay read-only)")
         end
       end
     end
@@ -97,10 +103,10 @@ class StaticSourceGuardsTest < Minitest::Test
                  'the adapter persists to its own pulse_snapshots table only')
   end
 
-  # ───────────────────── COND-A4-002: view purity ───────────────────────────
+  # ───────────────────── view purity ───────────────────────────
 
-  # CA-A10-002: COND-A4-002 / Rule 18 — NO direct Redmine ActiveRecord access or domain
-  # recomputation in ANY ERB view, INCLUDING the settings partial. The prior guard checked
+  # NO direct Redmine ActiveRecord access or domain recomputation in ANY ERB view,
+  # INCLUDING the settings partial. The prior guard checked
   # only a handful of query-method tokens and MISSED `Tracker.sorted.each` (a direct
   # Redmine model-constant AR query in ERB). This strengthened guard scans every
   # app/views/**/*.erb and FAILS on:
@@ -129,35 +135,34 @@ class StaticSourceGuardsTest < Minitest::Test
     ]
 
     erbs = Dir[path(VIEW_GLOB)]
-    flunk 'no ERB views yet (RED until A9)' if erbs.empty?
-    # The settings partial MUST be among the scanned views (it is the CA-A10-002 target).
+    flunk 'no ERB views yet' if erbs.empty?
+    # The settings partial MUST be among the scanned views.
     assert(erbs.any? { |f| f.end_with?('_pulse_settings.html.erb') },
-           'the settings partial MUST be scanned by the ERB-purity guard (CA-A10-002)')
+           'the settings partial MUST be scanned by the ERB-purity guard')
     erbs.each do |f|
       src = File.read(f)
       forbidden.each do |pat|
         refute_match(pat, src,
                      "#{File.basename(f)}: view must render prepared presenter/form state only, " \
-                     "no direct Redmine model/AR access or domain recomputation (COND-A4-002 / Rule 18) " \
+                     "no direct Redmine model/AR access or domain recomputation " \
                      "[pattern #{pat.inspect}]")
       end
     end
   end
 
-  # ──────────────── COND-CA-02: settings field set is exactly CA-23 ──────────
+  # ──────────────── settings field set is exactly the sanctioned set ──────────
 
-  # The EXACT CA-23 settings field set (read off CANON CA-23 + init.rb defaults +
-  # ScoringConfig). These are the ONLY input/select `name` keys the settings partial may
-  # carry. The five weights live under settings[weights][<sig>]; the rest are top-level
-  # settings[<key>] scalars. risk_trackers is an array param (settings[risk_trackers][]).
-  # CA-23 top-level fields + the C2-sanctioned coverage_gap enable toggle (FC-C2-16) + the
-  # two C6 alert settings (FR-C6-08 auto-subscribe role + FR-C6-06 score_delta threshold).
-  # The enable_coverage_gap control and the two pulse_alert_* controls are part of the allowed
-  # exact top-level field set. C6 guard-evolution (same shape as the FC-C2-16 coverage_gap
-  # widening): the settings partial now exposes the alert opt-in surface FR-C6-08 requires; the
-  # SettingsSanitizer already validates both keys (settings_sanitizer_alert_keys_test, green),
-  # and the no-extra-speculative-control guarantee stays intact — only these two sanctioned
-  # keys are added.
+  # The EXACT sanctioned settings field set (init.rb defaults + ScoringConfig). These are
+  # the ONLY input/select `name` keys the settings partial may carry. The five weights live
+  # under settings[weights][<sig>]; the rest are top-level settings[<key>] scalars.
+  # risk_trackers is an array param (settings[risk_trackers][]). The set is: the core
+  # top-level fields + the coverage_gap enable toggle + the two alert settings
+  # (auto-subscribe role + score-delta threshold). The enable_coverage_gap control and the
+  # two pulse_alert_* controls are part of the allowed exact top-level field set. The
+  # settings partial exposes the alert opt-in surface; the SettingsSanitizer already
+  # validates both keys (settings_sanitizer_alert_keys_test, green), and the
+  # no-extra-speculative-control guarantee stays intact — only these two sanctioned keys
+  # are added.
   CA23_TOP_LEVEL_FIELDS = %w[
     effort_field risk_trackers blocked_status
     rag_green_min rag_amber_min
@@ -167,55 +172,55 @@ class StaticSourceGuardsTest < Minitest::Test
     enable_coverage_gap
     pulse_alert_auto_subscribe_role_id pulse_alert_score_delta_threshold
   ].freeze
-  # The 5 C1 (default_on) weights plus coverage_gap, which is rendered ONLY behind the
-  # enable path (conditional weight input). The weight-loop signal set may therefore be the
-  # 5 default_on keys, or those 5 plus coverage_gap when the enable path is active.
+  # The 5 default-on weights plus coverage_gap, which is rendered ONLY behind the enable
+  # path (conditional weight input). The weight-loop signal set may therefore be the 5
+  # default-on keys, or those 5 plus coverage_gap when the enable path is active.
   CA23_WEIGHT_KEYS = %w[staleness progress momentum risk_load blocked_load].freeze
   CA23_WEIGHT_KEYS_ENABLED = (CA23_WEIGHT_KEYS + %w[coverage_gap]).freeze
 
-  # FC-C2-16 (thawed guard) — the settings partial may now render the sanctioned
-  # coverage_gap enable toggle + a CONDITIONAL coverage_gap weight input (behind the enable
-  # path), and NOTHING else speculative. The deliverables_field refute + the no-extra-
-  # speculative-control / exact-field-set guarantees stay INTACT and unweakened.
+  # The settings partial may render the sanctioned coverage_gap enable toggle + a
+  # CONDITIONAL coverage_gap weight input (behind the enable path), and NOTHING else
+  # speculative. The deliverables_field refute + the no-extra-speculative-control /
+  # exact-field-set guarantees stay INTACT and unweakened.
   def test_settings_partial_exposes_only_ca23_fields_no_deliverables
     src = read_or_flunk(SETTINGS_PARTIAL)
     refute_match(/deliverables_field/, src,
-                 'settings partial must NOT render deliverables_field (DEC-12 / COND-CA-02)')
+                 'settings partial must NOT render deliverables_field (a removed, unimplemented feature)')
 
-    # ── CA-A10-005 (+FC-C2-16): EXACT field-set. Parse every form-control
-    # `name="settings[...]"` attribute and assert the set is EXACTLY the CA-23 allowed set
-    # PLUS the sanctioned enable_coverage_gap — no OTHER speculative control. ────────────
+    # ── EXACT field-set. Parse every form-control `name="settings[...]"` attribute and
+    # assert the set is EXACTLY the allowed set PLUS the sanctioned enable_coverage_gap —
+    # no OTHER speculative control. ────────────
     top_level = src.scan(/name="settings\[([a-z_]+)\](?:\[\])?"/).flatten.uniq
     weight_name_present = src.match?(/name="settings\[weights\]\[(?:<%=\s*sig\s*%>|[a-z_]+)\]"/)
     loop_signals = src.scan(/\[:([a-z_]+),\s*t\(/).flatten.uniq # [[:staleness, t(...)], ...]
 
     expected_top = CA23_TOP_LEVEL_FIELDS.sort
     assert_equal expected_top, top_level.sort,
-                 "settings partial must expose EXACTLY the CA-23 top-level fields + the sanctioned " \
-                 "enable_coverage_gap and NOTHING else (FC-C2-16). got=#{top_level.sort.inspect} " \
+                 "settings partial must expose EXACTLY the allowed top-level fields + the sanctioned " \
+                 "enable_coverage_gap and NOTHING else. got=#{top_level.sort.inspect} " \
                  "expected=#{expected_top.inspect}"
 
     assert weight_name_present,
-           'settings partial must render the per-signal weight inputs settings[weights][<sig>] (CA-23)'
-    # The weight-loop signal set must be EITHER the 5 default_on keys, OR those 5 plus
+           'settings partial must render the per-signal weight inputs settings[weights][<sig>]'
+    # The weight-loop signal set must be EITHER the 5 default-on keys, OR those 5 plus
     # coverage_gap (the conditional weight behind the enable path) — and NOTHING else.
     assert_includes [CA23_WEIGHT_KEYS.sort, CA23_WEIGHT_KEYS_ENABLED.sort], loop_signals.sort,
-                    "settings partial weight inputs must be the 5 default_on signals, or those 5 plus " \
-                    "coverage_gap (FC-C2-16) — and NOTHING else. got=#{loop_signals.sort.inspect}"
+                    "settings partial weight inputs must be the 5 default-on signals, or those 5 plus " \
+                    "coverage_gap — and NOTHING else. got=#{loop_signals.sort.inspect}"
     # Any coverage_gap control that IS present must be the sanctioned enable toggle and/or
     # the conditional weight input — never a speculative coverage_gap control.
     if src =~ /coverage_gap/
       assert(top_level.include?('enable_coverage_gap') || loop_signals.include?('coverage_gap'),
              'the ONLY sanctioned coverage_gap controls are settings[enable_coverage_gap] and the ' \
-             'conditional settings[weights][coverage_gap] weight input (FC-C2-16)')
+             'conditional settings[weights][coverage_gap] weight input')
     end
   end
 
-  # ───────────── D-CA-OQ02: risk_trackers multi-select, local select2 ─────────
+  # ───────────── risk_trackers multi-select, local select2 ─────────
 
-  # CA-A10-003: the operator chose a select2-style multi-select (D-CA-OQ02), but the
-  # FUNCTIONAL requirement is a WORKING multi-select that degrades to a native control.
-  # Assert a GENUINE multi-select for risk_trackers, decoupled from the JS-enhancement:
+  # The design uses a select2-style multi-select, but the FUNCTIONAL requirement is a
+  # WORKING multi-select that degrades to a native control. Assert a GENUINE multi-select
+  # for risk_trackers, decoupled from the JS-enhancement:
   #   (a) a `<select ... multiple ...>` element exists whose `name` targets risk_trackers
   #       (settings[risk_trackers][] — an array param), AND
   #   (b) it carries `<option ...>` entries (the project trackers), so it is a real
@@ -228,9 +233,9 @@ class StaticSourceGuardsTest < Minitest::Test
     select_tag = src[/<select\b[^>]*name="settings\[risk_trackers\]\[\]"[^>]*>/m] ||
                  src[/<select\b[^>]*name="settings\[risk_trackers\]\[\]"[^>]*\bmultiple/m]
     refute_nil select_tag,
-               'risk_trackers must be a <select> whose name targets settings[risk_trackers][] (D-CA-OQ02)'
+               'risk_trackers must be a <select> whose name targets settings[risk_trackers][]'
     assert_match(/\bmultiple\b/, select_tag,
-                 'the risk_trackers <select> must be a genuine multi-select (multiple) (D-CA-OQ02)')
+                 'the risk_trackers <select> must be a genuine multi-select (multiple)')
 
     # The select must be POPULATED with <option> entries (the trackers) — a real control,
     # not an empty/placeholder shell. Check there is at least one <option within the
@@ -239,14 +244,14 @@ class StaticSourceGuardsTest < Minitest::Test
     refute_nil select_block, 'the risk_trackers <select> block must be present'
     assert_match(/<option\b/, select_block,
                  'the risk_trackers multi-select must render <option> entries for the trackers ' \
-                 '(a working, populated control — not an empty placeholder) (CA-A10-003)')
+                 '(a working, populated control — not an empty placeholder)')
   end
 
-  # CA-A10-003 + CA-A10-006: asset integrity. The vendored select2 asset must be a
-  # GENUINE local asset, NOT a no-op placeholder/shim, and never a CDN URL. Decoupled
-  # from the JS-enhancement choice: A9 may EITHER vendor a real local select2 asset OR
-  # drop the asset entirely in favour of the native <select multiple> — but it may NOT
-  # ship a nominal-but-fake shim file that lets the locality test pass vacuously.
+  # Asset integrity. The vendored select2 asset must be a GENUINE local asset, NOT a no-op
+  # placeholder/shim, and never a CDN URL. Decoupled from the JS-enhancement choice: the
+  # implementation may EITHER vendor a real local select2 asset OR drop the asset entirely
+  # in favour of the native <select multiple> — but it may NOT ship a nominal-but-fake shim
+  # file that lets the locality test pass vacuously.
   SHIM_MARKERS = [
     /replace\s+(its\s+body\s+with|with\s+the\s+upstream)/i,
     /\bno-?op\b/i,
@@ -257,83 +262,84 @@ class StaticSourceGuardsTest < Minitest::Test
   ].freeze
 
   # A genuine minified select2 distribution is tens of KB. A shim is ~1KB. Require a
-  # real-asset floor so the no-op placeholder fails. (If A9 instead removes the asset and
-  # uses a native control, the "no select2 reference" branch below makes the floor moot.)
+  # real-asset floor so the no-op placeholder fails. (If the implementation instead removes
+  # the asset and uses a native control, the "no select2 reference" branch below makes the
+  # floor moot.)
   SELECT2_MIN_BYTES = 10_000
 
   def test_select2_asset_is_local_and_not_a_placeholder_shim
-    # No ERB/asset may reference an external select2 URL (FC-CA-29 INV-OPEN).
+    # No ERB/asset may reference an external select2 URL (must ship self-contained, no CDN).
     Dir[path(VIEW_GLOB)].each do |f|
       src = File.read(f)
       refute_match(%r{https?://[^"'\s]*select2}i, src,
-                   "#{File.basename(f)}: select2 must be local, no CDN (FC-CA-29)")
+                   "#{File.basename(f)}: select2 must be local, no CDN")
     end
 
     partial_src = File.exist?(path(SETTINGS_PARTIAL)) ? File.read(path(SETTINGS_PARTIAL)) : ''
     references_select2 = partial_src =~ /select2/i
 
     # If the partial references a select2 asset, it MUST resolve to a genuine local file:
-    # present, NOT a shim, and at least the real-asset size floor. If A9 instead ships a
-    # native <select multiple> with NO select2 asset reference, this whole block is skipped
-    # (the multi-select test above already proves the working control).
+    # present, NOT a shim, and at least the real-asset size floor. If the implementation
+    # instead ships a native <select multiple> with NO select2 asset reference, this whole
+    # block is skipped (the multi-select test above already proves the working control).
     return unless references_select2
 
     select2_assets = Dir[path('assets/**/*select2*')]
     refute_empty select2_assets,
-                 'a referenced select2 asset must be vendored locally under assets/ (D-CA-OQ02)'
+                 'a referenced select2 asset must be vendored locally under assets/'
 
     js_assets = select2_assets.select { |p| p.end_with?('.js') }
     refute_empty js_assets,
-                 'a referenced select2 JS enhancement must resolve to a local .js asset (CA-A10-003)'
+                 'a referenced select2 JS enhancement must resolve to a local .js asset'
 
     js_assets.each do |asset|
       bytes = File.read(asset)
       SHIM_MARKERS.each do |marker|
         refute_match(marker, bytes,
                      "#{File.basename(asset)}: vendored select2 asset must be the real library, " \
-                     "NOT a no-op/placeholder shim (CA-A10-003 / CA-A10-006) [marker #{marker.inspect}]")
+                     "NOT a no-op/placeholder shim [marker #{marker.inspect}]")
       end
       # A real no-op shim defines select2 as an identity function; the real library does not
       # ship that exact one-liner. Forbid the tell-tale identity stub.
       refute_match(/\$\.fn\.select2\s*=\s*function\s*\(\s*\)\s*\{\s*return\s+this;?\s*\}/, bytes,
-                   "#{File.basename(asset)}: select2 asset must not be a no-op identity stub (CA-A10-003)")
+                   "#{File.basename(asset)}: select2 asset must not be a no-op identity stub")
       assert_operator bytes.bytesize, :>=, SELECT2_MIN_BYTES,
                       "#{File.basename(asset)}: vendored select2 asset is #{bytes.bytesize} bytes — " \
                       "below the real-asset floor (#{SELECT2_MIN_BYTES}); it is a placeholder, " \
-                      "not the genuine minified distribution (CA-A10-006)"
+                      "not the genuine minified distribution"
     end
   end
 
-  # ───────────── FC-CA-29 / CA-29-OPEN: GPL header + no callout ──────────────
+  # ───────────── GPL header + no callout ──────────────
 
   def test_new_ruby_files_carry_gpl_header
     rubies = (NEW_CONTROLLERS + [NEW_ADAPTER, NEW_PORT]).select { |r| File.exist?(path(r)) }
-    flunk 'no new .rb files yet (RED until A9)' if rubies.empty?
+    flunk 'no new .rb files yet' if rubies.empty?
     rubies.each do |rel|
       head = File.read(path(rel))[0, 600]
       assert_match(/GPL|GNU General Public License/i, head,
-                   "#{rel}: every new .rb must carry a GPL-2.0 header (CA-29)")
+                   "#{rel}: every new .rb must carry a GPL-2.0 header")
     end
   end
 
-  # CA-A10-004: apply the no-network-callout scan to EVERY new production Ruby file
-  # (controllers + all six adapters + port), not just controllers + store + port.
+  # Apply the no-network-callout scan to EVERY new production Ruby file (controllers + all
+  # six adapters + port), not just controllers + store + port.
   def test_no_network_callout_in_new_sources
     rubies = ALL_NEW_RUBY.select { |r| File.exist?(path(r)) }
-    flunk 'no new .rb files yet (RED until A9)' if rubies.empty?
+    flunk 'no new .rb files yet' if rubies.empty?
     rubies.each do |rel|
       src = File.read(path(rel))
       refute_match(/Net::HTTP|open-uri|URI\.open|Faraday|HTTParty|RestClient/, src,
-                   "#{rel}: no network callout permitted (FC-CA-29 INV-OPEN)")
+                   "#{rel}: no network callout permitted (ships self-contained)")
     end
   end
 
-  # ───────────── FC-CA-04 / FC-CA-25: port + domain purity ───────────────────
+  # ───────────── port + domain purity ───────────────────
 
   def test_snapshot_store_port_is_stdlib_only
     src = read_or_flunk(NEW_PORT)
     refute_match(/ActiveRecord|ApplicationRecord|Rails|require ['"]active_record/, src,
-                 'SnapshotStore port must be stdlib-only (FC-CA-04/25)')
+                 'SnapshotStore port must use only the standard library (no Rails/AR)')
     assert_match(/fetch/, src)
     assert_match(/store/, src)
     assert_match(/invalidate_project/, src)
@@ -343,25 +349,24 @@ class StaticSourceGuardsTest < Minitest::Test
     Dir[path('lib/pulse/domain/**/*.rb')].each do |f|
       src = File.read(f)
       refute_match(%r{require\s+['"]pulse/ports/snapshot_store['"]}, src,
-                   "#{File.basename(f)}: domain MUST NOT depend on the SnapshotStore port (CA-25)")
+                   "#{File.basename(f)}: domain MUST NOT depend on the SnapshotStore port")
     end
   end
 
-  # ───────────── R-B UI completion (THAW-RB-001): cockpit styling asset ───────
+  # ───────────── cockpit styling asset ───────
   #
-  # VIEW-PURITY DECISION (R-B / settings-500 fix mechanism): the settings-500
-  # (NameError on `pulse_tracker_options` when Redmine renders the plugin settings
-  # partial) is fixed by the HELPER-SCOPE route — A9 makes PulseSettingsHelper#
-  # pulse_tracker_options reachable in the settings-partial's VIEW scope (e.g. via
-  # `helper_method`/helper inclusion into the view chain), NOT by letting the ERB query
-  # `Tracker.sorted` directly. Therefore the cockpit ERB-purity rule above stays
-  # UNCHANGED and continues to scan the settings partial too: NO `Tracker.`/AR access
-  # may appear in ANY ERB, settings partial included (COND-A4-002 / Rule 18 preserved
-  # uniformly). The settings render test (test/functional/settings_render_test.rb)
-  # proves the helper is in scope at render time — that is the functional complement to
-  # this static rule. (The alternative — exempting the admin settings partial — was
-  # REJECTED: it would weaken the uniform invariant for no correctness gain, since the
-  # helper boundary already keeps the AR query out of the view.)
+  # VIEW-PURITY DECISION (settings-500 fix mechanism): the settings-500 (NameError on
+  # `pulse_tracker_options` when Redmine renders the plugin settings partial) is fixed by
+  # the HELPER-SCOPE route — PulseSettingsHelper#pulse_tracker_options is made reachable in
+  # the settings-partial's VIEW scope (e.g. via `helper_method`/helper inclusion into the
+  # view chain), NOT by letting the ERB query `Tracker.sorted` directly. Therefore the
+  # cockpit ERB-purity rule above stays UNCHANGED and continues to scan the settings partial
+  # too: NO `Tracker.`/AR access may appear in ANY ERB, settings partial included (view
+  # purity preserved uniformly). The settings render test
+  # (test/functional/settings_render_test.rb) proves the helper is in scope at render time —
+  # that is the functional complement to this static rule. (The alternative — exempting the
+  # admin settings partial — was REJECTED: it would weaken the uniform rule for no
+  # correctness gain, since the helper boundary already keeps the AR query out of the view.)
 
   STYLESHEET_DIR = 'assets/stylesheets'
 
@@ -369,34 +374,34 @@ class StaticSourceGuardsTest < Minitest::Test
   # cockpit needs a plugin stylesheet that colors the RAG chips (pulse-rag-{red,amber,
   # green,no_data}) and styles the sparkline. Assert a GENUINE stylesheet asset exists
   # under assets/stylesheets/ — a real .css file (not just the .keep placeholder) that
-  # carries the RAG chip rules. RED now (the dir holds only .keep).
+  # carries the RAG chip rules.
   def test_plugin_stylesheet_asset_exists_with_rag_chip_rules
     css_files = Dir[path("#{STYLESHEET_DIR}/*.css")]
     refute_empty css_files,
                  "a plugin cockpit stylesheet (assets/stylesheets/*.css) must exist so the " \
-                 "RAG chips render with color — the dir is empty today (THAW-RB-001 finding 2)"
+                 "RAG chips render with color"
 
     combined = css_files.map { |f| File.read(f) }.join("\n")
     # The stylesheet must define the four RAG chip states (color is the whole point).
     %w[pulse-rag-red pulse-rag-amber pulse-rag-green pulse-rag-no_data].each do |klass|
       assert_match(/\.#{Regexp.escape(klass)}\b/, combined,
-                   "the cockpit stylesheet must style the .#{klass} RAG chip (THAW-RB-001 finding 2 + " \
-                   "R-A no_data state)")
+                   "the cockpit stylesheet must style the .#{klass} RAG chip (including the " \
+                   "no_data state)")
     end
   end
 
   # The cockpit ERB must LINK the plugin stylesheet (a stylesheet that is never included
   # has no effect). At least one pulse view (index/show) must reference the plugin's
   # stylesheet via stylesheet_link_tag '...redmine_pulse...' (Redmine's plugin_assets
-  # convention) or content_for(:header_tags). RED now (no view links any stylesheet).
+  # convention) or content_for(:header_tags).
   def test_cockpit_view_links_plugin_stylesheet
     pulse_views = Dir[path('app/views/pulse/*.erb')]
-    flunk 'no pulse cockpit views yet (RED until A9)' if pulse_views.empty?
+    flunk 'no pulse cockpit views yet' if pulse_views.empty?
     combined = pulse_views.map { |f| File.read(f) }.join("\n")
     assert_match(/stylesheet_link_tag\s*\(?\s*['"][^'"]*redmine_pulse|content_for\s*\(?\s*:header_tags/,
                  combined,
                  "a cockpit view (app/views/pulse/*) must include the plugin stylesheet " \
                  "(stylesheet_link_tag '...redmine_pulse' or content_for(:header_tags)) so the RAG " \
-                 "colors/sparkline styling actually load (THAW-RB-001 finding 2)")
+                 "colors/sparkline styling actually load")
   end
 end

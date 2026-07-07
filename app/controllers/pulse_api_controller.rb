@@ -7,27 +7,27 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
-# PulseApiController — the JSON adapter surface + composition root (CA-13..CA-19).
+# PulseApiController — the JSON adapter surface + composition root.
 # It relies ENTIRELY on Redmine's built-in REST authentication (accept_api_auth + the
 # header/param/HTTP-Basic credential mechanism Redmine's ApplicationController already
-# implements) — it parses NO credentials of its own (FC-CA-09).
+# implements) — it parses NO credentials of its own.
 #
 # accept_api_auth is exposed as a class method on Redmine 6.1.2's ApplicationController
 # (app/controllers/application_controller.rb line 646), so the controller inherits it
-# by subclassing ApplicationController (BR-04 — verified against the deployed source).
+# by subclassing ApplicationController (verified against the deployed source).
 #
 # Ordering: the REST-auth gate (require_login -> Redmine 401/403 when REST disabled or
-# no/invalid credentials, R8/R9) runs BEFORE the per-project 404/403 ladder (R1..R6).
+# no/invalid credentials) runs BEFORE the per-project 404/403 ladder.
 # Errors render via Redmine's conventional REST envelope ({"errors":[...]}) — no custom
-# pulse envelope (D-CA-OQ03). Read-only: GET writes no Redmine domain table.
+# pulse envelope. Read-only: GET writes no Redmine domain table.
 class PulseApiController < PulseBaseController
-  accept_api_auth :portfolio, :project # BR-04
+  accept_api_auth :portfolio, :project
 
   before_action :require_login
 
   DEFAULT_LIMIT = 100
 
-  # RT-05 (security-S2-dos): hard upper-bound on the requested page size. Without a cap
+  # DoS guard: hard upper-bound on the requested page size. Without a cap
   # a caller can request an unbounded slice (limit far above any sane maximum), forcing the
   # composition root to rank + serialize the whole portfolio — an amplification / memory-DoS
   # lever. A limit above this maximum is a validation error -> 422 (same envelope as the
@@ -40,7 +40,7 @@ class PulseApiController < PulseBaseController
     return if performed? # 422 already rendered
 
     lens = Pulse::Adapters::LensRanker.normalize_lens(params[:lens])
-    # C4 (OBL-C4-05): ?profile_id is the transient GLOBAL override applying to every project;
+    # ?profile_id is the transient GLOBAL override applying to every project;
     # absent, each project resolves its own per-project role-default binding.
     all = Pulse::Adapters::LensRanker.rank(
       engine.portfolio_projections(User.current, selected_profile_id), lens
@@ -67,15 +67,15 @@ class PulseApiController < PulseBaseController
 
     return unless authorize_pulse(proj) # 403
 
-    # C4: the transient profile selection (?profile_id=<id>) overrides the role binding for
-    # this request (FC-C4-06 level 1); a dangling id degrades to the default in the provider.
+    # the transient profile selection (?profile_id=<id>) overrides the role binding for
+    # this request; a dangling id degrades to the default in the provider.
     projection = engine.project_projection(User.current, proj, selected_profile_id)
     render json: Pulse::Adapters::JsonSerializer.project(projection)
   end
 
   private
 
-  # ── pagination validation (CA-13 / COND-CA-01 / D-CA-OQ03) ──────────────────
+  # ── pagination validation ───────────────────────────────────────────────────
   # offset default 0 (must be >= 0); limit default 100 (must be an integer >= 1).
   # Any violation -> 422 with the Redmine-conventional {"errors":[...]} envelope.
   def validated_pagination
@@ -90,7 +90,7 @@ class PulseApiController < PulseBaseController
     if params[:limit].present?
       limit = strict_int(params[:limit])
       return pagination_error('limit must be an integer >= 1') if limit.nil? || limit < 1
-      # RT-05: reject an over-cap page size with the SAME 422 envelope (availability guard).
+      # reject an over-cap page size with the SAME 422 envelope (availability guard).
       if limit > MAX_PORTFOLIO_LIMIT
         return pagination_error("limit must be an integer <= #{MAX_PORTFOLIO_LIMIT}")
       end
@@ -111,7 +111,7 @@ class PulseApiController < PulseBaseController
     [nil, nil]
   end
 
-  # ── 404/403 ladder (FC-CA-02) ───────────────────────────────────────────────
+  # ── 404/403 visibility ladder ───────────────────────────────────────────────
   # JSON-specific: does NOT assign @project (no Redmine project layout on the API
   # surface). authorize_pulse + the adapter-factory composition root live in
   # PulseBaseController (shared, identical across both surfaces).

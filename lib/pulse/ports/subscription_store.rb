@@ -9,8 +9,8 @@
 
 module Pulse
   module Ports
-    # SubscriptionStore — a duck-typed port (C6 / FC-C6-07). Any object responding to the
-    # methods below satisfies the contract. stdlib-only surface; the production adapter
+    # SubscriptionStore — a duck-typed port. Any object responding to the
+    # methods below satisfies the port. stdlib-only surface; the production adapter
     # (RedmineSubscriptionStore) owns all Redmine I/O.
     #
     # Protocol:
@@ -19,8 +19,8 @@ module Pulse
     #       health" watchers AND members of the admin auto-subscribe role, FILTERED by the
     #       permission-at-send gate — a candidate is included ONLY IF, at RESOLUTION time,
     #       user.allowed_to?(:view_pulse, project) is TRUE against LIVE permission state
-    #       (INV-C6-PERM-AT-SEND). ANY conforming implementation MUST apply that gate here
-    #       (the gate MUST NOT live downstream in delivery — RISK-C6-01).
+    #       (permission-at-send). ANY conforming implementation MUST apply that gate here
+    #       (the gate MUST NOT live downstream in delivery).
     #   watch!(user, project)   -> void   # subscribe (idempotent)
     #   unwatch!(user, project) -> void   # unsubscribe (idempotent)
     #

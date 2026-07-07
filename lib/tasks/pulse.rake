@@ -17,7 +17,7 @@
 # without bound. `pulse:cache:clear` gives an admin a global flush / rebuild lever that
 # the per-project refresh does not provide.
 #
-# Writes ONLY pulse_snapshots (INV-READ-ONLY / FC-CA-13) — it never touches a Redmine
+# Writes ONLY pulse_snapshots (read-only toward Redmine) — it never touches a Redmine
 # domain table. The cache rebuilds lazily on the next request (cold-miss warm).
 #
 #   bundle exec rake pulse:cache:clear RAILS_ENV=production
@@ -26,18 +26,17 @@
 # (Redmine auto-loads lib/tasks/*.rake; the task keeps its own `pulse:` namespace —
 # it is NOT re-namespaced under redmine:plugins:. Quote the [id] form for zsh.)
 
-# alerting contract (C6): the two scheduled-operation rake tasks live under the NEW
-# redmine_pulse: namespace (PINNED, F-02). They are THIN shells over the composition-root
-# task classes (Pulse::Tasks::Recompute / Pulse::Tasks::ScanAndAlert) — this .rake file is
-# the ONLY production entry point for the alert pipeline (the additive no-coupling grep
-# confirms the alert symbols never reach the request cycle). Scheduling is operator-side
-# cron (DEC-08) — no worker/scheduler/Redis gem is introduced.
+# Alerting: the two scheduled-operation rake tasks live under the redmine_pulse:
+# namespace. They are THIN shells over the composition-root task classes
+# (Pulse::Tasks::Recompute / Pulse::Tasks::ScanAndAlert) — this .rake file is the ONLY
+# production entry point for the alert pipeline (the alert symbols never reach the request
+# cycle). Scheduling is operator-side cron — no worker/scheduler/Redis gem is introduced.
 #
 #   bundle exec rake redmine_pulse:recompute RAILS_ENV=production
 #   bundle exec rake redmine_pulse:scan_and_alert RAILS_ENV=production
 #
-# The pre-existing pulse:cache:clear task (below) is OUT OF C6 SCOPE and NOT renamed — a
-# mixed tree (pulse:cache:* + redmine_pulse:*) is accepted for C6.
+# The pre-existing pulse:cache:clear task (below) is NOT renamed — a mixed tree
+# (pulse:cache:* + redmine_pulse:*) is accepted.
 namespace :redmine_pulse do
   desc 'Warm the pulse_snapshots cache for all projects (canonical profile). Idempotent; ' \
        'writes only pulse_snapshots; never touches pulse_alert_states. Operator-cron scheduled.'

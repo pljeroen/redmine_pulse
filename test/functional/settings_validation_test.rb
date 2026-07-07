@@ -1,16 +1,21 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# CA-23 / FC-CA-30 / COND-CA-03 / COND-CA-01: SETTINGS VALIDATION to the EXACT
-# ScoringConfig bounds (DG-07), I18n errors on rejection, defaults ship working
-# (DEC-13), and a successful save bumps settings_version_hash so affected snapshots
-# recompute on next GET (FC-CA-22 M5).
+# SETTINGS VALIDATION to the EXACT ScoringConfig bounds, with localized errors on
+# rejection, defaults that ship working, and a successful save that bumps
+# settings_version_hash so affected snapshots recompute on next GET.
 #
 # The exact bounds are READ from the as-built ScoringConfig so the test pins the real
-# contract, not informal ranges. Drives the admin settings POST through the harness.
-# Postgres-gated (FC-CA-38). RED until A9 builds the settings partial + validation.
+# behavior, not informal ranges. Drives the admin settings POST through the harness.
+# Runs on PostgreSQL (the production engine).
 class SettingsValidationTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -39,16 +44,16 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     s.is_a?(Hash) ? s : {}
   end
 
-  # ─────────────── DEC-13: defaults ship working (valid ScoringConfig) ───────
+  # ─────────────── defaults ship working (valid ScoringConfig) ───────
 
   def test_defaults_yield_valid_scoring_config
     pulse_settings! # init.rb-style defaults
-    assert_nothing_raised('defaults must produce a valid ScoringConfig (DEC-13)') do
+    assert_nothing_raised('defaults must produce a valid ScoringConfig') do
       Pulse::Adapters::RedmineSettingsProvider.new.scoring_config
     end
   end
 
-  # ──────── EXACT bounds (DG-07): each invalid input is REJECTED ─────────────
+  # ──────── EXACT bounds: each invalid input is REJECTED ─────────────
 
   def test_activity_window_days_zero_rejected
     save_settings(current_settings.merge('activity_window_days' => '0'))
@@ -89,14 +94,14 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # ── CA-A10-001: invalid settings are REJECTED *and* a user-facing localized error is
-  # surfaced — NOT silently sanitized. The current init.rb:114 `sanitized, = ...` discards
-  # the SettingsSanitizer error array, so the fallback is persisted with NO observable
-  # rejection. These two tests pin BOTH halves of the required behavior:
+  # Invalid settings are REJECTED *and* a user-facing localized error is surfaced — NOT
+  # silently sanitized. If the SettingsSanitizer error array is discarded, the fallback is
+  # persisted with NO observable rejection. These two tests pin BOTH halves of the required
+  # behavior:
   #   (a) the prior VALID value remains persisted (unchanged) — invalid input not stored;
   #   (b) a user-visible / localized error is produced (flash[:error]/flash[:warning] or a
   #       settings-error rendered in the response), not a silent success.
-  # RED against the silent-sanitize impl. ───────────────────────────────────────────────
+  # ───────────────────────────────────────────────
 
   # Helper: the localized success notice Redmine emits on a clean save; a REJECTION must
   # NOT be reported as this. We assert an error is present in addition to non-persistence.
@@ -112,7 +117,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
 
     save_settings(current_settings.merge('rag_green_min' => '150')) # out of [0,100]
     assert_equal 70, current_settings['rag_green_min'].to_i,
-                 'CA-A10-001(a): an out-of-bounds value must NOT be persisted; the prior ' \
+                 'an out-of-bounds value must NOT be persisted; the prior ' \
                  'valid value (70) must remain unchanged'
   end
 
@@ -133,9 +138,9 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
       body =~ /\b(invalid|rejected|out of range|must be)\b/i
 
     refute_nil observable_error,
-               'CA-A10-001(b): rejected settings must surface a user-facing error'
+               'rejected settings must surface a user-facing error'
     assert observable_error,
-           'CA-A10-001(b): an out-of-bounds settings value must produce an observable, ' \
+           'an out-of-bounds settings value must produce an observable, ' \
            'user-facing (localized) rejection error — flash[:error]/[:warning] or a ' \
            'rendered settings error — not a silent sanitize'
 
@@ -143,15 +148,14 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     success = I18n.t(:notice_successful_update)
     if !err.empty?
       refute_equal success, err,
-                   'CA-A10-001(b): a rejection must not be reported as a successful update'
+                   'a rejection must not be reported as a successful update'
     end
   end
 
-  # ── settings-promote-momentum (CT-02): the 3 promoted FLOAT fields are validated ──
+  # ── the 3 promoted FLOAT fields are validated ──
   # momentum_activity_half (> 0), momentum_direction_bias ([0,0.5]), on_track_threshold
   # ([0,1]). Each out-of-range input is REJECTED and the prior/stored value is RETAINED
   # (mirror test_activity_window_days_zero_rejected / test_horizon_below_one_rejected).
-  # RED until A9 adds float sanitizers + the partial fields.
 
   def test_momentum_activity_half_non_positive_rejected
     # Seed a known-good prior value, then submit a non-positive one.
@@ -197,7 +201,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
   # is STILL rejected (validation must not be disabled).
   #
   # These call SettingsSanitizer.sanitize directly so the contract is pinned at the unit
-  # level. RED until the float-field block stops treating blank as invalid.
+  # level.  The float-field block must not treat blank as invalid.
   PROMOTED_FLOAT_KEYS = %w[momentum_activity_half momentum_direction_bias on_track_threshold].freeze
 
   def sanitize(incoming, previous = {})
@@ -256,14 +260,14 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # ── remediation R1: FINITE-FLOAT sanitizer bypass. ─────────────────────────────────
+  # ── FINITE-FLOAT sanitizer bypass. ─────────────────────────────────
   # SettingsSanitizer#strict_float does Float(raw.to_s.strip); in Ruby Float("1e309")
   # returns Float::INFINITY (NO error). float_strictly_positive only rejects <= 0.0, so an
   # OVERFLOW string like "1e309" for momentum_activity_half is ACCEPTED and PERSISTED as
   # Infinity — then Pulse::Domain::ScoringConfig raises on read. A non-finite float is NOT
   # a valid setting: it MUST be rejected exactly like any other present-but-invalid float
   # (mirror test_present_invalid_promoted_floats_still_rejected) — report the key + retain
-  # the prior value. RED until strict_float rejects non-finite results.
+  # the prior value.  strict_float must reject non-finite results.
   def test_overflow_momentum_activity_half_infinity_rejected
     prev = { 'momentum_activity_half' => 8.0 }
     # "1e309" overflows to Float::INFINITY via Float() — no ArgumentError is raised.
@@ -300,7 +304,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
   end
 
   # Defensive coverage: momentum_direction_bias ([0,0.5]) and on_track_threshold ([0,1])
-  # have UPPER bounds, so Infinity already fails their range check — these are GREEN now.
+  # have UPPER bounds, so Infinity already fails their range check — these already pass.
   # They pin that the overflow is rejected on ALL three promoted floats regardless of the
   # (mechanism) so a future strict_float hardening cannot regress the range-checked pair.
   def test_overflow_range_checked_floats_already_rejected
@@ -326,7 +330,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
   # blank) is STILL an incomplete/invalid set and is rejected. A complete invalid set
   # (non-numeric / negative / wrong key set / not summing to 1.0) is STILL rejected.
   # These call SettingsSanitizer.sanitize directly so the contract is pinned at the unit
-  # level. RED until sanitize_weights stops treating an all-blank hash as invalid.
+  # level.  sanitize_weights must not treat an all-blank hash as invalid.
   ALL_BLANK_WEIGHTS = {
     'staleness' => '', 'progress' => '', 'momentum' => '',
     'risk_load' => '', 'blocked_load' => ''
@@ -388,13 +392,13 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
                  'a rejected weight set must retain the prior weights'
   end
 
-  # ── snapshot-max-age-refresh (CT-02 EVOLUTION): snapshot_max_age_minutes sanitize ──
+  # ── snapshot_max_age_minutes sanitize ──
   # Integer >= 0 (0 is VALID = disabled). A PRESENT-but-invalid value (negative /
   # non-numeric) is REJECTED: report + retain the prior value. A BLANK/ABSENT value
   # means "use the shipped default" — delete the key so the provider default 60 applies
   # (mirrors the momentum/weights blank-tolerance, NOT the legacy horizon intolerance).
   # These call SettingsSanitizer.sanitize directly so the contract is pinned at the unit
-  # level. RED until GREEN adds the snapshot_max_age_minutes sanitizer.
+  # level.  The snapshot_max_age_minutes sanitizer must be present.
 
   def test_snapshot_max_age_minutes_zero_is_accepted
     result, errors = sanitize({ 'snapshot_max_age_minutes' => '0' }, {})
@@ -450,7 +454,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # ── RT-07 (security-S3-defense): VALIDATE admin-set IDs at save. The enrichment
+  # ── VALIDATE admin-set IDs at save (defense in depth). The enrichment
   # mappings effort_field / blocked_status / risk_trackers are currently PASSED THROUGH
   # verbatim (result[k] = incoming.fetch(...) / normalize_trackers only strips blanks) —
   # a non-integer / non-positive id is PERSISTED as-is and only fails safe downstream via
@@ -458,7 +462,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
   # prior value RETAINED (mirror test_present_invalid_promoted_floats_still_rejected). A
   # VALID id still saves cleanly; a BLANK value means "unmapped" (use the default), NOT an
   # error. These call SettingsSanitizer.sanitize directly so the contract is pinned at the
-  # unit level. RED until the sanitizer strict-integer-validates these three keys.
+  # unit level.  The sanitizer must strict-integer-validate these three keys.
 
   # effort_field: a single custom-field id (positive integer). A non-integer ("abc") must
   # be REJECTED, not persisted verbatim; the prior value is retained.
@@ -466,7 +470,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     prev = { 'effort_field' => '5' }
     result, errors = sanitize({ 'effort_field' => 'abc' }, prev)
     assert_includes errors, 'effort_field',
-                    'a PRESENT non-integer effort_field must be REJECTED (RT-07)'
+                    'a PRESENT non-integer effort_field must be REJECTED'
     refute_equal 'abc', result['effort_field'],
                  'a rejected non-integer effort_field must NOT be persisted verbatim'
     assert_equal '5', result['effort_field'].to_s,
@@ -480,7 +484,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
       prev = { 'blocked_status' => '7' }
       result, errors = sanitize({ 'blocked_status' => bad }, prev)
       assert_includes errors, 'blocked_status',
-                      "a PRESENT invalid blocked_status (#{bad.inspect}) must be REJECTED (RT-07)"
+                      "a PRESENT invalid blocked_status (#{bad.inspect}) must be REJECTED"
       refute_equal bad, result['blocked_status'],
                    "a rejected blocked_status (#{bad.inspect}) must NOT be persisted verbatim"
       assert_equal '7', result['blocked_status'].to_s,
@@ -499,7 +503,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
 
     persisted = Array(result['risk_trackers'])
     refute_includes persisted, 'notanint',
-                    'a non-integer tracker id ("notanint") must NOT be persisted verbatim (RT-07)'
+                    'a non-integer tracker id ("notanint") must NOT be persisted verbatim'
     # Every persisted tracker id must be a strict integer (string of digits or Integer).
     persisted.each do |t|
       assert_match(/\A\d+\z/, t.to_s,
@@ -518,7 +522,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # GUARD (GREEN): a fully VALID set of the three enrichment ids still saves cleanly — the
+  # GUARD: a fully VALID set of the three enrichment ids still saves cleanly — the
   # new validation must not over-reject legitimate values.
   def test_valid_enrichment_ids_still_accepted
     result, errors = sanitize(
@@ -534,7 +538,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
                  'a valid risk_trackers list persists'
   end
 
-  # GUARD (GREEN): BLANK for any of the three means "unmapped" — use the default, NOT an
+  # GUARD: BLANK for any of the three means "unmapped" — use the default, NOT an
   # error (mirror the blank-tolerance the other fields have). A fresh instance renders
   # these blank; clicking Apply must not error.
   def test_blank_enrichment_ids_are_not_errors
@@ -544,7 +548,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     )
     %w[effort_field blocked_status risk_trackers].each do |k|
       refute_includes errors, k,
-                      "a BLANK #{k} must mean 'unmapped/default', NOT a rejection error (RT-07)"
+                      "a BLANK #{k} must mean 'unmapped/default', NOT a rejection error"
     end
     # No garbage persisted: blank scalars are unset/blank-ish, risk_trackers has no blank id.
     assert_empty Array(result['risk_trackers']).reject { |t| t.to_s.strip.empty? }
@@ -552,12 +556,12 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
                  'a blank risk_trackers must not persist any non-integer id'
   end
 
-  # security-S3-defense fix (MEDIUM-severity): an ABSENT effort_field / blocked_status
+  # Defense-in-depth fix: an ABSENT effort_field / blocked_status
   # key means "unmapped" (delete the scalar => fall back to the default at read time) —
   # NOT "retain the prior mapping". This mirrors the momentum block (absent => unmapped)
   # and the snapshot block (absent => unmapped). The prior impl read
   # `incoming.fetch(k, previous[k])`, so an absent key silently RETAINED the prior value,
-  # inconsistent with the stated contract and the sibling blocks. RED until the enrichment
+  # inconsistent with the stated behavior and the sibling blocks. The enrichment
   # scalars read `incoming[k]` so an absent key becomes nil => blank? => delete (unmapped).
   def test_absent_enrichment_ids_are_unmapped_not_retained
     # Empty incoming, prior values PRESENT. An untouched-on-this-POST key must UNMAP,
@@ -572,7 +576,7 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
   end
 
   # Companion parity assertion: the momentum block ALREADY unmaps an absent scalar. This
-  # pins the intended parity the fix brings the enrichment block into (should be GREEN both
+  # pins the intended parity the fix brings the enrichment block into (should pass both
   # before and after the fix — it demonstrates the target behaviour).
   def test_absent_momentum_scalar_is_unmapped_parity
     result, errors = sanitize({}, { 'momentum_activity_half' => 8.0 })
@@ -591,6 +595,6 @@ class SettingsValidationTest < ActionDispatch::IntegrationTest
     save_settings(current_settings.merge('rag_green_min' => '70'))
     after = Pulse::Adapters::RedmineSettingsProvider.new.settings_version_hash
     refute_equal before, after,
-                 'a successful settings change must move settings_version_hash (FC-CA-22 M5)'
+                 'a successful settings change must move settings_version_hash'
   end
 end

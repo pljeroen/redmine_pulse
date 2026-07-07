@@ -16,9 +16,9 @@ require_relative '../../../lib/pulse/adapters/settings_sanitizer'
 require 'pulse/domain/scoring_config'
 require 'pulse/domain/signal_registry'
 
-# A10-C1-003 / FC-C1-14 — default_path_no_new_settings_key (falsifiable form).
+# default_path_no_new_settings_key (falsifiable form).
 #
-# FC-C1-14 core claim: on the DEFAULT path C1 persists NO new plugin-settings key.
+# Core claim: on the DEFAULT path, no new plugin-settings key is persisted.
 # The default enabled set is resolved PROGRAMMATICALLY from SignalRegistry.keys and is
 # NEVER written to the settings hash, so the settings hash is unchanged ⟹ the
 # settings_version_hash is unchanged ⟹ SnapshotFingerprint component 7 is stable ⟹ no
@@ -38,7 +38,7 @@ require 'pulse/domain/signal_registry'
 # computed without a live Redmine Setting (RedmineSettingsProvider#settings reads
 # Setting.plugin_redmine_pulse; #settings_version_hash / #canonical are not reachable over
 # a plain hash without stubbing the Rails Setting model). That leg is covered by the
-# Redmine-harness integration lane (IT-C1-02, snapshot_fingerprint_test.rb). The
+# Redmine-harness integration lane (snapshot_fingerprint_test.rb). The
 # unit-level guarantee below (no 'enabled_signals' key ever added on the default path) is
 # the necessary-and-sufficient precondition for that hash to be stable.
 class DefaultConfigNoNewSettingsKeyTest < Minitest::Test
@@ -69,9 +69,9 @@ class DefaultConfigNoNewSettingsKeyTest < Minitest::Test
 
     assert_equal [], errors, 'a fully-valid settings hash sanitizes without error'
     refute_includes result.keys, 'enabled_signals',
-                     "sanitize must NOT introduce an 'enabled_signals' key (FC-C1-14)"
+                     "sanitize must NOT introduce an 'enabled_signals' key"
     refute_includes result.keys, :enabled_signals,
-                     "sanitize must NOT introduce a symbol :enabled_signals key (FC-C1-14)"
+                     "sanitize must NOT introduce a symbol :enabled_signals key"
   end
 
   # (a') sanitize does not add the key even when the input had none and is otherwise blank.
@@ -97,7 +97,7 @@ class DefaultConfigNoNewSettingsKeyTest < Minitest::Test
                     'the settings hash must carry no enabled_signals key after default build'
 
     # The enabled set is resolved to the DEFAULT-ON built-ins WITHOUT being persisted
-    # anywhere. C2 EVOLUTION: coverage_gap is registered but default_on:false, so the default
+    # anywhere. Note: coverage_gap is registered but default_on:false, so the default
     # enabled set is the 5 default_on keys (default_on_keys), NOT every registered key.
     assert_equal Pulse::Domain::SignalRegistry.default_on_keys.sort, cfg.enabled_signals.sort,
                  'default enabled set == the default_on registry keys (resolved, not persisted)'
@@ -105,7 +105,7 @@ class DefaultConfigNoNewSettingsKeyTest < Minitest::Test
 
   # (c) the default enabled set is a COMPUTED value (registry-derived), not a settings key.
   def test_default_enabled_set_is_registry_resolved_not_a_settings_key
-    # C2 EVOLUTION: default_enabled_keys resolves the DEFAULT-ON subset (== default_on_keys,
+    # default_enabled_keys resolves the DEFAULT-ON subset (== default_on_keys,
     # the 5 built-ins); coverage_gap is registered but default_on:false.
     assert_equal Pulse::Domain::SignalRegistry.default_on_keys.sort,
                  Pulse::Domain::SignalRegistry.default_enabled_keys.sort,

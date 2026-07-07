@@ -12,14 +12,14 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 require 'json'
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TIER-1 SECURITY — FR-C5-08 .JSON ACCESS CONTROL (FC-C5-08 / FC-C5-09 / FC-C5-10)
+# .JSON ACCESS CONTROL (a security-critical guarantee)
 # ═══════════════════════════════════════════════════════════════════════════════
-# Redmine 6.x platform rule (spec §1.5 / INV-C5-PERM): format-based (.json) routing
+# Redmine 6.x platform rule: format-based (.json) routing
 # does NOT inherit session authorization. Every PulseViewsController action therefore
 # re-runs the visibility gate SERVER-SIDE on EVERY format, via a before_action that
 # resolves the target through @view_store.visible_to(User.current).find(id).
 #
-# PINNED ORACLES (ASM-C5-02, single + intentional):
+# PINNED ORACLES:
 #   * non-visible READ over .json  -> 404 (existence hiding — RecordNotFound in the
 #     adapter). NEVER 200 (that IS the permission_leak class). NEVER 403 (403 would let
 #     the caller distinguish "exists but private" from "does not exist").
@@ -28,11 +28,8 @@ require 'json'
 # This suite MIRRORS the permission_leak_test.rb idiom:
 #   with_settings rest_api_enabled: '1' { get '<...>.json', headers: api_key_header(user) }
 #
-# RED-by-construction: PulseViewsController, the /pulse/views routes, the ViewStore
-# port and PulseView do not exist yet (RoutingError / NameError). A9 implements GREEN.
-#
-# Postgres-evidence lane (COND-A8-004 / GL-CI-MYSQL): skip (not fail) on a non-Postgres
-# adapter so the CI MySQL legs stay green; the visible_to SQL is verified on Postgres.
+# Runs on PostgreSQL (the production engine): skip (not fail) on a non-Postgres
+# adapter so the MySQL CI legs stay green; the visible_to SQL is verified on Postgres.
 class PulseViewsPermissionTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -76,7 +73,7 @@ class PulseViewsPermissionTest < ActionDispatch::IntegrationTest
   end
 
   # ══════════════════════════════════════════════════════════════════════════════
-  # THE tier-1 falsifier method (IT-C5-06). Named exactly per FC-C5-08 / CANON.
+  # THE security falsifier method.
   # A non-owner reading another user's PRIVATE view over .json -> 404 existence hiding.
   # ══════════════════════════════════════════════════════════════════════════════
   def test_json_rechecks_permission
@@ -86,7 +83,7 @@ class PulseViewsPermissionTest < ActionDispatch::IntegrationTest
 
     # PINNED: 404 (existence hiding). NOT 200 (the leak class), NOT 403 (distinguishable).
     assert_response :not_found,
-                    'FR-C5-08 breach: non-owner .json read of a private view must be 404 ' \
+                    'breach: non-owner .json read of a private view must be 404 ' \
                     '(existence hiding) — NOT 200 (leak), NOT 403 (distinguishable existence)'
     assert_equal 404, response.status,
                  "the pinned status for a non-visible READ is exactly 404 (got #{response.status})"
@@ -127,7 +124,7 @@ class PulseViewsPermissionTest < ActionDispatch::IntegrationTest
                     'the visibility before_action must run on the HTML format too -> 404'
   end
 
-  # ── FC-C5-10 — WRITE permission denial is 403 (distinct from the READ 404) ──
+  # ── WRITE permission denial is 403 (distinct from the READ 404) ──
 
   def test_non_owner_patch_visible_view_is_403
     # A visible-but-not-owned view: @user_b can SEE the public view, but must not mutate it

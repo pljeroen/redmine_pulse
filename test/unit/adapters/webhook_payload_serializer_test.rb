@@ -11,7 +11,7 @@ require 'minitest/autorun'
 require 'json'
 require 'time'
 
-# C1/C6 lesson: pure-adapter unit lane — add lib/ to $LOAD_PATH before requiring the
+# Note: pure-adapter unit lane — add lib/ to $LOAD_PATH before requiring the
 # adapter so its internal `require 'pulse/...'` lines resolve. Run:
 #   ruby -Itest -Ilib test/unit/adapters/webhook_payload_serializer_test.rb
 lib = File.expand_path('../../../lib', __dir__)
@@ -20,24 +20,22 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'pulse/domain/alert_event'
 require 'pulse/adapters/webhook_payload_serializer'
 
-# C7 / FR-C7-03 / FC-C7-03 / AC-C7-01 — WebhookPayloadSerializer emits versioned JSON
+# WebhookPayloadSerializer emits versioned JSON
 # that VALIDATES against the FROZEN schema at
 #   docs/specs/pulse-roadmap/contracts/schemas/webhook-payload.json
-# for ALL FOUR AlertEvent::EVENT_TYPES, sourcing each field per A7's field→source map:
+# for ALL FOUR AlertEvent::EVENT_TYPES, sourcing each field per the field→source map:
 #   version   const "1"
 #   event     AlertEvent.event_type.to_s
 #   project.* from a duck-typed Project (id/identifier/name) — id == AlertEvent.project_id
 #   health.*  from a duck-typed HealthResult (score Integer|nil, rag Symbol->String,
 #             dominant_signal Symbol|nil -> String|null); delta from AlertEvent.delta
-#   previous  from the PRIOR ALERT-STATE ROW {rag,dominant_signal} or null on first obs (GR-03)
-#   occurred_at  AlertEvent.occurred_at -> UTC ISO8601 (GR-06)
+#   previous  from the PRIOR ALERT-STATE ROW {rag,dominant_signal} or null on first obs
+#   occurred_at  AlertEvent.occurred_at -> UTC ISO8601
 #
 # The `json-schema` gem is NOT on the pure lane (harness-only), so this suite validates
 # STRUCTURALLY against the frozen schema file: required keys present, no extra keys
 # (additionalProperties:false), types, enums, and const applied. The full-gem validation
-# lives in the harness lane (webhook_serializer_schema_test.rb, IT-C7-06).
-#
-# RED NOW: Pulse::Adapters::WebhookPayloadSerializer does not exist (NameError / LoadError).
+# lives in the harness lane (webhook_serializer_schema_test.rb).
 class WebhookPayloadSerializerTest < Minitest::Test
   SCHEMA_PATH = File.expand_path(
     '../../../docs/specs/pulse-roadmap/contracts/schemas/webhook-payload.json', __dir__
@@ -137,7 +135,7 @@ class WebhookPayloadSerializerTest < Minitest::Test
     assert_empty errs, [msg, errs.join("\n")].compact.join("\n")
   end
 
-  # ── (a) each frozen SEED instance validates structurally (AC-C7-01a) ────────
+  # ── (a) each frozen SEED instance validates structurally ────────
   def test_seed_instances_validate_structurally
     seeds = YAML_LOAD_SEEDS
     refute_empty seeds, 'frozen seed file must carry validating instances'
@@ -156,7 +154,7 @@ class WebhookPayloadSerializerTest < Minitest::Test
   end
   YAML_LOAD_SEEDS = load_seeds
 
-  # ── (b) serializer OUTPUT validates for ALL FOUR event types (AC-C7-01b) ────
+  # ── (b) serializer OUTPUT validates for ALL FOUR event types ────
   def test_output_validates_for_all_four_event_types
     %i[rag_transition dominant_change no_data_appeared score_delta].each do |et|
       if et == :no_data_appeared
@@ -172,7 +170,7 @@ class WebhookPayloadSerializerTest < Minitest::Test
     end
   end
 
-  # ── field→source map (FC-C7-03) ────────────────────────────────────────────
+  # ── field→source map ────────────────────────────────────────────
   def test_version_is_the_literal_string_one
     assert_equal '1', parsed(alert_event)['version'], 'version is the const "1" (a String)'
   end
@@ -187,7 +185,7 @@ class WebhookPayloadSerializerTest < Minitest::Test
   def test_health_block_sourced_from_health_result_symbols_to_strings
     body = parsed(alert_event, health_result: health(rag: :amber, score: 58, dominant_signal: :risk_load))
     assert_equal 58, body['health']['score'], 'health.score is the Integer from HealthResult'
-    assert_equal 'amber', body['health']['rag'], 'health.rag is HealthResult#rag.to_s (GR-02)'
+    assert_equal 'amber', body['health']['rag'], 'health.rag is HealthResult#rag.to_s'
     assert_equal 'risk_load', body['health']['dominant_signal'], 'dominant_signal Symbol -> String'
   end
 
@@ -202,7 +200,7 @@ class WebhookPayloadSerializerTest < Minitest::Test
 
   def test_previous_sourced_from_prior_alert_state_row
     body = parsed(alert_event, previous: { rag: 'green', dominant_signal: 'momentum' })
-    assert_equal 'green', body['previous']['rag'], 'previous.rag from prior alert-state last_rag (GR-03)'
+    assert_equal 'green', body['previous']['rag'], 'previous.rag from prior alert-state last_rag'
     assert_equal 'momentum', body['previous']['dominant_signal'], 'previous.dominant_signal from last_dominant'
   end
 
@@ -210,12 +208,12 @@ class WebhookPayloadSerializerTest < Minitest::Test
     body = parsed(alert_event, previous: nil)
     # schema allows previous absent OR null; either is valid. If emitted it must be null.
     assert(!body.key?('previous') || body['previous'].nil?,
-           'previous is omitted or null on first observation / no prior row (GR-03)')
+           'previous is omitted or null on first observation / no prior row')
   end
 
   def test_occurred_at_is_utc_iso8601
     at = parsed(alert_event)['occurred_at']
-    assert_equal '2026-07-06T09:30:00Z', at, 'occurred_at is UTC RFC3339/ISO8601 (GR-06)'
+    assert_equal '2026-07-06T09:30:00Z', at, 'occurred_at is UTC RFC3339/ISO8601'
   end
 
   def test_signature_field_present_and_nonempty

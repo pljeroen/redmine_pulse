@@ -7,14 +7,14 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
-# Creates the plugin-owned pulse_snapshots cache table (FC-CA-05). It collides
-# with no Redmine core table (plugin-prefixed; CD-CA-03) and is the ONLY table
-# the GET/refresh paths are permitted to write (INV-READ-ONLY confines all
-# writes to pulse_snapshots + the plugin settings row).
+# Creates the plugin-owned pulse_snapshots cache table. It collides
+# with no Redmine core table (plugin-prefixed) and is the ONLY table
+# the GET/refresh paths are permitted to write (read-only-toward-Redmine: all
+# writes are confined to pulse_snapshots + the plugin settings row).
 #
-# payload is a `text` column (DG-03 / OSI-CA-02): the Date-bearing static
+# payload is a `text` column: the Date-bearing static
 # aggregate is serialized to JSON text so the round-trip reconstructs Dates
-# (BR-03) and the schema stays portable (SQLite/MySQL/PostgreSQL) — JSONB is a
+# and the schema stays portable (SQLite/MySQL/PostgreSQL) — JSONB is a
 # deferred optimization, not a correctness requirement. Reversible.
 class CreatePulseSnapshots < ActiveRecord::Migration[6.1]
   def up
@@ -29,7 +29,7 @@ class CreatePulseSnapshots < ActiveRecord::Migration[6.1]
 
     # The content-addressed cache key (project_id, visibility_context_id,
     # snapshot_fingerprint). UNIQUE so a concurrent cold-miss insert-or-ignore
-    # converges to exactly one row (FC-CA-06).
+    # converges to exactly one row.
     add_index :pulse_snapshots,
               %i[project_id visibility_context_id snapshot_fingerprint],
               unique: true,

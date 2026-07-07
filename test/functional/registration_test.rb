@@ -1,23 +1,28 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# CA-01/02/03 / FC-CA-31: REGISTRATION CORRECTNESS.
+# REGISTRATION CORRECTNESS.
 # init.rb registers the `pulse` project_module + :view_pulse permission mapped to
 # EXACTLY { pulse: [:index,:show,:refresh], pulse_api: [:portfolio,:project] }; a
 # project_menu tab gated on module+permission; the settings partial; and
 # config/routes.rb declares EXACTLY the 5 named routes and no others.
 #
-# RED until A9 wires init.rb + config/routes.rb. The permission/menu/route lookups
-# resolve against the LIVE registration (not the test-support stub), so these fail
-# until the real registration lands.
+# The permission/menu/route lookups resolve against the LIVE registration (not the
+# test-support stub).
 class RegistrationTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
   fixtures :users, :roles
 
-  # --- CA-01 / FC-CA-31: permission registered with the EXACT action map --------
+  # --- permission registered with the EXACT action map --------
 
   def test_view_pulse_permission_is_registered
     perm = Redmine::AccessControl.permission(:view_pulse)
@@ -28,18 +33,17 @@ class RegistrationTest < ActiveSupport::TestCase
   def test_view_pulse_action_map_is_exact_including_refresh
     perm = Redmine::AccessControl.permission(:view_pulse)
     assert_not_nil perm
-    # actions is a flat list "controller/action"; assert the exact set. C5 (saved-views)
-    # EXPANDS :view_pulse additively to cover the pulse_views CRUD + select actions
-    # (FC-C5-17 / INTEGRATION_MAP §7); C6 (FR-C6-08) EXPANDS it additively again to cover the
-    # pulse/watch + pulse/unwatch health-watch opt-in toggle actions. The original
-    # pulse/pulse_api actions are unchanged.
+    # actions is a flat list "controller/action"; assert the exact set. The saved-views
+    # feature EXPANDS :view_pulse additively to cover the pulse_views CRUD + select actions;
+    # the health-watch opt-in EXPANDS it additively again to cover the pulse/watch +
+    # pulse/unwatch toggle actions. The original pulse/pulse_api actions are unchanged.
     expected = %w[pulse/index pulse/show pulse/refresh pulse/watch pulse/unwatch
                   pulse_api/portfolio pulse_api/project
                   pulse_views/index pulse_views/new pulse_views/create pulse_views/show
                   pulse_views/edit pulse_views/update pulse_views/destroy
                   pulse_views/select].sort
     assert_equal expected, perm.actions.sort,
-                 'BR-01 + C5 + C6: action map is the pulse/pulse_api set + the additive pulse_views + pulse watch/unwatch actions'
+                 'action map is the pulse/pulse_api set + the additive pulse_views + pulse watch/unwatch actions'
   end
 
   def test_view_pulse_belongs_to_pulse_project_module
@@ -47,7 +51,7 @@ class RegistrationTest < ActiveSupport::TestCase
     assert_equal :pulse, mod, ':view_pulse must live under the :pulse project_module'
   end
 
-  # --- CA-02 / FC-CA-31: project menu tab, module+permission gated --------------
+  # --- project menu tab, module+permission gated --------------
 
   def test_project_menu_has_pulse_tab_to_pulse_show
     item = Redmine::MenuManager.items(:project_menu).detect { |i| i.name == :pulse }
@@ -55,22 +59,22 @@ class RegistrationTest < ActiveSupport::TestCase
     assert_equal 'pulse', item.url_for_options(nil)[:controller].to_s if item.respond_to?(:url_for_options)
   end
 
-  # --- R-F: top_menu portfolio link, permission-gated --------------------------
+  # --- top_menu portfolio link, permission-gated --------------------------
 
   def test_top_menu_has_pulse_portfolio_link
     item = Redmine::MenuManager.items(:top_menu).detect { |i| i.name == :pulse }
     assert_not_nil item, 'a :pulse top_menu item must be registered (init.rb) so /pulse is reachable from global nav'
     assert_equal '/pulse', item.url,
-                 "R-F: the :pulse top_menu item must target the portfolio '/pulse' (got #{item.url.inspect})"
+                 "the :pulse top_menu item must target the portfolio '/pulse' (got #{item.url.inspect})"
   end
 
   def test_top_menu_pulse_link_is_permission_gated
     item = Redmine::MenuManager.items(:top_menu).detect { |i| i.name == :pulse }
     assert_not_nil item, 'a :pulse top_menu item must be registered (init.rb)'
     assert_not_nil item.condition,
-                   'R-F: the :pulse top_menu item MUST carry an :if condition (gated on view_pulse) so it is hidden from users without the permission'
+                   'the :pulse top_menu item MUST carry an :if condition (gated on view_pulse) so it is hidden from users without the permission'
 
-    # RF-02: surface-only existence of the proc is not enough — execute the
+    # Surface-only existence of the proc is not enough — execute the
     # condition under both a permitted and an unpermitted principal and assert
     # the ACTUAL gating decision. top_menu invokes the proc as condition.call(nil)
     # (no project context), so we exercise the global allowed_to? path that init.rb
@@ -86,7 +90,7 @@ class RegistrationTest < ActiveSupport::TestCase
       # Negative: anonymous holds no view_pulse anywhere -> link MUST be hidden.
       User.current = User.anonymous
       refute item.condition.call(nil),
-             'R-F: the :pulse top_menu item MUST be HIDDEN for a principal without :view_pulse (anonymous)'
+             'the :pulse top_menu item MUST be HIDDEN for a principal without :view_pulse (anonymous)'
 
       # Positive: a real non-admin user holding :view_pulse via a role on a
       # module-enabled project -> the global allowed_to? check passes -> link shown.
@@ -97,14 +101,14 @@ class RegistrationTest < ActiveSupport::TestCase
 
       User.current = member
       assert item.condition.call(nil),
-             'R-F: the :pulse top_menu item MUST be SHOWN for a non-admin user who holds :view_pulse'
+             'the :pulse top_menu item MUST be SHOWN for a non-admin user who holds :view_pulse'
     ensure
       # Do not leak the current user into sibling tests.
       User.current = prior || User.anonymous
     end
   end
 
-  # --- CA-03 / FC-CA-31: EXACTLY the 5 routes, resolving to named actions -------
+  # --- EXACTLY the 5 routes, resolving to named actions -------
 
   def test_html_routes_resolve_to_pulse_controller
     assert_routing({ method: :get, path: '/pulse' },
@@ -124,15 +128,12 @@ class RegistrationTest < ActiveSupport::TestCase
 
   def test_routes_file_declares_exactly_sixteen_routes
     # Static: the plugin routes file declares exactly 16 route verbs (the original 5 +
-    # the 8 additive C5 /pulse/views* routes; FC-C5-17 + the 2 additive C6 health-watch
-    # opt-in routes /projects/:id/pulse/{watch,unwatch}; FR-C6-08 + the 1 additive C7
-    # admin-only "send test event" route POST /pulse/webhook_test; FR-C7-09) and nothing
-    # else — no route to an unimplemented controller/action. C7 guard-evolution (+1),
-    # authorized by FR-C7-09 exactly as C5 authorized the +8 pulse_views widening and C6
-    # the +2 watch/unwatch: the admin diagnostic "send test event" needs a single
+    # the 8 additive /pulse/views* saved-view routes + the 2 additive health-watch
+    # opt-in routes /projects/:id/pulse/{watch,unwatch} + the 1 additive admin-only
+    # "send test event" route POST /pulse/webhook_test) and nothing else — no route to an
+    # unimplemented controller/action. The admin diagnostic "send test event" needs a single
     # request-cycle POST toggle (the SOLE request-cycle webhook dispatch), so 1 pulse route
-    # is added. C6 guard-evolution (+2), authorized by FR-C6-08 exactly as C5 authorized the
-    # +8 pulse_views widening: the "Watch project health" opt-in needs a member POST toggle,
+    # is added. The "Watch project health" opt-in needs a member POST toggle,
     # and Redmine's core WatchersController is not reusable (it requires a real
     # Redmine::Acts::Watchable AR target and dereferences #watchable, which the plugin-private
     # PulseHealth bare-string discriminator deliberately is not — see
@@ -141,13 +142,13 @@ class RegistrationTest < ActiveSupport::TestCase
     src = File.read(path)
     verbs = src.scan(/^\s*(get|post|put|patch|delete|match)\b/).flatten
     assert_equal 16, verbs.size,
-                 "exactly 16 route declarations expected (5 original + 8 C5 + 2 C6 + 1 C7; got #{verbs.size}: #{verbs.inspect})"
+                 "exactly 16 route declarations expected (5 original + 8 saved-view + 2 watch + 1 webhook-test; got #{verbs.size}: #{verbs.inspect})"
   end
 
   def test_no_stale_deliverables_or_coverage_gap_route
     path = File.expand_path('../../../config/routes.rb', File.expand_path(__FILE__))
     src = File.read(path)
     refute_match(/deliverables|coverage_gap/, src,
-                 'no route may reference a deferred/unimplemented feature (DEC-12)')
+                 'no route may reference a deferred/unimplemented feature')
   end
 end

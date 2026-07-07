@@ -1,21 +1,23 @@
-<%# Pulse plugin settings (CA-23). Exposes EXACTLY the CA-23 field set, grouped into
-    Enrichment / Weights / Thresholds / Windows. The deferred enrichment controls
-    (DEC-12) are NOT rendered (COND-CA-02). risk_trackers is a native HTML multi-select
-    (<select multiple>) populated with the project trackers — a working, no-JS control
-    (D-CA-OQ02). The tracker option list is prepared OUTSIDE this view by
-    PulseSettingsHelper#pulse_tracker_options (COND-A4-002 / Rule 18); the partial renders
+<%# SPDX-License-Identifier: GPL-2.0-only
+    Copyright (C) 2026 Jeroen %>
+<%# Pulse plugin settings. Exposes EXACTLY the sanctioned field set, grouped into
+    Enrichment / Weights / Thresholds / Windows. The removed enrichment controls
+    are NOT rendered. risk_trackers is a native HTML multi-select
+    (<select multiple>) populated with the project trackers — a working, no-JS control.
+    The tracker option list is prepared OUTSIDE this view by
+    PulseSettingsHelper#pulse_tracker_options (no AR query in the ERB); the partial renders
     presenter/form state only — no scoring/AR logic.
-    E1 settings-help: each field carries an inline <em class="info"> help paragraph
+    Settings help: each field carries an inline <em class="info"> help paragraph
     (what it influences + shipped default) and each fieldset a group intro; all i18n-keyed
-    (label_pulse_help_*). Presentation-only, no JS (HELP_SPEC presentation decision). %>
+    (label_pulse_help_*). Presentation-only, no JS. %>
 <% settings ||= @settings || {} %>
 <% weights = (settings['weights'] || settings[:weights] || {}) %>
 <% selected_trackers = Array(settings['risk_trackers'] || settings[:risk_trackers]).map(&:to_s) %>
 
-<%# E1 (self-service overhaul): a plain-language overview banner so a non-technical
+<%# A plain-language overview banner so a non-technical
     project manager understands, before touching anything, that Pulse works out of the box
     and every field below is optional. Prose <div>, not a settings <p>/<label> (keeps the
-    T-01 grid-level-label guard green). %>
+    grid-level-label guard green). %>
 <div class="pulse-settings-overview">
   <p><%= t(:label_pulse_settings_overview) %></p>
 </div>
@@ -68,7 +70,7 @@
 <fieldset class="box tabular pulse-settings-weights">
   <legend><%= t(:label_pulse_settings_weights) %></legend>
   <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_weights) %></em></p>
-  <%# C2 (FC-C2-16): the optional coverage_gap weight is appended to the loop ONLY when the
+  <%# The optional coverage_gap weight is appended to the loop ONLY when the
       enable toggle is on — a CONDITIONAL weight input, never a speculative always-on control. %>
   <% weight_signals = [[:staleness, t(:label_pulse_weight_staleness)],
       [:progress, t(:label_pulse_weight_progress)],
@@ -94,7 +96,7 @@
   </p>
 </fieldset>
 
-<%# C4 (FR-C4-08): scoring-profile + role-binding management. Server-inline, no-JS, matching
+<%# Scoring-profile + role-binding management. Server-inline, no-JS, matching
     the existing settings idiom. Each persisted profile renders a name + the 5 weight inputs;
     one blank slot (__new__) lets the admin add one. The reserved "default" id is never an
     editable admin profile (it is synthetic). SettingsSanitizer validates + drops invalid
@@ -184,14 +186,14 @@
   </p>
 </fieldset>
 
-<%# C6 (FR-C6-08 auto-subscribe role + FR-C6-06 score_delta N): the two alert settings.
+<%# The two alert settings (auto-subscribe role + score-delta threshold).
     Server-inline, no-JS, matching the existing settings idiom + PulseSettingsHelper. Both
     default OFF: a BLANK role select disables auto-subscribe; a blank/0 threshold disables the
     score-delta alert. SettingsSanitizer validates + drops invalid entries at POST time; this
     view renders prepared form/option state only (no scoring/AR logic — the givable-roles query
-    lives in PulseSettingsHelper#pulse_alert_role_options, COND-A4-002 / Rule 18). These persist
+    lives in PulseSettingsHelper#pulse_alert_role_options, no AR query in the ERB). These persist
     via the same plugin-settings path and are consumed ONLY by the rake scan composition root,
-    never the request cycle (INV-ADDITIVE). %>
+    never the request cycle (additive — no scoring is triggered here). %>
 <fieldset class="box tabular pulse-settings-alerting">
   <legend><%= t(:label_pulse_settings_alerting) %></legend>
   <p class="pulse-group-intro"><em class="info"><%= t(:label_pulse_help_group_alerting) %></em></p>
@@ -215,7 +217,7 @@
   </p>
 </fieldset>
 
-<%# C7 (FR-C7-02/06/09): outbound webhooks. OFF by default — the shipped global list is empty,
+<%# Outbound webhooks. OFF by default — the shipped global list is empty,
     so the scan makes ZERO outbound HTTP until an endpoint is configured. Server-inline, no-JS,
     matching the settings idiom (mirrors the pulse_profiles multi-row pattern above). ALL
     configured GLOBAL endpoints render as editable indexed rows plus one blank "add" row; a
@@ -223,7 +225,7 @@
     under settings[pulse_webhook_endpoints_global]; SettingsSanitizer validates each endpoint at
     POST time (bad url scheme / bad event_filter / redaction-of-a-required-field => reject, keep
     prior) and normalizes the boolean defaults. Safe defaults are per-endpoint overridable (SSRF /
-    HTTPS-only / redaction). The HMAC secret is NEVER echoed (WH-06): a configured secret renders
+    HTTPS-only / redaction). The HMAC secret is NEVER echoed: a configured secret renders
     a BLANK password field with a "secret is set" hint + a hidden prior_index — leave blank to
     keep it, enter a value to replace. Endpoints are consumed by the rake scan composition root;
     the admin "Send test event" button is the SOLE request-cycle dispatch (admin-gated).
@@ -255,7 +257,7 @@
       </p>
       <p>
         <label><%= t(:label_pulse_webhook_secret) %></label>
-        <%# WH-06: never echo the stored secret. Blank password field; keep-on-blank. %>
+        <%# never echo the stored secret. Blank password field; keep-on-blank. %>
         <input type="password" name="<%= base %>[secret]" value="" autocomplete="new-password" />
         <% if !is_new && !ep['secret'].to_s.strip.empty? %>
           <em class="info"><%= t(:label_pulse_webhook_secret_set) %></em>

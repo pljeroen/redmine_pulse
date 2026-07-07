@@ -1,8 +1,7 @@
 ---
 meta:
-  purpose: FULL-PRECISION pre-C1 default-output baseline for FR-C1-08 / FC-C1-13 byte-identical
-    golden gate (A-DATA-01).
-  captured_from: CURRENT (pre-C1) Pulse::Domain::Scoring.score with DEFAULT ScoringConfig.
+  purpose: FULL-PRECISION default-output baseline for the byte-identical golden gate.
+  captured_from: Pulse::Domain::Scoring.score with the DEFAULT ScoringConfig.
   clock_today: '2026-06-20'
   precision_note: Float fields serialized via Ruby Float#to_s (shortest round-trippable
     string). Reparsing yields bit-identical Floats -> the gate asserts EXACT == (no

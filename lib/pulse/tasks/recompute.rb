@@ -9,16 +9,16 @@
 
 module Pulse
   module Tasks
-    # Recompute — the composition root for `rake redmine_pulse:recompute` (C6 / FR-C6-01 /
-    # FC-C6-10). It WARMS the pulse_snapshots cache for all (or a subset of) projects under
-    # the canonical/global ('default') profile, REUSING the existing PulseProjection::Engine
-    # warm path + fingerprint/max-age mechanics — so a FRESH row (within max-age) is NOT
-    # recomputed (idempotent). It writes ONLY pulse_snapshots (pre-existing cache table);
-    # it NEVER touches pulse_alert_states and emits NO notifications. Additive: never
-    # invoking it leaves the synchronous request cycle byte-identical (INV-ADDITIVE).
+    # Recompute — the composition root for `rake redmine_pulse:recompute`. It WARMS the
+    # pulse_snapshots cache for all (or a subset of) projects under the canonical/global
+    # ('default') profile, REUSING the existing PulseProjection::Engine warm path +
+    # fingerprint/max-age mechanics — so a FRESH row (within max-age) is NOT recomputed
+    # (idempotent). It writes ONLY pulse_snapshots (pre-existing cache table); it NEVER
+    # touches pulse_alert_states and emits NO notifications. Additive: never invoking it
+    # leaves the synchronous request cycle byte-identical.
     #
     # It scores under the CANONICAL profile by injecting NO profile_provider into the Engine
-    # (the pre-C4 default-config behavior — the exact canonical/global scoring the request
+    # (the default-config behavior — the exact canonical/global scoring the request
     # cycle uses when no per-viewer profile is resolved), and reads under a privileged
     # canonical viewer so every pulse-enabled project is warmed regardless of membership.
     module Recompute

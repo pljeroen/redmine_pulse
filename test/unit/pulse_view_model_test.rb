@@ -11,7 +11,7 @@ require File.expand_path('../../../../../test/test_helper', File.expand_path(__F
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PulseView AR MODEL — validations + scopes + instance methods (FC-C5-04 / FC-C5-05)
+# PulseView AR MODEL — validations + scopes + instance methods
 # ═══════════════════════════════════════════════════════════════════════════════
 # app/models/pulse_view.rb defines the TOP-LEVEL constant PulseView (Zeitwerk path
 # match, consistent with PulseSnapshot). Validations:
@@ -20,13 +20,11 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #   * project_scope inclusion in {all, selected, status_filter}
 #   * user_id allows nil (system-owned)
 #   * role_ids must deserialize to a non-empty Array iff visibility == 'roles'
-# Defaults visibility 'private' (FR-C5-04). role_ids/scope_params/sort/prefs round-trip
-# via JSON serialization. Instance methods owner?(user), system_view?, role_ids_array.
+# Defaults visibility 'private'. role_ids/scope_params/sort/prefs round-trip via JSON
+# serialization. Instance methods owner?(user), system_view?, role_ids_array.
 #
-# RED-by-construction: PulseView does not exist yet (NameError). A9 builds the model.
-#
-# Postgres-evidence lane (COND-A8-004 / GL-CI-MYSQL): skip on non-Postgres so CI MySQL
-# legs stay green (this suite touches the AR persistence layer).
+# This suite runs on PostgreSQL (the production engine) and touches the AR persistence
+# layer, so it is skipped on non-Postgres adapters to keep the MySQL CI legs green.
 class PulseViewModelTest < ActiveSupport::TestCase
   fixtures :users, :roles
 
@@ -41,7 +39,7 @@ class PulseViewModelTest < ActiveSupport::TestCase
     PulseView.new({ name: 'V', visibility: 'private', project_scope: 'all' }.merge(attrs))
   end
 
-  # ── FC-C5-04 — validations ──
+  # ── validations ──
 
   def test_name_presence_required
     refute build(name: '').valid?, 'empty name must be invalid'
@@ -71,7 +69,7 @@ class PulseViewModelTest < ActiveSupport::TestCase
 
   def test_default_visibility_is_private
     pv = PulseView.new(name: 'x', project_scope: 'all')
-    assert_equal 'private', pv.visibility, 'a fresh view defaults to private (FR-C5-04)'
+    assert_equal 'private', pv.visibility, 'a fresh view defaults to private'
   end
 
   def test_role_ids_required_and_nonempty_iff_visibility_roles
@@ -105,7 +103,7 @@ class PulseViewModelTest < ActiveSupport::TestCase
     assert_equal [], pv.role_ids_array, 'role_ids_array is [] when the column is nil'
   end
 
-  # ── FC-C5-05 — instance methods ──
+  # ── instance methods ──
 
   def test_owner_predicate
     pv = build(user_id: @user.id)
@@ -119,7 +117,7 @@ class PulseViewModelTest < ActiveSupport::TestCase
     refute build(user_id: @user.id).system_view?, 'system_view? false when user-owned'
   end
 
-  # ── FC-C5-05 — visible_to scope correctness (model-level, single read gate) ──
+  # ── visible_to scope correctness (model-level, single read gate) ──
 
   def test_visible_to_scope_unions_private_public_and_roles
     other = User.find(3)

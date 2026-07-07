@@ -1,17 +1,23 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'json'
 
-# CA-11/23 / FC-CA-23: EXPLAINABILITY PASSTHROUGH. The wiring layer emits the
+# EXPLAINABILITY PASSTHROUGH. The wiring layer emits the
 # per-signal breakdown (active, raw_value, n, effective_weight, contribution) EXACTLY
 # as the domain HealthResult produced it — no recompute, no re-round. The rendered
 # payload must satisfy round_half_up(Σ active contributions) == health_score even
-# after the serialize/deserialize round-trip (BR-03). Guards against the round-trip
+# after the serialize/deserialize round-trip. Guards against the round-trip
 # silently corrupting the explainability invariant.
 #
-# Postgres-gated (FC-CA-38). RED until A9.
+# Runs on PostgreSQL.
 class ExplainabilityPassthroughTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -20,8 +26,8 @@ class ExplainabilityPassthroughTest < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the other CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"

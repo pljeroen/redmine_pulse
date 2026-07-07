@@ -12,12 +12,12 @@ require 'date'
 module Pulse
   module Domain
     # Immutable value object carrying already-supplied, already-visibility-scoped
-    # input aggregates for one project. Pure data — no Rails/AR types (FC-21/FC-31).
+    # input aggregates for one project. Pure data — no Rails/AR types.
     #
-    # Fails loud (ArgumentError) on any value outside the FR-01 state space, and
+    # Fails loud (ArgumentError) on any value outside the valid state space, and
     # defensively deep-copies + deep-freezes its caller-owned collections so a later
-    # mutation of the originals cannot affect this object (FR-01 immutable VO /
-    # INV-DETERMINISTIC).
+    # mutation of the originals cannot affect this object (immutable value object;
+    # scoring is deterministic given these inputs).
     class ProjectMetrics
       EVENT_TYPES = %i[issue_created issue_closed issue_commented commit].freeze
 
@@ -38,7 +38,7 @@ module Pulse
         validate_boolean!(:effort_mapped, effort_mapped)
         validate_event_series!(event_series)
         validate_version_due_dates!(version_due_dates)
-        # C2 (FC-C2-08): open_issue_count is a non-negative Integer; covered_sum is a finite
+        # coverage inputs: open_issue_count is a non-negative Integer; covered_sum is a finite
         # real Numeric with 0 <= covered_sum <= open_issue_count (the aggregate cannot exceed
         # the count, since each per-issue coverage fraction is in [0,1]). Type/finiteness are
         # checked BEFORE the range comparison (type-before-compare) so a Complex/NaN/Infinity
@@ -68,7 +68,7 @@ module Pulse
       # post-construction mutation of the caller's originals cannot reach us, then
       # freeze each hash and the array so the exposed collection raises FrozenError.
       # String values within each hash are dup.freeze'd so a caller-held mutable
-      # String aliased to an entry value cannot mutate stored state (A10-TL-001).
+      # String aliased to an entry value cannot mutate stored state.
       def deep_freeze_entries(entries)
         entries.map do |entry|
           frozen_entry = entry.transform_values { |v| v.is_a?(String) ? v.dup.freeze : v }
@@ -83,7 +83,7 @@ module Pulse
       end
 
       def validate_date!(name, value)
-        # instance_of? excludes DateTime (a Date subclass) per FR-38 (plain Date only).
+        # instance_of? excludes DateTime (a Date subclass) — plain Date only.
         return if value.instance_of?(Date)
 
         raise ArgumentError, "#{name} must be a Date (got #{value.class}) (CR-04)"
@@ -120,7 +120,7 @@ module Pulse
         raise ArgumentError, "#{name} must be >= 0 (got #{value})"
       end
 
-      # FC-C2-08: covered_sum is a finite real Numeric with 0 <= covered_sum <=
+      # covered_sum is a finite real Numeric with 0 <= covered_sum <=
       # open_issue_count. Type/finiteness are validated first (finite_real_numeric! rejects
       # Complex/NaN/±Infinity/non-Numeric) so the `< 0` / `> open_issue_count` comparisons
       # only ever see an ordered finite Numeric. The upper bound is open_issue_count because
@@ -179,16 +179,16 @@ module Pulse
             raise ArgumentError,
                   "version_due_dates entry :due_date must be a Date (got #{entry[:due_date].class})"
           end
-          # D-TL-C (TC-11c): :name is REQUIRED, a non-empty String (whitespace-only is
-          # empty). Mirrors the :version_id/:due_date checks; the domain receives name
-          # as DATA and never invents it.
+          # :name is REQUIRED, a non-empty String (whitespace-only counts as empty).
+          # Mirrors the :version_id/:due_date checks; the domain receives name as DATA and
+          # never invents it.
           unless entry[:name].is_a?(String)
             raise ArgumentError,
-                  "version_due_dates entry :name must be a String (got #{entry[:name].class}) (TC-11c)"
+                  "version_due_dates entry :name must be a String (got #{entry[:name].class})"
           end
           if entry[:name].strip.empty?
             raise ArgumentError,
-                  "version_due_dates entry :name must be a non-empty String (got #{entry[:name].inspect}) (TC-11c)"
+                  "version_due_dates entry :name must be a non-empty String (got #{entry[:name].inspect})"
           end
         end
       end

@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'date'
 require 'pulse/domain/project_metrics'
@@ -8,11 +14,10 @@ require 'pulse/domain/timeline'
 require 'pulse/domain/retrospective_bucket'
 require 'pulse/domain/milestone_marker'
 
-# TL-01, TL-02, TL-08, TL-16 / TC-01, TC-02, TC-08, TC-16.
 # Full pure-domain composition: a real ProjectMetrics (seeded event_series +
 # version_due_dates) + a fixed Clock + a real ScoringConfig produce a frozen
 # TimelineResult with concrete bucket counts/boundaries/tallies and forward markers.
-# Asserts observable POST-STATE (DbC), not just non-nil. RED until Timeline exists.
+# Asserts observable POST-STATE (design-by-contract), not just non-nil.
 class TimelineIntegrationTest < Minitest::Test
   class FixedClock
     attr_reader :today_calls
@@ -49,7 +54,7 @@ class TimelineIntegrationTest < Minitest::Test
         { version_id: 4, name: 'Beta',   due_date: TODAY - 3 },   # past-due, kept
         { version_id: 4 + 1, name: 'RC', due_date: TODAY + 14 }    # tie on due_date w/ v9
       ],
-      open_issue_count: 0, covered_sum: 0.0 # C2 additive-required (inactive baseline)
+      open_issue_count: 0, covered_sum: 0.0 # additive coverage inputs (inactive baseline)
     )
   end
 
@@ -59,7 +64,7 @@ class TimelineIntegrationTest < Minitest::Test
     [result, clock]
   end
 
-  # --- TC-16: frozen result composing retrospective + forward ---
+  # --- frozen result composing retrospective + forward ---
   def test_result_is_frozen_with_frozen_axes
     result, = build
     assert result.frozen?, 'TimelineResult must be frozen'
@@ -69,19 +74,19 @@ class TimelineIntegrationTest < Minitest::Test
     assert_raises(FrozenError) { result.forward << :x }
   end
 
-  # --- TC-02 / TC-16: retrospective length == ceil(30/7) == 5 ---
+  # --- retrospective length == ceil(30/7) == 5 ---
   def test_retrospective_length_is_five_for_default_window
     result, = build
     assert_equal 5, result.retrospective.length, 'ceil(30/7) == 5 buckets'
   end
 
-  # --- TC-16: forward length == version_due_dates count ---
+  # --- forward length == version_due_dates count ---
   def test_forward_length_matches_version_due_dates_count
     result, = build
     assert_equal 3, result.forward.length, 'one marker per version_due_dates entry'
   end
 
-  # --- TC-05 depth: concrete bucket boundaries + tallies (observable post-state) ---
+  # --- concrete bucket boundaries + tallies (observable post-state) ---
   def test_bucket_boundaries_and_event_tallies_are_concrete
     result, = build
     buckets = result.retrospective
@@ -99,7 +104,7 @@ class TimelineIntegrationTest < Minitest::Test
     assert_equal 4, buckets.sum(&:event_count), 'today and out-of-window events excluded from total'
   end
 
-  # --- TC-16 + TC-12 depth: forward markers concrete, sorted, name present ---
+  # --- forward markers concrete, sorted, name present ---
   def test_forward_markers_concrete_sorted_with_name
     result, = build
     fwd = result.forward
@@ -114,14 +119,14 @@ class TimelineIntegrationTest < Minitest::Test
     end
   end
 
-  # --- TC-01: clock.today is the sole 'now' source ---
+  # --- clock.today is the sole 'now' source ---
   def test_today_read_only_through_injected_clock
     _result, clock = build
     assert_operator clock.today_calls, :>=, 1,
                     'build must obtain the anchor day from the injected clock.today'
   end
 
-  # --- TC-08: deterministic across invocations (deep equality of observable state) ---
+  # --- deterministic across invocations (deep equality of observable state) ---
   def test_deterministic_deep_equality_across_invocations
     m = seeded_metrics
     cfg = Pulse::Domain::ScoringConfig.new(activity_window_days: 30)

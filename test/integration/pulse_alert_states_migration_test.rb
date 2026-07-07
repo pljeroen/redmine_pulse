@@ -10,7 +10,7 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# IT-C6-06 / FC-C6-05 / FC-C6-12 / FC-C6-13 — pulse_alert_states migration + store.
+# pulse_alert_states migration + store.
 #
 # A reversible migration creates pulse_alert_states with columns
 #   {project_id:integer (UNIQUE index), last_rag:string, last_dominant:string,
@@ -23,8 +23,7 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 # ActiveRecordAlertStateStore round-trips find_by_project / upsert; a second upsert on
 # the same project_id UPDATES (never a 2nd row) — enforced by the unique index.
 #
-# RED-by-construction: the migration file + PulseAlertState model + the store adapter
-# do not exist yet (LoadError / NameError / missing relation). A9 makes it GREEN.
+# Requires the migration file + PulseAlertState model + the store adapter.
 #
 # Postgres-gated for parity with the sibling migration/store suites.
 class PulseAlertStatesMigrationTest < ActiveSupport::TestCase
@@ -81,7 +80,7 @@ class PulseAlertStatesMigrationTest < ActiveSupport::TestCase
     %w[project_id last_rag last_dominant last_no_data last_score updated_at].each do |c|
       assert_includes columns, c, "pulse_alert_states must have a #{c} column"
     end
-    # It must NEVER be keyed by these (per-project only, DEC-10 / FC-C6-12).
+    # It must NEVER be keyed by these (per-project only).
     refute_includes columns, 'visibility_context_id',
                     'pulse_alert_states must NOT carry visibility_context_id (per-project only)'
     refute_includes columns, 'profile_id',

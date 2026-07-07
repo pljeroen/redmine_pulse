@@ -10,7 +10,7 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# IT-C6-03 / IT-C6-05 / IT-C6-09 — rake task behavior (recompute + scan_and_alert).
+# rake task behavior (recompute + scan_and_alert).
 #
 # The rake task bodies are thin shells over composition-root classes:
 #   redmine_pulse:recompute      -> Pulse::Tasks::Recompute.run
@@ -18,18 +18,17 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 # This suite exercises those underlying entry points (asserting OBSERVABLE POST-STATE),
 # mirroring cache_clear_task_test.rb (drive the method the task drives).
 #
-# FC-C6-10 recompute idempotence: run recompute; capture computed_at; re-run within
+# recompute idempotence: run recompute; capture computed_at; re-run within
 #   max-age => unchanged (fresh row not recomputed); recompute writes ONLY pulse_snapshots
 #   and NEVER pulse_alert_states.
-# FC-C6-15 ONCE: green->amber emits exactly one rag_transition and advances state; an
+# fires once: green->amber emits exactly one rag_transition and advances state; an
 #   immediate second run with unchanged health emits NOTHING (state matches).
-# FC-C6-08 partial-failure: mailer stubbed to raise for recipient#1 => the error is
+# partial-failure: mailer stubbed to raise for recipient#1 => the error is
 #   logged, delivery to recipient#2 still occurs, deliver returns normally (no raise),
-#   and state STILL advances (OI-C6-01) => a third run emits nothing (no re-alert).
-# FC-C6-12 canonical-profile-only: both tasks score under the 'default' profile.
+#   and state STILL advances => a third run emits nothing (no re-alert).
+# canonical-profile-only: both tasks score under the 'default' profile.
 #
-# RED-by-construction: the task classes / stores / Pulse::Mailer / pulse_alert_states
-# do not exist yet. A9 makes it GREEN.
+# Requires the task classes / stores / Pulse::Mailer / pulse_alert_states.
 #
 # Postgres-gated for parity with the sibling integration suites.
 class PulseAlertTasksTest < ActiveSupport::TestCase
@@ -74,7 +73,7 @@ class PulseAlertTasksTest < ActiveSupport::TestCase
     u
   end
 
-  # ── FC-C6-10: recompute idempotence + writes only pulse_snapshots ───────────
+  # ── recompute idempotence + writes only pulse_snapshots ───────────
   def test_recompute_is_idempotent_within_max_age
     Pulse::Tasks::Recompute.run
     first = conn.select_value(
@@ -102,7 +101,7 @@ class PulseAlertTasksTest < ActiveSupport::TestCase
     ActiveSupport::Notifications.unsubscribe(sub) if sub
   end
 
-  # ── FC-C6-15 ONCE: fire once; re-run with no change emits nothing ───────────
+  # ── fire once; re-run with no change emits nothing ───────────
   def test_scan_fires_once_then_second_run_emits_nothing
     add_watcher!('once_w')
     seed_green_baseline!
@@ -121,14 +120,14 @@ class PulseAlertTasksTest < ActiveSupport::TestCase
 
   def test_first_run_no_prior_state_establishes_baseline_no_alert
     add_watcher!('baseline_w')
-    # No prior baseline seeded => first run establishes it, fires nothing (FC-C6-03).
+    # No prior baseline seeded => first run establishes it, fires nothing.
     events = Pulse::Tasks::ScanAndAlert.run(project_ids: [@project.id], force_rag: :amber)
     assert_equal [], events, 'first run with no prior row => baseline, no alert (no first-cron flood)'
     refute_nil alert_store.find_by_project(@project.id), 'baseline row now written'
   end
 
-  # ── FC-C6-08 / FC-C6-15: partial delivery failure — others still get it, ─────
-  #    error logged, state STILL advances, no re-fire on a later run (OI-C6-01).
+  # ── partial delivery failure — others still get it, ─────
+  #    error logged, state STILL advances, no re-fire on a later run.
   def test_partial_delivery_failure_logs_and_still_advances_state
     w1 = add_watcher!('fail_w1')
     w2 = add_watcher!('ok_w2')
@@ -167,7 +166,7 @@ class PulseAlertTasksTest < ActiveSupport::TestCase
     delivered = ActionMailer::Base.deliveries.flat_map(&:to)
     assert_includes delivered, w2.mail, 'recipient#2 still received the alert despite #1 failing'
 
-    # State STILL advanced despite the partial failure (OI-C6-01).
+    # State STILL advanced despite the partial failure.
     assert_equal 'amber', alert_store.find_by_project(@project.id)[:last_rag],
                  'state advances after evaluation regardless of delivery outcome'
 
@@ -177,7 +176,7 @@ class PulseAlertTasksTest < ActiveSupport::TestCase
     assert_equal [], third, 'no re-alert after the earlier partial failure (ONCE governs detection)'
   end
 
-  # ── FC-C6-12: scan scores under the canonical/global profile ────────────────
+  # ── scan scores under the canonical/global profile ────────────────
   def test_scan_uses_canonical_profile_alert_state_keyed_by_project_only
     add_watcher!('canon_w')
     seed_green_baseline!

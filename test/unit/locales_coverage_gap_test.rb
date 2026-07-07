@@ -1,14 +1,19 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require 'minitest/autorun'
 require 'yaml'
 
-# FC-C2-15 (i18n) — the coverage_gap presentation + settings labels exist in BOTH en.yml
-# AND nl.yml (the documented locale gotcha: a key present in only one locale raises
-# translation-missing at render). Any "N% covered" unit key must appear in BOTH singular
-# and plural in BOTH locales. Discharges FR-C2-07.
+# The coverage_gap presentation + settings labels must exist in BOTH en.yml AND nl.yml (a
+# key present in only one locale raises translation-missing at render). Any "N% covered"
+# unit key must appear in BOTH singular and plural in BOTH locales.
 #
-# Pure test (reads the locale YAML directly — no Redmine). RED until A9 adds the keys.
+# Pure test (reads the locale YAML directly — no Redmine).
 class LocalesCoverageGapTest < Minitest::Test
   ROOT = File.expand_path('../../..', __FILE__)
   EN = File.join(ROOT, 'config/locales/en.yml')
@@ -39,14 +44,14 @@ class LocalesCoverageGapTest < Minitest::Test
   # --- the coverage_gap labels exist in BOTH locales ----------------------------------
   def test_required_coverage_gap_keys_present_in_english
     REQUIRED_KEYS.each do |k|
-      assert en.key?(k), "en.yml missing coverage_gap key #{k} (FC-C2-15 i18n)"
+      assert en.key?(k), "en.yml missing coverage_gap key #{k}"
       refute_nil en[k], "en.yml #{k} must have a value"
     end
   end
 
   def test_required_coverage_gap_keys_present_in_dutch
     REQUIRED_KEYS.each do |k|
-      assert nl.key?(k), "nl.yml missing coverage_gap key #{k} (FC-C2-15 i18n — locale gotcha)"
+      assert nl.key?(k), "nl.yml missing coverage_gap key #{k} (a key present in only one locale raises translation-missing at render)"
       refute_nil nl[k], "nl.yml #{k} must have a value"
     end
   end
@@ -71,8 +76,8 @@ class LocalesCoverageGapTest < Minitest::Test
       %w[en nl].each do |loc|
         h = loc == 'en' ? en_pulse : nl_pulse
         if h.key?(plural) || h.key?(singular)
-          assert h.key?(singular), "#{loc}.yml pulse.#{singular} (singular) must accompany the plural (FC-C2-15)"
-          assert h.key?(plural), "#{loc}.yml pulse.#{plural} (plural) must accompany the singular (FC-C2-15)"
+          assert h.key?(singular), "#{loc}.yml pulse.#{singular} (singular) must accompany the plural"
+          assert h.key?(plural), "#{loc}.yml pulse.#{plural} (plural) must accompany the singular"
         end
       end
     end

@@ -11,7 +11,7 @@ require_relative '../../domain_test_helper'
 require 'pulse/domain/alert_event'
 require 'time'
 
-# C6 / FR-C6-05 / FC-C6-04 / FC-C6-14 — AlertEvent value object (PURE DOMAIN).
+# AlertEvent value object (PURE DOMAIN).
 #
 # Pulse::Domain::AlertEvent is a deeply-frozen immutable VO with fields
 #   {project_id:Integer, event_type:Symbol, from, to, score:Numeric|nil,
@@ -26,7 +26,7 @@ require 'time'
 # frozen (the dup.freeze idiom), which a naive `@from = from` would fail.
 #
 # Pure lane: `ruby -Itest -Ilib test/unit/domain/alert_event_test.rb`.
-# RED until lib/pulse/domain/alert_event.rb exists (NameError on the constant).
+# Requires lib/pulse/domain/alert_event.rb.
 class AlertEventTest < Minitest::Test
   OCC = Time.utc(2026, 7, 6, 9, 0, 0)
 
@@ -39,7 +39,7 @@ class AlertEventTest < Minitest::Test
     }.merge(overrides))
   end
 
-  # ── field set + readers (FC-C6-04) ──────────────────────────────────────────
+  # ── field set + readers ──────────────────────────────────────────
   def test_exposes_all_fields_via_attr_reader
     e = build
     assert_equal 42, e.project_id
@@ -60,7 +60,7 @@ class AlertEventTest < Minitest::Test
     refute_respond_to e, :to=
   end
 
-  # ── (a) instance frozen; String fields frozen (FC-C6-04a) ───────────────────
+  # ── (a) instance frozen; String fields frozen ───────────────────
   def test_instance_is_frozen
     assert build.frozen?, 'AlertEvent instance must be frozen after construction'
   end
@@ -94,7 +94,7 @@ class AlertEventTest < Minitest::Test
     assert_raises(FrozenError) { e.instance_variable_set(:@event_type, :bogus) } if e.frozen?
   end
 
-  # ── (c) invalid event_type => ArgumentError (FC-C6-04c) ─────────────────────
+  # ── (c) invalid event_type => ArgumentError ─────────────────────
   def test_bogus_event_type_raises_argument_error
     assert_raises(ArgumentError) { build(event_type: :bogus) }
   end
@@ -110,7 +110,7 @@ class AlertEventTest < Minitest::Test
     end
   end
 
-  # ── (d) non-Integer project_id => ArgumentError (FC-C6-04d) ─────────────────
+  # ── (d) non-Integer project_id => ArgumentError ─────────────────
   def test_non_integer_project_id_raises_argument_error
     assert_raises(ArgumentError) { build(project_id: 'x') }
   end
@@ -119,7 +119,7 @@ class AlertEventTest < Minitest::Test
     assert_raises(ArgumentError) { build(project_id: nil) }
   end
 
-  # ── (e) two events with identical args are value-equal (FC-C6-01/04e) ───────
+  # ── (e) two events with identical args are value-equal ───────
   def test_two_events_with_identical_args_are_value_equal
     assert_equal build, build,
                  'AlertEvent built with identical args must be value-equal (deterministic detection)'

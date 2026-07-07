@@ -9,24 +9,23 @@
 
 require 'minitest/autorun'
 
-# Add lib/ so the port + adapter modules load in every lane (C1 harness lesson).
+# Add lib/ so the port + adapter modules load in every lane.
 lib = File.expand_path('../../../lib', __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 require 'pulse/ports/profile_provider'
 
-# FR-C4-03 / FC-C4-06 — the Pulse::Ports::ProfileProvider port contract (consumer side).
-# The port is a DUCK-TYPED protocol (structural typing; stdlib only; no ABC/inheritance),
-# mirroring the as-built Pulse::Ports::MetricsSource / Clock / SnapshotStore documentation
-# modules. This test pins BOTH sides of the contract:
+# The Pulse::Ports::ProfileProvider port protocol (consumer side). The port is a
+# DUCK-TYPED protocol (structural typing; stdlib only; no ABC/inheritance), mirroring the
+# as-built Pulse::Ports::MetricsSource / Clock / SnapshotStore documentation modules. This
+# test pins BOTH sides of the protocol:
 #   * PROVIDER side: the RedmineProfileProvider adapter responds to #profiles and #resolve.
 #   * The port module exists, is a plain Module (not a Class / not an ABC), and introduces
 #     no external dependency.
 #
-# RED NOW: lib/pulse/ports/profile_provider.rb does not exist -> `require` raises LoadError.
-# GREEN after A9 creates it (the adapter provider-side check requires the adapter too, so it
-# is guarded to skip gracefully if only the port has landed — the RedmineProfileProviderTest
-# is the authoritative provider-side check).
+# The adapter provider-side check requires the adapter too, so it is guarded to skip
+# gracefully if only the port has landed — the RedmineProfileProviderTest is the
+# authoritative provider-side check.
 class ProfileProviderPortTest < Minitest::Test
   # === the port is a duck-typed Module (structural typing; no ABC) ==============
   def test_profile_provider_port_is_a_plain_module

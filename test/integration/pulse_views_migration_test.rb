@@ -11,25 +11,25 @@ require File.expand_path('../../../../../test/test_helper', File.expand_path(__F
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# IT-C5-01 — pulse_views MIGRATION (FC-C5-01 / FC-C5-02 / FC-C5-03; AC-C5-01)
+# pulse_views MIGRATION
 # ═══════════════════════════════════════════════════════════════════════════════
 # up creates the pulse_views CONFIG table with the exact 13-column shape + indexes on
 # user_id and visibility; down drops it cleanly (drop_table drops the indexes too), and
 # the round-trip is repeatable (idempotent up->down->up).
 #
-# INV-C5-CONFIG-NOT-CACHE (FC-C5-03): pulse_views is CONFIG, never the snapshot cache.
-# pulse_snapshots (the SOLE reversible cache table) is byte-identical in schema and row
-# count across C5 up/down; the migration source contains no :pulse_snapshots token — the
-# "one reversible cache table" trust narrative holds (count 1 -> 1).
+# pulse_views is CONFIG, never the snapshot cache. pulse_snapshots (the SOLE reversible
+# cache table) is byte-identical in schema and row count across the up/down round-trip; the
+# migration source contains no :pulse_snapshots token — the "one reversible cache table"
+# property holds (count 1 -> 1).
 #
 # Mirrors the reversibility idiom in
 # test/integration/pulse_snapshots_migration_reversibility_test.rb (deterministic start
 # state; teardown re-migrates so the rest of the suite finds the table present).
 #
-# RED-by-construction: db/migrate/*_create_pulse_views.rb and the CreatePulseViews class
-# do not exist yet (LoadError / NameError). A9 authors the migration to this contract.
+# The migration file is db/migrate/*_create_pulse_views.rb, defining the CreatePulseViews
+# class.
 class PulseViewsMigrationTest < ActiveSupport::TestCase
-  # A9 owns the concrete timestamp; the test discovers the file by glob so the timestamp
+  # The migration owns the concrete timestamp; the test discovers the file by glob so the timestamp
   # is not pinned here (the class name / table / column shape ARE pinned).
   MIGRATION_GLOB = File.expand_path(
     '../../../db/migrate/*_create_pulse_views.rb', File.expand_path(__FILE__)
@@ -50,7 +50,7 @@ class PulseViewsMigrationTest < ActiveSupport::TestCase
 
   def migration
     path = migration_path
-    raise LoadError, "no *_create_pulse_views.rb migration found (RED: A9 not built yet)" if path.nil?
+    raise LoadError, 'no *_create_pulse_views.rb migration found' if path.nil?
 
     require path
     CreatePulseViews.new
@@ -65,10 +65,10 @@ class PulseViewsMigrationTest < ActiveSupport::TestCase
   def teardown
     migration.migrate(:up) unless conn.table_exists?(:pulse_views)
   rescue LoadError
-    # RED phase: nothing to restore (migration file absent).
+    # migration file absent: nothing to restore.
   end
 
-  # ── FC-C5-01 — up creates the table with the exact column shape + indexes ──
+  # ── up creates the table with the exact column shape + indexes ──
 
   def test_up_creates_pulse_views_with_required_columns
     refute conn.table_exists?(:pulse_views), 'precondition: table absent before up'
@@ -98,11 +98,11 @@ class PulseViewsMigrationTest < ActiveSupport::TestCase
     refute cols['project_scope'].null, 'project_scope must be NOT NULL'
     assert cols['user_id'].null, 'user_id must be NULLABLE (nil == system/built-in)'
 
-    assert_equal 'private', cols['visibility'].default, "visibility default must be 'private' (FR-C5-04)"
+    assert_equal 'private', cols['visibility'].default, "visibility default must be 'private'"
     assert_equal 'all', cols['project_scope'].default, "project_scope default must be 'all'"
   end
 
-  # ── FC-C5-02 — down drops the table cleanly; round-trip repeatable ──
+  # ── down drops the table cleanly; round-trip repeatable ──
 
   def test_down_drops_table_then_up_recreates
     migration.migrate(:up)
@@ -118,7 +118,7 @@ class PulseViewsMigrationTest < ActiveSupport::TestCase
     REQUIRED_COLUMNS.each { |c| assert_includes names, c, "re-created table must restore '#{c}'" }
   end
 
-  # ── FC-C5-03 — INV-C5-CONFIG-NOT-CACHE: pulse_snapshots untouched; count 1 -> 1 ──
+  # ── pulse_snapshots untouched; count 1 -> 1 ──
 
   def test_pulse_snapshots_untouched_across_c5_up_and_down
     assert conn.table_exists?(:pulse_snapshots),
@@ -130,18 +130,17 @@ class PulseViewsMigrationTest < ActiveSupport::TestCase
     migration.migrate(:down)
 
     assert conn.table_exists?(:pulse_snapshots),
-           'pulse_snapshots must survive C5 up/down (it is the CACHE table, not CONFIG)'
+           'pulse_snapshots must survive the migration up/down (it is the CACHE table, not CONFIG)'
     assert_equal before_cols, conn.columns(:pulse_snapshots).map(&:name).sort,
-                 'pulse_snapshots column set must be byte-identical across C5 up/down'
+                 'pulse_snapshots column set must be byte-identical across the migration up/down'
     assert_equal before_rows, conn.select_value('SELECT COUNT(*) FROM pulse_snapshots').to_i,
-                 'pulse_snapshots row count must be unchanged (C5 never writes the cache)'
+                 'pulse_snapshots row count must be unchanged (the migration never writes the cache)'
   end
 
   def test_migration_source_references_no_pulse_snapshots_token
     src = File.read(migration_path)
     refute_match(/pulse_snapshots/, src,
-                 'the C5 migration must reference pulse_views ONLY — no :pulse_snapshots token ' \
-                 '(INV-C5-CONFIG-NOT-CACHE)')
+                 'the migration must reference pulse_views ONLY — no :pulse_snapshots token')
   end
 
   def test_exactly_one_reversible_cache_table

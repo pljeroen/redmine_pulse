@@ -14,8 +14,8 @@ require 'json-schema'
 require 'yaml'
 require 'time'
 
-# C7 / FR-C7-03 / FC-C7-03 / AC-C7-01 / IT-C7-06 — FULL json-schema-gem validation of the
-# frozen SEED instances AND the live serializer OUTPUT against the frozen schema
+# FULL json-schema-gem validation of the frozen SEED instances AND the live serializer
+# OUTPUT against the frozen schema
 #   docs/specs/pulse-roadmap/contracts/schemas/webhook-payload.json.
 # This is the gem-backed complement to the structural pure-lane check
 # (test/unit/adapters/webhook_payload_serializer_test.rb) — same schema, authoritative
@@ -25,7 +25,7 @@ require 'time'
 # Builds one (AlertEvent, Project, HealthResult[, previous]) triple per EVENT_TYPE (all four)
 # and validates the serializer output. Negative guards prove the schema is actually applied.
 #
-# RED until A9 provides WebhookPayloadSerializer.
+# Requires WebhookPayloadSerializer.
 class WebhookSerializerSchemaTest < ActiveSupport::TestCase
   SPEC = File.expand_path('../../../docs/specs/pulse-roadmap/contracts', File.expand_path(__FILE__))
   SCHEMA = File.join(SPEC, 'schemas/webhook-payload.json')
@@ -78,14 +78,14 @@ class WebhookSerializerSchemaTest < ActiveSupport::TestCase
     )
   end
 
-  # ── (a) each frozen seed instance validates (AC-C7-01a) ─────────────────────
+  # ── (a) each frozen seed instance validates ─────────────────────
   def test_seed_instances_validate_against_frozen_schema
     seeds = YAML.load_file(SEED)
     refute_empty seeds
     seeds.each_with_index { |inst, i| assert_schema(inst, "seed ##{i}") }
   end
 
-  # ── (b) serializer output validates for ALL FOUR event types (AC-C7-01b) ────
+  # ── (b) serializer output validates for ALL FOUR event types ────
   def test_serializer_output_validates_for_all_four_event_types
     normal_health = Health.new(42, 58, :amber, :risk_load)
     prev = { rag: 'green', dominant_signal: 'momentum' }
@@ -107,7 +107,7 @@ class WebhookSerializerSchemaTest < ActiveSupport::TestCase
     assert_equal 'no_data', nd_body['health']['rag']
   end
 
-  # ── redacted output still validates (FC-C7-06e via the gem) ─────────────────
+  # ── redacted output still validates (via the gem) ─────────────────
   def test_redacted_output_still_validates
     body = JSON.parse(serialize(
       event(event_type: :rag_transition),

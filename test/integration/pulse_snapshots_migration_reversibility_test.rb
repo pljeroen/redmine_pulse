@@ -10,15 +10,15 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# [remediation R1] MIGRATION REVERSIBILITY guard.
+# MIGRATION REVERSIBILITY guard.
 # The 20260621000001_create_pulse_snapshots migration must round-trip up -> down
 # cleanly: after `up` the pulse_snapshots table EXISTS; after `down` it is ABSENT
 # (drop_table leaves table_exists? == false). This backfills a regression guard so the
 # planned def-up/def-down hardening (replacing the `change` method) cannot silently
-# regress reversibility. Characterization: GREEN against the current `change` impl (a
+# regress reversibility. Characterization: passes against the current `change` impl (a
 # create_table `change` migration is auto-reversible).
 #
-# Postgres-gated (FC-CA-38) for parity with the sibling store suites.
+# Runs on PostgreSQL (the production engine) for parity with the sibling store suites.
 class PulseSnapshotsMigrationReversibilityTest < ActiveSupport::TestCase
   MIGRATION_VERSION = 20260621000001
   MIGRATION_PATH = File.expand_path(

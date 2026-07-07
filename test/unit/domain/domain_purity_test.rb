@@ -1,11 +1,16 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 
-# FR-34, FR-35 / FC-05, FC-29, FC-30.
 # Static source-scan: no framework/ORM/IO requires; no system-time/entropy tokens
 # in lib/pulse/domain/ or lib/pulse/ports/. The suite itself runs in a bare Ruby
-# process (no Rails/Redmine/DB).
+# process (no Rails/Redmine/DB) — the domain layer uses only the standard library.
 class DomainPurityTest < Minitest::Test
   ROOT = File.expand_path('../../../..', __FILE__)
   DOMAIN_GLOBS = [
@@ -18,10 +23,10 @@ class DomainPurityTest < Minitest::Test
   end
 
   def test_domain_files_exist
-    refute_empty domain_files, 'expected implementation files under lib/pulse/domain (drives RED before GREEN)'
+    refute_empty domain_files, 'expected implementation files under lib/pulse/domain'
   end
 
-  # --- FC-29: no forbidden requires ---
+  # --- no forbidden requires ---
   def test_no_forbidden_requires_in_domain_and_ports
     forbidden = [
       %r{require(_relative)?\s+['"]rails['"]},
@@ -57,7 +62,7 @@ class DomainPurityTest < Minitest::Test
     end
   end
 
-  # --- FC-05: no system-time / randomness / entropy / IO tokens ---
+  # --- no system-time / randomness / entropy / IO tokens ---
   def test_no_system_time_or_entropy_tokens
     banned = [
       /\bTime\.now\b/, /\bTime\.current\b/, /\bDate\.today\b/, /\bDateTime\.now\b/,
@@ -74,14 +79,14 @@ class DomainPurityTest < Minitest::Test
   end
 
   def test_suite_loads_without_rails_or_redmine
-    # Bare-process purity guard (FC-30 / TC-09): only meaningful in the pure-domain
+    # Bare-process purity guard: only meaningful in the pure-domain
     # lane, where Rails/Redmine are genuinely absent. Under the Redmine rake harness
     # the whole app is booted first, so Rails is present regardless of the domain --
     # the assertion would test the harness, not the domain. Skip there; the domain
     # lane is where this guard is verified.
     skip 'bare-process purity guard verified in the pure-domain lane' if defined?(Rails)
     # Negative assertion: neither Rails nor Redmine constants are defined in this
-    # bare process when the domain is loaded (FC-30).
+    # bare process when the domain is loaded.
     require 'pulse/domain/scoring'
     refute defined?(Rails), 'Rails must not be loaded by the domain'
     refute defined?(ActiveRecord), 'ActiveRecord must not be loaded by the domain'

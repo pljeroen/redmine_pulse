@@ -8,7 +8,7 @@
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
 # PulseViewsHelper — prepares the saved-view form's option data OUTSIDE the ERB view
-# (COND-A4-002 / Rule 18), mirroring PulseSettingsHelper. This helper auto-loads for
+# (the view holds no domain/AR logic), mirroring PulseSettingsHelper. This helper auto-loads for
 # PulseViewsController's views (Rails convention: app/helpers/pulse_views_helper.rb).
 # The single Redmine AR queries (Role.givable, the current user's member projects, the
 # issue-status list) live HERE, never in the ERB — the _form partial consumes only the
@@ -73,7 +73,7 @@ module PulseViewsHelper
   end
 
   # The persisted sort column (view.sort is a serialized Array [column, direction]); ''
-  # when unset. The saved-view sort is a minimally-persisted preference (FR-C5-03).
+  # when unset. The saved-view sort is a minimally-persisted preference.
   def pulse_view_sort_column(view)
     Array(view.sort)[0].to_s
   end

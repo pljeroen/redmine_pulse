@@ -1,10 +1,16 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# THAW-RB-001 finding 1 (settings-500): GET-rendering the plugin settings page must
-# return HTTP 200 with a POPULATED risk-tracker multi-select — NOT a 500 / NameError.
+# GET-rendering the plugin settings page must return HTTP 200 with a POPULATED
+# risk-tracker multi-select — NOT a 500 / NameError.
 #
 # The defect: app/views/settings/_pulse_settings.html.erb calls `pulse_tracker_options`,
 # a PulseSettingsHelper method that init.rb `include`s into SettingsController. But when
@@ -15,9 +21,9 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #
 # This is THE test that would have caught the 500. It drives the real admin settings
 # render through the harness and asserts 200 + the multi-select is present + populated.
-# RED now (current init.rb only `include`s the helper into the controller, not the view).
+# (The helper must be exposed to the VIEW, not just `include`d into the controller.)
 #
-# Postgres-gated (FC-CA-38 / COND-A8-004). RED until A9 fixes the helper-scope wiring.
+# Runs on PostgreSQL (the production engine).
 class SettingsRenderTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -26,8 +32,8 @@ class SettingsRenderTest < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # Runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the MySQL CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
@@ -51,8 +57,7 @@ class SettingsRenderTest < ActionDispatch::IntegrationTest
     get '/settings/plugin/redmine_pulse'
     assert_response :success,
                     'the Pulse plugin settings page must render HTTP 200 — the present ' \
-                    'pulse_tracker_options helper is out of VIEW scope and raises NameError -> 500 ' \
-                    '(THAW-RB-001 finding 1)'
+                    'pulse_tracker_options helper is out of VIEW scope and raises NameError -> 500'
   end
 
   def test_plugin_settings_page_does_not_raise_name_error
@@ -62,7 +67,7 @@ class SettingsRenderTest < ActionDispatch::IntegrationTest
     refute_match(/NameError|undefined (?:local variable or )?method .?pulse_tracker_options/,
                  response.body,
                  'the settings partial must not raise NameError on pulse_tracker_options ' \
-                 '(helper must be in VIEW scope — THAW-RB-001 finding 1)')
+                 '(helper must be in VIEW scope)')
   end
 
   def test_plugin_settings_page_renders_populated_risk_tracker_multiselect
@@ -84,20 +89,20 @@ class SettingsRenderTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_match(/#{Regexp.escape(@tracker.name)}/, response.body,
                  'the populated risk-tracker multi-select must list the existing tracker by name ' \
-                 '(proves pulse_tracker_options resolved + rendered — THAW-RB-001 finding 1)')
+                 '(proves pulse_tracker_options resolved + rendered)')
   end
 
-  # ── settings-promote-momentum (CT-02): the 3 new inputs render, page stays 200 ──
+  # ── the 3 promoted momentum/on-track inputs render, and the page stays 200 ──
   # The promoted momentum/on-track settings get number inputs in the Windows
   # (momentum_activity_half, momentum_direction_bias) and Thresholds
-  # (on_track_threshold) fieldsets. RED until A9 adds them to the partial.
+  # (on_track_threshold) fieldsets.
 
   def test_plugin_settings_page_renders_momentum_activity_half_input
     login_admin
     get '/settings/plugin/redmine_pulse'
     assert_response :success
     assert_select "input[name='settings[momentum_activity_half]']", { minimum: 1 },
-                  'the momentum_activity_half number input must render (settings-promote-momentum)'
+                  'the momentum_activity_half number input must render'
   end
 
   def test_plugin_settings_page_renders_momentum_direction_bias_input
@@ -105,7 +110,7 @@ class SettingsRenderTest < ActionDispatch::IntegrationTest
     get '/settings/plugin/redmine_pulse'
     assert_response :success
     assert_select "input[name='settings[momentum_direction_bias]']", { minimum: 1 },
-                  'the momentum_direction_bias number input must render (settings-promote-momentum)'
+                  'the momentum_direction_bias number input must render'
   end
 
   def test_plugin_settings_page_renders_on_track_threshold_input
@@ -113,7 +118,7 @@ class SettingsRenderTest < ActionDispatch::IntegrationTest
     get '/settings/plugin/redmine_pulse'
     assert_response :success
     assert_select "input[name='settings[on_track_threshold]']", { minimum: 1 },
-                  'the on_track_threshold number input must render (settings-promote-momentum)'
+                  'the on_track_threshold number input must render'
   end
 
   def test_plugin_settings_page_with_new_fields_still_renders_200_not_500
@@ -121,19 +126,18 @@ class SettingsRenderTest < ActionDispatch::IntegrationTest
     get '/settings/plugin/redmine_pulse'
     assert_response :success,
                     'adding the 3 promoted momentum/on-track inputs must not regress the render ' \
-                    'to a 500 (THAW-RB-001 / settings-promote-momentum)'
+                    'to a 500'
   end
 
-  # ── snapshot-max-age-refresh (CT-02 EVOLUTION): the snapshot_max_age_minutes number
-  # input renders in the Windows fieldset, and the page stays 200 (no 500). RED until
-  # GREEN adds the input to the partial.
+  # ── the snapshot_max_age_minutes number input renders in the Windows fieldset, and the
+  # page stays 200 (no 500).
 
   def test_plugin_settings_page_renders_snapshot_max_age_minutes_input
     login_admin
     get '/settings/plugin/redmine_pulse'
     assert_response :success
     assert_select "input[name='settings[snapshot_max_age_minutes]']", { minimum: 1 },
-                  'the snapshot_max_age_minutes number input must render (snapshot-max-age-refresh)'
+                  'the snapshot_max_age_minutes number input must render'
   end
 
   def test_plugin_settings_page_with_snapshot_field_still_renders_200_not_500
@@ -143,10 +147,10 @@ class SettingsRenderTest < ActionDispatch::IntegrationTest
                     'adding the snapshot_max_age_minutes input must not regress the render to a 500'
   end
 
-  # ── effort-field auto-detect (CT-02, suggest-only): the settings page surfaces the
-  # numeric custom fields whose name looks like effort / story points as a discovery
-  # HINT when the effort field is unset. Suggestion only — no auto-apply; blank still
-  # means the issue-count Progress mode. RED until GREEN adds the helper + partial hint.
+  # ── effort-field auto-detect (suggest-only): the settings page surfaces the numeric
+  # custom fields whose name looks like effort / story points as a discovery HINT when the
+  # effort field is unset. Suggestion only — no auto-apply; blank still means the
+  # issue-count Progress mode.
 
   def blank_effort_field!
     Setting.plugin_redmine_pulse = (Setting.plugin_redmine_pulse || {}).merge('effort_field' => '')

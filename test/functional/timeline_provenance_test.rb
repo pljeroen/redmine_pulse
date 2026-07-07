@@ -1,17 +1,22 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'json'
 
-# CA-17 / CA-27 / FC-CA-17 / FC-CA-27 (LEGAL tier — INV-NO-INVENTED-DATES): every
-# date/datetime emitted in an API response carries a provenance tag from the CLOSED
-# set {redmine_timestamp, version_due_date, computed, derived_bucket}; no
-# projected/estimated; retrospective bucket = midnight-UTC date-time; version due
+# No invented dates: every date/datetime emitted in an API response carries a provenance
+# tag from the CLOSED set {redmine_timestamp, version_due_date, computed, derived_bucket};
+# no projected/estimated; retrospective bucket = midnight-UTC date-time; version due
 # date = date-only; forward empty when no versions; the two date encodings are
 # distinct. Verified end-to-end through the API projection.
 #
-# COND-A8-004: PostgreSQL 16 gate (FC-CA-38). RED until A9.
+# Runs on PostgreSQL 16 (the production engine).
 class TimelineProvenanceApiTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -23,8 +28,8 @@ class TimelineProvenanceApiTest < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # Runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the MySQL CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
@@ -78,7 +83,7 @@ class TimelineProvenanceApiTest < ActionDispatch::IntegrationTest
     create_version!(project: @project, name: 'v1.0', effective_date: Date.new(2026, 9, 30))
     get_project
     assert_response :success
-    # INV-NO-INVENTED-DATES is about provenance VALUES, not raw substrings: the schema
+    # No-invented-dates is about provenance VALUES, not raw substrings: the schema
     # REQUIRES the operational field name `projected_at` (when the per-request projection
     # ran), so a raw /projected/ scan over the body self-collides with a required key.
     # Scan the actual provenance values and assert none is in the forbidden class.

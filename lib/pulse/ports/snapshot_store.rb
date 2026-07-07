@@ -10,11 +10,11 @@
 module Pulse
   module Ports
     # SnapshotStore is a duck-typed port: any object responding to the methods
-    # below satisfies the contract (FC-CA-04/25). It is stdlib-only — the port
+    # below satisfies the port. It is stdlib-only — the port
     # surface carries NO framework/persistence types; the production adapter
     # (Pulse::Adapters, the AR-backed snapshot store) owns ALL database I/O.
     #
-    # The domain layer NEVER depends on this module (CA-25): it documents the
+    # The domain layer NEVER depends on this module: it documents the
     # cache boundary the controllers (the composition root) consume.
     #
     # Protocol:
@@ -35,8 +35,8 @@ module Pulse
     #
     # The cache key is the tuple (project_id, visibility_context_id,
     # snapshot_fingerprint). The Clock is DELIBERATELY excluded from the key so
-    # the time-derived score re-projects per request without a recompute
-    # (FC-CA-20/21). No ABC/inheritance is required.
+    # the time-derived score re-projects per request without a recompute.
+    # No ABC/inheritance is required.
     module SnapshotStore
     end
   end

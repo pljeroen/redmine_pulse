@@ -11,8 +11,8 @@ require 'pulse/domain/alert_event'
 
 module Pulse
   module Domain
-    # AlertRules — PURE transition detection (C6 / FR-C6-02 / FR-C6-06 / FC-C6-01/02/03).
-    # stdlib + Pulse::Domain only; no ActiveRecord / Redmine / Setting / Mailer / clock.
+    # AlertRules — PURE transition detection.
+    # Standard library + Pulse::Domain only; no ActiveRecord / Redmine / Setting / Mailer / clock.
     #
     #   evaluate(prior_state, health_result, score_delta_threshold:, occurred_at:) -> frozen Array<AlertEvent>
     #
@@ -24,7 +24,7 @@ module Pulse
     #                               (nil OR <= 0 => score_delta never fires)
     #   occurred_at    : Time — injected (no ambient clock in the domain)
     #
-    # RECONCILED predicates (post SAT-C6-01 / SAT-C6-02). For prior p, current c:
+    # RECONCILED predicates. For prior p, current c:
     #   (1) rag_transition   IFF prior_rag PRESENT AND prior_rag != rag AND rag != :no_data
     #   (2) dominant_change  IFF prior_dom PRESENT AND prior_dom != dom AND BOTH non-no-data
     #   (3) no_data_appeared IFF prior_rag PRESENT AND prior_rag != :no_data AND rag == :no_data
@@ -74,7 +74,7 @@ module Pulse
       end
 
       # First run / baseline: no prior row (nil) OR every prior field is nil (a row that has
-      # never been evaluated). Nothing fires — no first-cron flood (FC-C6-03).
+      # never been evaluated). Nothing fires — no first-cron flood.
       def first_run?(prior_state)
         return true if prior_state.nil?
 
@@ -83,7 +83,7 @@ module Pulse
       end
 
       # (1) prior present, band actually changed, and the NEW band is not :no_data
-      #     (into-no-data is handled by no_data_appeared, not rag_transition — SAT-C6-01).
+      #     (into-no-data is handled by no_data_appeared, not rag_transition).
       def rag_transition?(prior_rag, rag)
         !prior_rag.nil? && prior_rag != rag && rag != NO_DATA.to_s
       end

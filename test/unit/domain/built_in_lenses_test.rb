@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'pulse/domain/signal_result'
 require 'pulse/domain/health_result'
@@ -8,15 +14,11 @@ require 'pulse/domain/custom_lens'
 require 'pulse/domain/lens_ranking'
 require 'pulse/domain/built_in_lenses'
 
-# FR-C3-06 / FC-C3-15, FC-C3-16, FC-C3-19.
 # BuiltInLenses.all — the v1 seed catalog: EXACTLY 2 frozen CustomLens entries, in order:
 #   [0] "Delivery risk": {risk_load: 0.5, blocked_load: 0.3, staleness: 0.2}, :asc, threshold nil
 #   [1] "Momentum":      {momentum: 0.6, progress: 0.4},                       :asc, threshold nil
 # .all is frozen; each entry is a frozen CustomLens; no stale/done/blocked entries; each
 # entry is LensRanking-computable (returns Float or nil, never raises).
-#
-# RED NOW: Pulse::Domain::BuiltInLenses is unimplemented -> require raises LoadError. GREEN
-# after A9 creates lib/pulse/domain/built_in_lenses.rb to the exact catalog these tests pin.
 class BuiltInLensesTest < Minitest::Test
   BIL = Pulse::Domain::BuiltInLenses
   CL = Pulse::Domain::CustomLens
@@ -24,13 +26,13 @@ class BuiltInLensesTest < Minitest::Test
   SR = Pulse::Domain::SignalResult
   HR = Pulse::Domain::HealthResult
 
-  # === FC-C3-19 (i): EXACTLY 2 entries; array frozen ===========================
+  # === EXACTLY 2 entries; array frozen ===========================
   def test_catalog_has_exactly_two_entries
     assert_equal 2, BIL.all.size
   end
 
   def test_catalog_array_is_frozen
-    assert BIL.all.frozen?, 'BuiltInLenses.all must be a frozen Array (FC-C3-19)'
+    assert BIL.all.frozen?, 'BuiltInLenses.all must be a frozen Array'
   end
 
   def test_every_entry_is_a_frozen_custom_lens
@@ -40,7 +42,7 @@ class BuiltInLensesTest < Minitest::Test
     end
   end
 
-  # === FC-C3-19 (ii): entry [0] "Delivery risk" pinned exactly ==================
+  # === entry [0] "Delivery risk" pinned exactly ==================
   def test_delivery_risk_entry_pinned
     dl = BIL.all[0]
     assert_equal 'Delivery risk', dl.name
@@ -50,7 +52,7 @@ class BuiltInLensesTest < Minitest::Test
     assert dl.frozen?
   end
 
-  # === FC-C3-19 (iii): entry [1] "Momentum" pinned exactly ======================
+  # === entry [1] "Momentum" pinned exactly ======================
   def test_momentum_entry_pinned
     mo = BIL.all[1]
     assert_equal 'Momentum', mo.name
@@ -60,15 +62,15 @@ class BuiltInLensesTest < Minitest::Test
     assert mo.frozen?
   end
 
-  # === FC-C3-19 (v) / FC-C3-16: no raw-metric (stale/done/blocked) entries =======
+  # === no raw-metric (stale/done/blocked) entries =======
   def test_no_raw_metric_lenses_in_catalog
     assert BIL.all.none? { |l| %w[stale done blocked].include?(l.name) },
            'the catalog holds only weighted-signal-score lenses, not raw-metric passthroughs'
     assert BIL.all.none? { |l| %w[stale done blocked].include?(l.name.downcase) }
   end
 
-  # === FC-C3-19 (vi) / FC-C3-15: each entry is LensRanking-computable ============
-  # Every catalog lens must be rankable by the same machinery a user/C5 lens uses:
+  # === each entry is LensRanking-computable ============
+  # Every catalog lens must be rankable by the same machinery a user/saved-view lens uses:
   # LensRanking.score returns a Float or nil, NEVER raises.
   def test_every_entry_is_lens_ranking_computable_float
     hr = fully_active_health

@@ -13,13 +13,13 @@ module Pulse
     # the SINGLE SOURCE OF TRUTH for which signals exist, in what canonical order, with
     # what default weight, which are always-active, and which enrich the at_risk lens.
     #
-    # The pre-C1 constants (ScoringConfig::DEFAULT_WEIGHTS / ALWAYS_ACTIVE_KEYS and
+    # The original constants (ScoringConfig::DEFAULT_WEIGHTS / ALWAYS_ACTIVE_KEYS and
     # Scoring::CANONICAL_ORDER / AT_RISK_KEYS) are MOVED here; downstream code queries the
     # registry structurally (count derived from the catalog, never a literal 5). Pure
-    # domain: stdlib only, no I/O, no system-time/entropy, all data frozen at load.
+    # domain: standard library only, no I/O, no system-time/entropy, all data frozen at load.
     module SignalRegistry
-      # Immutable per-signal record. Every field present + correctly typed (FC-C1-01,
-      # FC-C2-05: default_on is a Boolean present on EVERY record).
+      # Immutable per-signal record. Every field present + correctly typed
+      # (default_on is a Boolean present on EVERY record).
       class Signal
         attr_reader :key, :default_weight, :canonical_order
 
@@ -42,8 +42,8 @@ module Pulse
           @at_risk
         end
 
-        # FC-C2-05: whether this signal is enabled by the DEFAULT (no-arg) ScoringConfig.
-        # The 5 C1 built-ins are default_on:true; coverage_gap is default_on:false.
+        # Whether this signal is enabled by the DEFAULT (no-arg) ScoringConfig.
+        # The 5 original built-ins are default_on:true; coverage_gap is default_on:false.
         def default_on?
           @default_on
         end
@@ -51,11 +51,11 @@ module Pulse
 
       # The canonical catalog. Declaration order IS the canonical order; canonical_order
       # is assigned as the 0-based index so it is a total strict (injective) order that
-      # reproduces the removed Scoring::CANONICAL_ORDER sequence exactly (FC-C1-03).
-      # C2 EVOLUTION: coverage_gap is registered AFTER blocked_load (canonical_order 5,
+      # reproduces the removed Scoring::CANONICAL_ORDER sequence exactly.
+      # coverage_gap is registered AFTER blocked_load (canonical_order 5,
       # the sixth entry) but is default_on:false — registered yet NOT enabled by the
-      # default (no-arg) ScoringConfig, so the default-OFF path stays the 5 C1 built-ins
-      # and the byte-identical golden gate holds (FC-C2-04/FC-C2-05/FC-C2-06).
+      # default (no-arg) ScoringConfig, so the default-OFF path stays the 5 original built-ins
+      # and the byte-identical golden reference holds.
       SIGNALS = [
         { key: :staleness,    always_active: true,  default_weight: 0.25, at_risk: true,  default_on: true },
         { key: :progress,     always_active: false, default_weight: 0.25, at_risk: false, default_on: true },
@@ -89,20 +89,20 @@ module Pulse
         keys.sort_by { |k| fetch(k).canonical_order }
       end
 
-      # FC-C2-06: {key => default_weight} for the DEFAULT-ON signals only, in canonical
+      # {key => default_weight} for the DEFAULT-ON signals only, in canonical
       # order. Scoped to default_on:true so the sum stays 1.0 (NOT 1.15) — coverage_gap
       # (default_on:false) is EXCLUDED. This is the weight map a no-arg ScoringConfig uses.
       def default_weights
         default_on_keys.map { |k| [k, fetch(k).default_weight] }.to_h
       end
 
-      # FC-C2-06: the DEFAULT-ON signal keys (default_on:true) in canonical order — the
-      # 5 C1 built-ins; coverage_gap (default_on:false) is absent.
+      # The DEFAULT-ON signal keys (default_on:true) in canonical order — the
+      # 5 original built-ins; coverage_gap (default_on:false) is absent.
       def default_on_keys
         canonical_order_keys.select { |k| fetch(k).default_on? }
       end
 
-      # The always-active subset keys (RC-07 anchor): {staleness, momentum, blocked_load}.
+      # The always-active subset keys: {staleness, momentum, blocked_load}.
       def always_active_keys
         keys.select { |k| fetch(k).always_active? }
       end
@@ -112,8 +112,8 @@ module Pulse
         keys.select { |k| fetch(k).at_risk? }
       end
 
-      # The default enabled set == the DEFAULT-ON signals (FC-C2-06). In C1 this was every
-      # built-in (default-all pass-through); C2 registers coverage_gap as default_on:false,
+      # The default enabled set == the DEFAULT-ON signals. Originally this was every
+      # built-in (default-all pass-through); coverage_gap is registered as default_on:false,
       # so the default enabled set is now the 5 default_on keys (== default_on_keys). Resolved
       # programmatically from the catalog; NEVER persisted to settings (fingerprint stability).
       def default_enabled_keys

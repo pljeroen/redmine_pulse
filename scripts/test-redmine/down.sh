@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# redmine_pulse — portfolio / project-health cockpit for Redmine 6.x.
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 # down.sh — Tear down the isolated pulse_test_* stack.
 # Idempotent: safe to run if stack is partially or fully down.
 # SAFETY: ONLY touches pulse_test_* resources. NEVER touches any other containers.

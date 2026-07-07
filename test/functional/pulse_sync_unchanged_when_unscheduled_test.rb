@@ -11,39 +11,36 @@ require File.expand_path('../../../../../test/test_helper', File.expand_path(__F
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'json'
 
-# ══ TIER-1 (FR-C6-03 / INV-ADDITIVE / FC-C6-11) — ADDITIVE guarantee ═══════════
+# The alerting feature is ADDITIVE — it must not change the synchronous request cycle.
 #
-# IT-C6-01. Installing C6 without EVER invoking either rake task must leave the
-# synchronous HTTP request cycle SCORING-INERT relative to the pre-C6 (v0.1.0) release:
-# the request cycle triggers NO scoring, recompute, alert evaluation, or alert delivery,
-# and the scoring/recompute/scheduler path is unchanged. (See ERR-C6-ADDITIVE-01: this is
-# the ACTUAL FR-C6-03 guarantee, NOT a literal byte-identical-HTML claim — the authorized
-# FR-C6-08 "Watch project health" opt-in legitimately adds a watch/unwatch form + one
-# Watcher existence read to the panel, and that lightweight opt-in performs NO scoring.)
-#   (T1-ADD-01) portfolio + per-project projections return the SAME scores for
-#               identical inputs (functional golden — the scoring path ran UNCHANGED,
-#               not short-circuited or altered by any alert coupling);
-#   (T1-ADD-02) NO read or write of pulse_alert_states during any GET/POST cycle;
-#   (T1-ADD-03) STATIC no-coupling grep: the request-cycle code (app/controllers,
-#               app/helpers, request-served views) references NONE of the 7 alert
-#               symbols — they are reachable ONLY from lib/tasks/pulse.rake + the
-#               delivery adapters it composes;
-#   (T1-ADD-04) STATIC no-new-runtime-gem grep: Gemfile/gemspec add no worker/
-#               scheduler/Redis hard dependency (scheduling is operator cron, DEC-08).
+# Installing alerting without EVER invoking either rake task must leave the synchronous
+# HTTP request cycle SCORING-INERT relative to the earlier (v0.1.0) release: the request
+# cycle triggers NO scoring, recompute, alert evaluation, or alert delivery, and the
+# scoring/recompute/scheduler path is unchanged. (This is a scoring guarantee, NOT a
+# literal byte-identical-HTML claim — the "Watch project health" opt-in legitimately adds
+# a watch/unwatch form + one Watcher existence read to the panel, and that lightweight
+# opt-in performs NO scoring.)
+#   (1) portfolio + per-project projections return the SAME scores for
+#       identical inputs (functional golden — the scoring path ran UNCHANGED,
+#       not short-circuited or altered by any alert coupling);
+#   (2) NO read or write of pulse_alert_states during any GET/POST cycle;
+#   (3) STATIC no-coupling grep: the request-cycle code (app/controllers,
+#       app/helpers, request-served views) references NONE of the 7 alert
+#       symbols — they are reachable ONLY from lib/tasks/pulse.rake + the
+#       delivery adapters it composes;
+#   (4) STATIC no-new-runtime-gem grep: Gemfile/gemspec add no worker/
+#       scheduler/Redis hard dependency (scheduling is operator cron).
 #
-# This suite NEVER calls redmine_pulse:recompute or redmine_pulse:scan_and_alert.
-# RED-by-construction on the harness: the alert pipeline / pulse_alert_states table
-# do not exist yet; T1-ADD-02 fails until the additive boundary is provably held,
-# and the static gates fail closed until A9 keeps the alert symbols off the request
-# path. A9 makes all four GREEN by shipping the alert pipeline ONLY under the rake
-# composition root.
+# This suite NEVER calls redmine_pulse:recompute or redmine_pulse:scan_and_alert. It keeps
+# the alert pipeline off the request path by shipping it ONLY under the rake composition
+# root.
 #
 # Postgres-gated for parity with the sibling functional suites.
 class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
   PLUGIN_ROOT = File.expand_path('../../..', File.expand_path(__FILE__))
-  # The 7 alert symbols that MUST NOT appear on the request cycle path (T1-ADD-03).
+  # The 7 alert symbols that MUST NOT appear on the request cycle path.
   ALERT_SYMBOLS = %w[
     scan_and_alert AlertRules AlertDelivery SubscriptionStore AlertStateStore
     PulseAlertState Pulse::Mailer
@@ -105,9 +102,9 @@ class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
     ActiveSupport::Notifications.unsubscribe(sub) if sub
   end
 
-  # ── T1-ADD-01: functional golden — scores unchanged, scoring path scoring-inert ──
-  #    (ERR-C6-ADDITIVE-01: the guarantee is that the SCORING path ran unchanged and no
-  #    alert coupling short-circuited it — NOT a byte-identical-HTML claim.)
+  # ── (1) functional golden — scores unchanged, scoring path scoring-inert ──
+  #    (the guarantee is that the SCORING path ran unchanged and no alert coupling
+  #    short-circuited it — NOT a byte-identical-HTML claim.)
   def test_portfolio_json_scores_unchanged_without_any_rake_run
     with_settings rest_api_enabled: '1' do
       get '/pulse/portfolio.json', headers: api_key_header(@user)
@@ -116,9 +113,9 @@ class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     rows = body['projects'] || body['data'] || body
     refute_nil rows, 'portfolio JSON has a projects payload'
-    # The score is produced by the pre-C6 engine; the exact value is provenance-checked
+    # The score is produced by the baseline engine; the exact value is provenance-checked
     # elsewhere — here we assert the served row carries a score field, proving the
-    # scoring path ran UNCHANGED (scoring-inert additive guarantee, ERR-C6-ADDITIVE-01) —
+    # scoring path ran UNCHANGED (scoring-inert additive guarantee) —
     # not short-circuited or altered by any alert coupling.
     first = rows.is_a?(Array) ? rows.first : rows.values.first
     assert first.is_a?(Hash), 'a portfolio row is a Hash produced by the scoring engine'
@@ -131,7 +128,7 @@ class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  # ── T1-ADD-02: NO pulse_alert_states read/write on the request cycle ─────────
+  # ── (2) NO pulse_alert_states read/write on the request cycle ─────────
   def test_no_alert_state_write_during_request_cycle
     writes = capture_alert_state_writes do
       with_settings rest_api_enabled: '1' do
@@ -154,7 +151,7 @@ class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
                  "request cycle must NOT read pulse_alert_states (got: #{reads.inspect})"
   end
 
-  # ── T1-ADD-03: STATIC no-coupling grep of the request-cycle code ─────────────
+  # ── (3) STATIC no-coupling grep of the request-cycle code ─────────────
   def test_no_alert_symbol_appears_in_request_cycle_code
     offenders = []
     REQUEST_CYCLE_DIRS.each do |dir|
@@ -175,7 +172,7 @@ class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
                  offenders.join("\n")
   end
 
-  # ── T1-ADD-04: STATIC no-new-runtime-gem grep of Gemfile + gemspec ───────────
+  # ── (4) STATIC no-new-runtime-gem grep of Gemfile + gemspec ───────────
   def test_no_new_runtime_scheduler_or_worker_gem
     forbidden = %w[sidekiq delayed_job resque sucker_punch good_job que
                    whenever rufus-scheduler clockwork redis]
@@ -189,6 +186,6 @@ class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
     end
     assert_equal [], offenders,
                  "no scheduler/worker/Redis hard runtime gem may be added — " \
-                 "scheduling is operator-side cron (DEC-08):\n" + offenders.join("\n")
+                 "scheduling is operator-side cron:\n" + offenders.join("\n")
   end
 end

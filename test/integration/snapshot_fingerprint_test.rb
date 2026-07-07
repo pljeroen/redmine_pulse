@@ -1,9 +1,15 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# snapshot_fingerprint correctness + invalidation (MS-26/27/28, FC-27/28/29). RED.
+# snapshot_fingerprint correctness + invalidation.
 #
 # Canonical API:
 #   fp = Pulse::Adapters::SnapshotFingerprint.new(user, project, settings_provider:)
@@ -40,7 +46,7 @@ class SnapshotFingerprintTest < ActiveSupport::TestCase
     fp(settings_provider: settings_provider).value
   end
 
-  # --- MS-26 / FC-27: determinism ---------------------------------------------
+  # --- determinism ---------------------------------------------
 
   def test_same_state_yields_same_fingerprint
     create_issue!(project: @project, author: @user)
@@ -48,7 +54,7 @@ class SnapshotFingerprintTest < ActiveSupport::TestCase
     assert_kind_of String, value
   end
 
-  # --- MS-26 / FC-27 component 1/2: issue update + deletion -------------------
+  # --- component 1/2: issue update + deletion -------------------
 
   def test_updating_visible_issue_changes_fingerprint
     i = create_issue!(project: @project, author: @user, updated_on: Time.utc(2026, 5, 1, 0))
@@ -65,7 +71,7 @@ class SnapshotFingerprintTest < ActiveSupport::TestCase
     refute_equal before, value, 'visible_issue_count component catches deletion'
   end
 
-  # --- MS-27 / FC-28: cross-project blocker open<->closed flip ----------------
+  # --- cross-project blocker open<->closed flip ----------------
 
   def test_cross_project_blocker_flip_changes_blocker_fingerprint
     blocked = create_issue!(project: @project, author: @user, status: open_status)
@@ -83,7 +89,7 @@ class SnapshotFingerprintTest < ActiveSupport::TestCase
                  'visible cross-project blocker state flip must change blocker_fingerprint'
   end
 
-  # --- MS-28 / FC-29: priority reorder changes; name-only rename does NOT ------
+  # --- priority reorder changes; name-only rename does NOT ------
 
   def test_priority_reorder_changes_priority_enum_version
     priorities = IssuePriority.order(:position).to_a
@@ -109,7 +115,7 @@ class SnapshotFingerprintTest < ActiveSupport::TestCase
     assert_equal before_fp, value, 'name-only rename does not change snapshot_fingerprint'
   end
 
-  # --- MS-26 / FC-27 component 7: settings change -----------------------------
+  # --- component 7: settings change -----------------------------
 
   def test_settings_change_changes_fingerprint
     create_issue!(project: @project, author: @user)
@@ -118,14 +124,14 @@ class SnapshotFingerprintTest < ActiveSupport::TestCase
     refute_equal before, after, 'settings_version_hash component changes the fingerprint'
   end
 
-  # --- MS-26 / FC-27: Clock excluded by design --------------------------------
+  # --- Clock excluded by design --------------------------------
 
   def test_clock_advance_does_not_change_fingerprint
     create_issue!(project: @project, author: @user)
     # SnapshotFingerprint takes NO clock; advancing wall time / clock cannot affect it.
     a = value
     b = value
-    assert_equal a, b, 'fingerprint excludes Clock.today (DEC-11) -> stable across clock advance'
+    assert_equal a, b, 'fingerprint excludes Clock.today -> stable across clock advance'
     # Falsification: the constructor must not accept a clock that perturbs the value.
     refute Pulse::Adapters::SnapshotFingerprint.instance_method(:initialize)
                                                .parameters.flatten.include?(:clock),

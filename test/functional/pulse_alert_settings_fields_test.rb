@@ -10,8 +10,8 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# C6 remediation (FR-C6-08 auto-subscribe role + FR-C6-06 score_delta N): the ADMIN settings
-# fields. The plugin settings page must:
+# Alerting admin settings fields (auto-subscribe role + score_delta threshold). The plugin
+# settings page must:
 #   (1) render the auto_subscribe_role_id <select> (blank + one option per givable role) and
 #       the score_delta threshold number input;
 #   (2) POST them through Redmine's SettingsController#plugin path and PERSIST the two
@@ -20,7 +20,7 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #       candidates in subscribers_for; a persisted score_delta threshold is read live by the
 #       scan.
 #
-# Postgres-gated (FC-CA-38) for parity with the sibling settings/alert suites.
+# Runs on PostgreSQL for parity with the sibling settings/alert suites.
 class PulseAlertSettingsFieldsTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -74,7 +74,7 @@ class PulseAlertSettingsFieldsTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select "input[type=number][name=?]", 'settings[pulse_alert_score_delta_threshold]',
                   { minimum: 1 },
-                  'the score-delta threshold number input must render (FR-C6-06)'
+                  'the score-delta threshold number input must render'
   end
 
   def test_settings_page_with_alert_fields_still_renders_200_not_500

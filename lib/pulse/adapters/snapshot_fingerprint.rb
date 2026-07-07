@@ -11,29 +11,29 @@ require 'digest'
 
 module Pulse
   module Adapters
-    # SnapshotFingerprint (MS-26/27/28, FC-27/28/29) — the content-addressed cache
-    # key over EVERY non-time-dependent score input (DEC-11 / spec §6.4). Nine
-    # ordered components; the Clock (today) is DELIBERATELY excluded so the
-    # time-derived part re-projects per request without a snapshot recompute.
+    # SnapshotFingerprint — the content-addressed cache key over EVERY
+    # non-time-dependent score input. Nine ordered components; the Clock (today) is
+    # DELIBERATELY excluded so the time-derived part re-projects per request without a
+    # snapshot recompute.
     #
     # Components (ordered):
     #   1. max(updated_on) over the requester's visible issues
     #   2. visible_issue_count (catches deletion when max(updated_on) does not move)
     #   3. latest_changeset_id (ONLY when repository module + :view_changesets held)
-    #   4. blocker_fingerprint (FC-28; cross-project visible blocker state flip)
+    #   4. blocker_fingerprint (cross-project visible blocker state flip)
     #   5. sorted {version_id => due_date}
-    #   6. priority_enum_version (FC-29; (id,position,is_default) only — NOT names)
+    #   6. priority_enum_version ((id,position,is_default) only — NOT names)
     #   7. settings_version_hash
     #   8. visibility_context_id
-    #   9. effort_field_visibility (S1; mapped effort field id + its per-user
+    #   9. effort_field_visibility (mapped effort field id + its per-user
     #      visibility to THIS requester on THIS project — catches a field-visibility
     #      revoke that degrades effort() while max(updated_on) is unmoved)
-    #  10. active_profile_id (C4; FC-C4-08/09) — the RESOLVED profile id, ALREADY
+    #  10. active_profile_id — the RESOLVED profile id, ALREADY
     #      resolved by the controller/engine BEFORE the fingerprint is constructed (this
     #      is a PURE input; the fingerprint does NOT resolve profiles internally — it holds
-    #      no provider dependency). THE SECURITY RULE (FC-C4-05B): for the reserved
+    #      no provider dependency). THE SECURITY RULE: for the reserved
     #      "default" id OR nil the component is OMITTED entirely, so the fingerprint is
-    #      BYTE-IDENTICAL to the pre-C4 9-component hash (zero cache invalidation on
+    #      BYTE-IDENTICAL to the profile-unaware 9-component hash (zero cache invalidation on
     #      upgrade for default-only installs). A NON-default id folds in as a distinct
     #      10th component => a distinct hash => the cache CANNOT cross-serve profile A's
     #      snapshot for a profile-B request.
@@ -42,9 +42,9 @@ module Pulse
     class SnapshotFingerprint
       RESERVED_DEFAULT_ID = 'default'
 
-      # NOTE: NO clock parameter — Clock(today) is excluded by design (DEC-11).
+      # NOTE: NO clock parameter — Clock(today) is excluded by design.
       # active_profile_id is the RESOLVED profile id (a pure input); nil / "default" OMIT
-      # the profile component (FC-C4-05B / FC-C4-08).
+      # the profile component.
       def initialize(user, project, settings_provider:, active_profile_id: nil)
         @user = user
         @project = project
@@ -53,13 +53,13 @@ module Pulse
       end
 
       # -> String, hash over the 9 base components + the 10th (active_profile_id) ONLY when
-      # a non-default profile is active (FC-C4-05B: default/nil omits it => pre-C4 hash).
+      # a non-default profile is active (default/nil omits it => profile-unaware hash).
       def value
         Digest::SHA256.hexdigest(components.join("\n"))
       end
 
       # -> String, component 6 exposed for falsification. (id, position, is_default)
-      #    tuples only; a name-only rename leaves this unchanged (FC-29 / EA-MS-004).
+      #    tuples only; a name-only rename leaves this unchanged.
       def priority_enum_version
         tuples = IssuePriority.order(:id).pluck(:id, :position, :is_default)
         Digest::SHA256.hexdigest(tuples.map { |t| t.join(':') }.join('|'))
@@ -79,9 +79,9 @@ module Pulse
           visibility_context_id,
           effort_field_visibility
         ]
-        # FC-C4-05B: OMIT the profile component for the reserved "default" id (or nil) so
-        # the joined component vector — and thus the hash — is BYTE-IDENTICAL to the pre-C4
-        # 9-component value. A non-default id folds in as a distinct 10th component.
+        # OMIT the profile component for the reserved "default" id (or nil) so
+        # the joined component vector — and thus the hash — is BYTE-IDENTICAL to the
+        # profile-unaware 9-component value. A non-default id folds in as a distinct 10th component.
         base << @active_profile_id.to_s if profile_component?
         base
       end
@@ -121,7 +121,7 @@ module Pulse
         visible_scope.count.to_s
       end
 
-      # Component 3: only meaningful when the user may see changesets (FC-10/THAW-001).
+      # Component 3: only meaningful when the user may see changesets.
       def latest_changeset_id
         return '' unless @project.module_enabled?(:repository)
         return '' unless @user.allowed_to?(:view_changesets, @project)
@@ -130,7 +130,7 @@ module Pulse
         Changeset.where(repository_id: @project.repository.id).maximum(:id).to_s
       end
 
-      # Component 4 (FC-28): over `blocks` relations whose blocked endpoint is one of
+      # Component 4: over `blocks` relations whose blocked endpoint is one of
       # this project's visible OPEN issues, the sorted tuple-hash of
       # (relation_id, issue_from_id, issue_from.is_closed, issue_from.updated_on) for
       # each blocker the requester can see. Catches a cross-project visible blocker

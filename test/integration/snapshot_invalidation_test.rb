@@ -1,17 +1,22 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# CA-22 / FC-CA-22: INVALIDATION MATRIX (M1..M8 + Mneg). Each input-class change MUST
-# move snapshot_fingerprint for the AFFECTED project (so the next GET is a miss and
-# recomputes), while an UNRELATED project's fingerprint stays unchanged; a clock
-# advance with zero data change must NOT move it (Mneg / FC-CA-21).
+# INVALIDATION MATRIX (M1..M8 + Mneg). Each input-class change MUST move
+# snapshot_fingerprint for the AFFECTED project (so the next GET is a miss and recomputes),
+# while an UNRELATED project's fingerprint stays unchanged; a clock advance with zero data
+# change must NOT move it (Mneg).
 #
 # Sits on top of the as-built SnapshotFingerprint (8 components) + VisibilityContext.
-# Postgres-gated (FC-CA-38). RED is inherited from the controller/store contract: this
-# suite uses already-built adapters but encodes the controllers-api invalidation
-# obligations as falsifiable per-row assertions.
+# Runs on PostgreSQL (the production engine). Encodes the invalidation obligations as
+# falsifiable per-row assertions.
 class SnapshotInvalidationTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -20,8 +25,8 @@ class SnapshotInvalidationTest < ActiveSupport::TestCase
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # Runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the MySQL CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
@@ -47,7 +52,7 @@ class SnapshotInvalidationTest < ActiveSupport::TestCase
   end
 
   # `global:` true for fingerprint inputs that are GLOBAL (settings_version_hash /
-  # priority_enum_version, components 7 + 6 per spec §6.4): a change to a global input
+  # priority_enum_version, two of the fingerprint components): a change to a global input
   # necessarily moves EVERY project's fingerprint, so the unrelated-@other-unchanged
   # clause does not hold and is skipped. The real requirement still holds: the target
   # project's fingerprint MUST move (the global change DOES invalidate it).
@@ -91,7 +96,7 @@ class SnapshotInvalidationTest < ActiveSupport::TestCase
   end
 
   # M6: priority-enum change (id/position/is_default) -> priority_enum_version moves;
-  # a name-only rename must NOT churn (FC-29 / EA-MS-004).
+  # a name-only rename must NOT churn.
   def test_M6_priority_position_change_moves_fp_but_rename_does_not
     pr = IssuePriority.first
     # priority_enum_version is a GLOBAL fingerprint input (component 6): a position
@@ -128,7 +133,7 @@ class SnapshotInvalidationTest < ActiveSupport::TestCase
                      'a visibility-predicate change moves visibility_context_id (M8)'
   end
 
-  # Mneg: clock advance, zero data change -> fingerprint UNCHANGED (FC-CA-21).
+  # Mneg: clock advance, zero data change -> fingerprint UNCHANGED.
   def test_Mneg_clock_advance_does_not_move_fp
     before = fp
     # The fingerprint takes no clock input; recomputing with no data change is stable.

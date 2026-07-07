@@ -12,31 +12,27 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 require 'json'
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TIER-1 SECURITY — FR-C5-02 VISIBILITY MODEL (FC-C5-05, FC-C5-06, FC-C5-07)
+# SAVED-VIEW VISIBILITY MODEL (a security-critical guarantee)
 # ═══════════════════════════════════════════════════════════════════════════════
-# The saved-view visibility model mirrors IssueQuery (spec §6 / DEC-07):
+# The saved-view visibility model mirrors IssueQuery:
 #   * PRIVATE view  -> visible ONLY to its owner (user_id == viewer.id)
 #   * PUBLIC  view  -> visible to ANY cockpit viewer (holds :view_pulse)
 #   * ROLES   view  -> visible ONLY to members holding a listed role (role_ids)
-# Views are PRIVATE by default (FR-C5-04). Publishing a public/role-scoped view is
+# Views are PRIVATE by default. Publishing a public/role-scoped view is
 # gated by the GLOBAL permission :manage_public_pulse_views — the check is
 # User.current.allowed_to?(:manage_public_pulse_views, nil, global: true). Per stock
-# Redmine semantics (confirmed by live probe, TD-C5-01), that GLOBAL check is satisfied
+# Redmine semantics (confirmed by live probe), that GLOBAL check is satisfied
 # by holding the permission through a role on ANY project — a per-project role DOES count.
 # The negative control is therefore a user who holds the permission in NO project at all
 # (test_publish_denied_without_manage_public_permission); such a user is denied (403).
 #
 # Enforcement lives at BOTH the AR scope PulseView.visible_to (the single authoritative
-# read gate, FC-C5-05) AND the controller (index returns only visible_to(User.current);
+# read gate) AND the controller (index returns only visible_to(User.current);
 # a non-visible id -> 404 before the action body reads it).
 #
-# RED-by-construction: PulseView, PulseViewsController, PulseView.visible_to, the
-# :manage_public_pulse_views permission and the /pulse/views routes do not exist yet
-# (NameError / RoutingError / unknown-permission). A9 implements GREEN to this contract.
-#
-# Postgres-evidence lane (COND-A8-004 / GL-CI-MYSQL): the visible_to scope composes
-# member/role SQL that must be verified on the deployed engine; skip (not fail) on a
-# non-Postgres adapter so the CI MySQL legs stay green.
+# Runs on PostgreSQL (the production engine): the visible_to scope composes member/role
+# SQL that must be verified on the deployed engine; skip (not fail) on a non-Postgres
+# adapter so the MySQL CI legs stay green.
 class PulseViewsVisibilityTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -89,7 +85,7 @@ class PulseViewsVisibilityTest < ActionDispatch::IntegrationTest
     PulseView.create!(attrs)
   end
 
-  # ── FC-C5-05 / FC-C5-06 — the visible_to READ scope (single authoritative gate) ──
+  # ── the visible_to READ scope (single authoritative gate) ──
 
   def test_private_view_invisible_to_non_owner_via_scope
     v = make_view(name: 'A private', user: @user_a, visibility: 'private')
@@ -118,17 +114,17 @@ class PulseViewsVisibilityTest < ActionDispatch::IntegrationTest
   end
 
   def test_default_visibility_is_private_owner_only
-    # No explicit visibility -> private (FR-C5-04). Owner sees it; a non-owner does not.
+    # No explicit visibility -> private. Owner sees it; a non-owner does not.
     v = PulseView.create!(name: 'Defaulted', user_id: @user_a.id, project_scope: 'all',
                           lens_ref: 'health')
     assert_equal 'private', v.reload.visibility,
-                 'a view with no explicit visibility must default to private (FR-C5-04)'
+                 'a view with no explicit visibility must default to private'
     assert_includes PulseView.visible_to(@user_a).to_a, v, 'owner sees the defaulted-private view'
     refute_includes PulseView.visible_to(@user_b).to_a, v,
                     'LEAK: defaulted-private view visible to a non-owner'
   end
 
-  # ── FC-C5-06 — the controller index returns only visible_to(User.current) ──
+  # ── the controller index returns only visible_to(User.current) ──
 
   def test_index_omits_other_users_private_view
     private_a = make_view(name: 'A-only private', user: @user_a, visibility: 'private')
@@ -165,7 +161,7 @@ class PulseViewsVisibilityTest < ActionDispatch::IntegrationTest
                     'a non-visible view id must 404 (existence hiding) BEFORE the body renders — not 200'
   end
 
-  # ── FC-C5-07 — publish gate: public/roles requires the GLOBAL permission ──
+  # ── publish gate: public/roles requires the GLOBAL permission ──
 
   def test_publish_public_denied_without_global_permission
     # @user_b holds only :view_pulse (viewer role) — no manage_public_pulse_views.
@@ -212,8 +208,8 @@ class PulseViewsVisibilityTest < ActionDispatch::IntegrationTest
     assert_equal 'public', PulseView.order(:id).last.visibility
   end
 
-  # ── FC-C5-07 POSITIVE CONTROL — a GLOBAL holder publishes a ROLE-SCOPED view ──
-  # A10-C5-002: the create tests covered public-publish success and roles-publish DENIAL, but
+  # ── POSITIVE CONTROL — a GLOBAL holder publishes a ROLE-SCOPED view ──
+  # The create tests covered public-publish success and roles-publish DENIAL, but
   # not roles-publish SUCCESS by a global-permission holder. This completes the publish matrix:
   # visibility=roles with role_ids, by a :manage_public_pulse_views holder, persists as roles
   # with the submitted role_ids (the publish gate ALLOWS it; the row is a real role-scoped view).
@@ -239,7 +235,7 @@ class PulseViewsVisibilityTest < ActionDispatch::IntegrationTest
                     'LEAK: the published role-scoped view is visible to a non-role-holder'
   end
 
-  # ── A10-C5-002 / Rule 40 — GUI CRUD completeness for the previously-unauthorable ops ──
+  # ── GUI CRUD completeness for the previously-unauthorable ops ──
   # These POST the exact structured params the _form partial emits (role_ids[], and
   # scope_params[project_ids][]) so the previously-BROKEN GUI create paths (visibility=roles,
   # project_scope=selected) are proven end-to-end: persist -> render -> visible per visibility.
@@ -306,8 +302,8 @@ class PulseViewsVisibilityTest < ActionDispatch::IntegrationTest
                     'LEAK: a private selected-scope view visible to a non-owner'
   end
 
-  # ── FC-C5-07 NEGATIVE CONTROL — no permission in any project ──
-  # TD-C5-01 (2026-07-06): the original test asserted that a user holding
+  # ── NEGATIVE CONTROL — no permission in any project ──
+  # (2026-07-06): the original test asserted that a user holding
   # :manage_public_pulse_views via a per-project role on an UNRELATED project would NOT
   # satisfy allowed_to?(..., nil, global: true). This assumption was wrong: stock Redmine's
   # User#allowed_to?(action, nil, global: true) returns TRUE if the user holds the

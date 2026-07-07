@@ -1,16 +1,22 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# settings-help contract (E1): every scoring setting on the plugin settings page
+# settings-help behavior: every scoring setting on the plugin settings page
 # carries an inline, i18n-keyed help paragraph (<em class="info">) stating what it
 # influences + its shipped default, grouped under a per-fieldset intro.
 #
 # These tests render the REAL admin settings partial through the harness (the
-# settings render is the historically-fragile surface — THAW-RB-001 settings-500),
+# settings render is the historically-fragile surface — the settings-500 crash),
 # and assert the help is actually present in the rendered output, not just that the
-# keys exist. RED until the partial + en.yml help keys are added.
+# keys exist. Requires the partial + en.yml help keys.
 #
 # Postgres-gated (matches the existing settings_render_test evidence lane).
 class SettingsHelpTest < ActionDispatch::IntegrationTest
@@ -19,8 +25,8 @@ class SettingsHelpTest < ActionDispatch::IntegrationTest
   fixtures :users, :roles, :trackers, :enumerations, :issue_statuses
 
   # The 17 per-setting help keys + 4 group-intro keys from HELP_SPEC.
-  # 14 original + 3 promoted by settings-promote-momentum (CT-02): the momentum
-  # activity-half, momentum direction-bias and on-track threshold each carry inline help.
+  # 14 original + 3 promoted momentum settings: the momentum activity-half, momentum
+  # direction-bias and on-track threshold each carry inline help.
   FIELD_HELP_KEYS = %i[
     label_pulse_help_effort_field label_pulse_help_risk_trackers label_pulse_help_blocked_status
     label_pulse_help_weight_staleness label_pulse_help_weight_progress label_pulse_help_weight_momentum
@@ -60,7 +66,7 @@ class SettingsHelpTest < ActionDispatch::IntegrationTest
     (FIELD_HELP_KEYS + GROUP_INTRO_KEYS).each do |key|
       val = I18n.t(key, default: '')
       assert val.to_s.strip.length.positive?,
-             "missing/empty i18n help key #{key} (settings-help E1)"
+             "missing/empty i18n help key #{key} (settings-help)"
     end
   end
 
@@ -72,7 +78,7 @@ class SettingsHelpTest < ActionDispatch::IntegrationTest
     # >= 14 field helps; group intros add more. Inline <em class="info"> (Redmine hint).
     assert_select 'em.info', { minimum: FIELD_HELP_KEYS.size },
                   "expected an inline 'em.info' help paragraph for each of the " \
-                  "#{FIELD_HELP_KEYS.size} settings (settings-help E1)"
+                  "#{FIELD_HELP_KEYS.size} settings (settings-help)"
   end
 
   # ── 3. the help text states the shipped defaults ────────────────────────────
@@ -98,7 +104,7 @@ class SettingsHelpTest < ActionDispatch::IntegrationTest
       'Default: 0.5'       # on_track_threshold (settings-promote-momentum)
     ].each do |phrase|
       assert_includes body, phrase,
-                      "settings help must surface the shipped default phrase #{phrase.inspect} (E1)"
+                      "settings help must surface the shipped default phrase #{phrase.inspect}"
     end
   end
 
@@ -115,13 +121,13 @@ class SettingsHelpTest < ActionDispatch::IntegrationTest
       'quiet, risky or blocked'    # windows intro (how quickly a project is flagged)
     ].each do |phrase|
       assert_includes body, phrase,
-                      "settings page must render the group intro phrase #{phrase.inspect} (E1)"
+                      "settings page must render the group intro phrase #{phrase.inspect}"
     end
   end
 
-  # ── snapshot-max-age-refresh (CT-02 EVOLUTION): the freshness-cap help renders,
-  # states its shipped default (60), and its i18n key resolves. RED until GREEN adds
-  # the label_pulse_help_snapshot_max_age_minutes key + the partial help paragraph.
+  # ── snapshot-max-age-refresh: the freshness-cap help renders, states its shipped
+  # default (60), and its i18n key resolves. Requires the
+  # label_pulse_help_snapshot_max_age_minutes key + the partial help paragraph.
 
   def test_snapshot_max_age_minutes_help_key_resolves
     val = I18n.t(:label_pulse_help_snapshot_max_age_minutes, default: '')
@@ -142,6 +148,6 @@ class SettingsHelpTest < ActionDispatch::IntegrationTest
     login_admin
     get '/settings/plugin/redmine_pulse'
     assert_response :success,
-                    'adding inline help must not regress the settings render (THAW-RB-001)'
+                    'adding inline help must not regress the settings render'
   end
 end

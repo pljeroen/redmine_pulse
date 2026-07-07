@@ -1,29 +1,31 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 require 'yaml'
 
-# FR-C2-05 / AC-C2-05 / FC-C2-10 — the TIER-1 RELEASE-CRITICAL default-OFF byte-identical
-# golden gate (the DESIGNATED evidence pointer for the C2 backward-compat guarantee).
+# The release-critical default-OFF byte-identical golden gate (the designated evidence
+# pointer for the coverage_gap backward-compatibility guarantee).
 #
-# With coverage_gap DISABLED (the default: enabled set == the 5 C1 built-ins), the
+# With coverage_gap DISABLED (the default: enabled set == the 5 original built-ins), the
 # HealthResult produced for ANY ProjectMetrics input — INCLUDING arbitrary values of the
 # NEW open_issue_count/covered_sum fields — MUST be EXACTLY equal (==, NO epsilon on any
-# field) to the captured pre-C2 (== C1) full-precision baseline for the same pre-C2 scalar
-# inputs. All eight HealthResult fields, each breakdown SignalResult field, exact.
+# field) to the captured baseline full-precision result for the same scalar inputs. All
+# eight HealthResult fields, each breakdown SignalResult field, exact.
 #
-# Baseline provenance (A-DATA-GOLDEN-BASELINE): the SAME full-precision pre-C1 baseline
-# captured for the C1 gate (test/fixtures/scoring/pre_c1_baseline_full_precision.yaml).
-# The C1 default config produced these values; the C2 DEFAULT config (default_on 5-signal
-# set, coverage_gap default_on:false) must reproduce them bit-for-bit — the new oic/cs
-# fields are present-but-UNREAD on the default path. The fixtures below EXTEND each input
-# with arbitrary non-zero oic/cs (e.g. oic:7, cs:3.5) to PROVE the new fields do NOT affect
-# the 5-signal score when coverage_gap is OFF.
-#
-# RED NOW: ProjectMetrics.new does not yet accept open_issue_count:/covered_sum: (metrics_from
-# raises ArgumentError), and the default config path (default_on-scoped default_weights) is
-# not yet in place. GREEN after A9. This is the gating criterion for C2.
+# Baseline provenance: the SAME full-precision baseline captured for the backward-compat
+# gate (test/fixtures/scoring/pre_c1_baseline_full_precision.yaml). The original default
+# config produced these values; the DEFAULT config (default_on 5-signal set, coverage_gap
+# default_on:false) must reproduce them bit-for-bit — the new oic/cs fields are
+# present-but-UNREAD on the default path. The fixtures below EXTEND each input with
+# arbitrary non-zero oic/cs (e.g. oic:7, cs:3.5) to PROVE the new fields do NOT affect the
+# 5-signal score when coverage_gap is OFF.
 class CoverageGapDefaultOffGoldenTest < Minitest::Test
   include ScoringSupport
 
@@ -38,7 +40,7 @@ class CoverageGapDefaultOffGoldenTest < Minitest::Test
     YAML.safe_load_file(BASELINE)['cases']
   end
 
-  # The C2 DEFAULT config — built through the default_on-scoped default path. weights: nil
+  # The DEFAULT config — built through the default_on-scoped default path. weights: nil
   # => SignalRegistry.default_weights (the 5 default_on signals, Σ==1.0). This exercises the
   # exact default plumbing coverage_gap must NOT perturb.
   def default_config
@@ -92,7 +94,7 @@ class CoverageGapDefaultOffGoldenTest < Minitest::Test
     end
   end
 
-  # === FC-C2-10: the exact-equality default-OFF gate =========================
+  # === the exact-equality default-OFF gate =========================
   def test_default_off_output_byte_identical_to_pre_c2_baseline
     baseline.each_with_index do |(name, row), idx|
       h = Pulse::Domain::Scoring.score(metrics_from(row['inputs'], idx), fixed_clock, default_config)
@@ -114,9 +116,9 @@ class CoverageGapDefaultOffGoldenTest < Minitest::Test
       assert_exact num(lk['done']), h.lens_keys[:done], "#{name}: lens done (EXACT)"
       assert_exact lk['blocked'], h.lens_keys[:blocked], "#{name}: lens blocked"
 
-      # breakdown: EXACTLY the 5 C1 rows, coverage_gap ABSENT, every field exact.
+      # breakdown: EXACTLY the 5 original rows, coverage_gap ABSENT, every field exact.
       assert_equal %i[staleness progress momentum risk_load blocked_load],
-                   h.breakdown.map(&:key), "#{name}: breakdown == 5 C1 rows (coverage_gap absent)"
+                   h.breakdown.map(&:key), "#{name}: breakdown == 5 original rows (coverage_gap absent)"
       exp_bd = exp['breakdown']
       assert_equal exp_bd.size, h.breakdown.size, "#{name}: breakdown length (5, not 6)"
       exp_bd.each_with_index do |es, i|
@@ -131,8 +133,8 @@ class CoverageGapDefaultOffGoldenTest < Minitest::Test
     end
   end
 
-  # A focused proof: two default-OFF results for the SAME pre-C2 inputs but DIFFERENT
-  # oic/cs are byte-identical — the new fields are unread on the default path (FC-C2-10).
+  # A focused proof: two default-OFF results for the SAME inputs but DIFFERENT oic/cs are
+  # byte-identical — the new fields are unread on the default path.
   def test_new_fields_do_not_affect_default_off_output
     row = baseline.values.first
     a = Pulse::Domain::Scoring.score(

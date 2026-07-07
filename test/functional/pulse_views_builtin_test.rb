@@ -11,7 +11,7 @@ require File.expand_path('../../../../../test/test_helper', File.expand_path(__F
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# IT-C5-04 — BUILT-IN SYSTEM VIEWS (FC-C5-11; AC-C5-04; FR-C5-05)
+# BUILT-IN SYSTEM VIEWS
 # ═══════════════════════════════════════════════════════════════════════════════
 # EXACTLY three system-owned built-in views ship (count == 3, not >=3), idempotently
 # seeded (find_or_create_by!), each user_id nil, visibility 'public', project_scope
@@ -21,13 +21,10 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #     Stalled          -> lens stale
 # They are IMMUTABLE at the controller layer for ALL users (incl admins and holders of
 # :manage_public_pulse_views): a system_view? guard renders 403 unconditionally on
-# edit/update/destroy, BEFORE the ownership/permission check (ASM-C5-03). Built-ins ARE
-# selectable (selectable != editable — covered in the select suite).
+# edit/update/destroy, BEFORE the ownership/permission check. Built-ins ARE selectable
+# (selectable != editable — covered in the select suite).
 #
-# RED-by-construction: PulseView, the seed, PulseViewsController and the routes do not
-# exist yet (NameError / RoutingError). A9 seeds + guards to this contract.
-#
-# Postgres-evidence lane (COND-A8-004 / GL-CI-MYSQL): skip on non-Postgres.
+# Runs on PostgreSQL (the production engine): skip on non-Postgres.
 class PulseViewsBuiltinTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -56,15 +53,14 @@ class PulseViewsBuiltinTest < ActionDispatch::IntegrationTest
   end
 
   # If a migration-seed already ran on the harness DB the built-ins are present; otherwise
-  # this test exercises the same idempotent seed the migration uses. RED-by-construction:
-  # PulseView (and any seed entry point) does not exist yet.
+  # this test exercises the same idempotent seed the migration uses.
   def ensure_builtins_seeded!
     return unless defined?(PulseView)
 
     PulseView.seed_builtins! if PulseView.respond_to?(:seed_builtins!)
   end
 
-  # ── FC-C5-11 — exactly 3, the exact set, system-owned + public ──
+  # ── exactly 3, the exact set, system-owned + public ──
 
   def test_exactly_three_system_views
     assert_equal 3, PulseView.system_owned.count,
@@ -87,7 +83,7 @@ class PulseViewsBuiltinTest < ActionDispatch::IntegrationTest
                  'no system-owned view may exist outside {Portfolio health, At risk, Stalled}'
   end
 
-  # ── FC-C5-11 — idempotent seed (re-seed leaves count == 3) ──
+  # ── idempotent seed (re-seed leaves count == 3) ──
 
   def test_reseed_is_idempotent
     skip 'seed entry point not built yet' unless PulseView.respond_to?(:seed_builtins!)
@@ -99,7 +95,7 @@ class PulseViewsBuiltinTest < ActionDispatch::IntegrationTest
     assert_equal 3, PulseView.system_owned.count, 're-seeding must not duplicate built-ins'
   end
 
-  # ── FC-C5-11 — built-ins IMMUTABLE at controller for ALL users (403 before ownership) ──
+  # ── built-ins IMMUTABLE at controller for ALL users (403 before ownership) ──
 
   def builtin
     PulseView.find_by(name: 'Portfolio health', user_id: nil)

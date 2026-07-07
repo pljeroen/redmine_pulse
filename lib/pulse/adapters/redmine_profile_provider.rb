@@ -13,7 +13,7 @@ require 'pulse/domain/signal_registry'
 
 module Pulse
   module Adapters
-    # RedmineProfileProvider (FR-C4-02/03/04/09) — the ProfileProvider implementation. It
+    # RedmineProfileProvider — the ProfileProvider implementation. It
     # publishes the admin-defined profiles + the synthetic system default, and resolves the
     # active profile for a viewer by precedence. It does I/O only through the injected
     # settings_provider duck (#scoring_config for the synthetic default; #pulse_profiles for
@@ -22,13 +22,13 @@ module Pulse
     # in the pure-adapter lane without a live Redmine.
     #
     # The system default (id "default") ALWAYS exists; its config is the CURRENT global
-    # ScoringConfig (live-read, not a drifting copy — FC-C4-05). Precedence (FC-C4-06):
+    # ScoringConfig (live-read, not a drifting copy). Precedence:
     #   1. explicit requested_id (transient viewer selection);
     #   2. viewer's role-default binding (MULTI-ROLE tie-break: FIRST match by role.id
-    #      ASCENDING, FC-C4-07);
+    #      ASCENDING);
     #   3. system default.
     # A requested / bound id absent from the published set degrades to the system default AND
-    # surfaces a warning via #last_warning (FC-C4-12) — it NEVER raises.
+    # surfaces a warning via #last_warning — it NEVER raises.
     class RedmineProfileProvider
       RESERVED_DEFAULT_ID = 'default'
 
@@ -82,7 +82,7 @@ module Pulse
 
       # The role-binding profile_id for the FIRST (lowest) role.id the viewer holds on the
       # project that carries a binding — deterministic across viewer role-list order AND
-      # settings insertion order (FC-C4-07). nil when the viewer holds no bound role.
+      # settings insertion order. nil when the viewer holds no bound role.
       def bound_profile_id(viewer, project)
         bindings = normalized_role_bindings
         return nil if bindings.empty?
@@ -170,7 +170,7 @@ module Pulse
         raw.is_a?(Hash) ? raw : {}
       end
 
-      # The human-readable, LOCALIZED dangling-fallback warning (FC-C4-12 / FR-C4-09). `kind`
+      # The human-readable, LOCALIZED dangling-fallback warning. `kind`
       # is :selected (an explicit ?profile_id) or :role_bound (a role-default binding). Falls
       # back to the English default when I18n / the key is unavailable so a warning is ALWAYS
       # a plain readable String (the presenter renders it verbatim; it never crashes on nil).

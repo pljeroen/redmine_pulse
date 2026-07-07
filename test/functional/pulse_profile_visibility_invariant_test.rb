@@ -10,7 +10,7 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# IT-C4-04 (Tier-2 SECURITY) — INV-C4-PERM-UNCHANGED / FC-C4-11 / AC-C4-04.
+# Profile-independent visibility (a security guarantee).
 # MIRRORS the permission_visibility_test idiom: the set of issues counted/scored/surfaced
 # for viewer u on project P is determined SOLELY by the Redmine visibility predicate
 # (Issue.visible(u) / VisibilityContext) and is INDEPENDENT of the active profile. A
@@ -18,17 +18,16 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 # project / permission reference — so switching profiles can NEVER cause an issue invisible
 # to u to be counted, scored, or surfaced. Visibility scoping is PRE-profile.
 #
-# Falsifiable checks (FC-C4-11):
+# Checks:
 #   (a) the visible issue set / visible_issue_count feeding scoring is IDENTICAL under
 #       profile A and profile B and equals |S| (permission-gated, profile-independent).
 #   (b) no invisible issue's data appears in either profile's metrics.
 #   (c) VisibilityContext is NOT parameterized by profile (source/AST: no profile arg).
 #
-# RED-BY-CONSTRUCTION (harness lane): (a)/(b) assert profile-independence of the
-# visibility-scoped ProjectMetrics — a property that HOLDS against the as-built metrics
-# source and MUST continue to hold once C4 lands (regression guard); (c) references the
-# C4 wiring and asserts VisibilityContext#initialize gained NO profile parameter. The
-# orchestrator runs this via scripts/test-redmine/run-tests.sh. Postgres-gated lane.
+# (a)/(b) assert profile-independence of the visibility-scoped ProjectMetrics — a property
+# that must hold regardless of the active profile; (c) asserts VisibilityContext#initialize
+# takes NO profile parameter. The orchestrator runs this via
+# scripts/test-redmine/run-tests.sh. Runs on PostgreSQL.
 class PulseProfileVisibilityInvariantTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -43,7 +42,7 @@ class PulseProfileVisibilityInvariantTest < ActiveSupport::TestCase
     PulseAdapterTestSupport.ensure_pulse_permission!
     # Enable the coverage_gap signal so ProjectMetrics#open_issue_count is POPULATED (the count
     # of visible OPEN issues). On the default-OFF path the metrics source deliberately returns
-    # open_issue_count=0 WITHOUT touching the DB (A10-C2-003 a), so that field cannot express the
+    # open_issue_count=0 WITHOUT touching the DB, so that field cannot express the
     # visible-set count this invariant observes. Enabling coverage makes open_issue_count reflect
     # the visibility-scoped set — which is still PROFILE-INDEPENDENT (the profile only reweights
     # already-visibility-scoped metrics; visibility scoping is PRE-profile). The invariant under
@@ -98,7 +97,7 @@ class PulseProfileVisibilityInvariantTest < ActiveSupport::TestCase
     under_a = visible_count_via_fingerprint('A')
     under_b = visible_count_via_fingerprint('B')
     assert_equal under_a, under_b,
-                 'FC-C4-11(a): the visible issue count feeding scoring must be IDENTICAL ' \
+                 'the visible issue count feeding scoring must be IDENTICAL ' \
                  'under profiles A and B (permission-gated, profile-independent)'
     assert_equal 1, under_a,
                  'own_user sees exactly its own-authored issue (|S| = 1)'
@@ -111,7 +110,7 @@ class PulseProfileVisibilityInvariantTest < ActiveSupport::TestCase
     # data must not appear. This holds independent of any active profile (the profile is not
     # even an input to metrics_for — visibility scoping is PRE-profile).
     assert_equal 1, m.open_issue_count,
-                 'FC-C4-11(b): only the visible issue is counted; the invisible one never leaks'
+                 'only the visible issue is counted; the invisible one never leaks'
   end
 
   # ── (b): scoring under two profiles never surfaces the invisible issue ─────────
@@ -136,14 +135,14 @@ class PulseProfileVisibilityInvariantTest < ActiveSupport::TestCase
     params = Pulse::Adapters::VisibilityContext.instance_method(:initialize)
                                                .parameters.flatten
     refute_includes params, :active_profile_id,
-                    'FC-C4-11(c): VisibilityContext must not take a profile argument'
+                    'VisibilityContext must not take a profile argument'
     refute_includes params, :profile,
-                    'FC-C4-11(c): VisibilityContext is profile-independent (visibility PRE-profile)'
+                    'VisibilityContext is profile-independent (visibility PRE-profile)'
     src = File.read(File.expand_path(
                       '../../../lib/pulse/adapters/visibility_context.rb', File.expand_path(__FILE__)
                     ))
     refute_match(/profile/i, src,
-                 'FC-C4-11(c): VisibilityContext source must not reference a profile ' \
+                 'VisibilityContext source must not reference a profile ' \
                  '(visibility is the sole, profile-independent authority)')
   end
 end

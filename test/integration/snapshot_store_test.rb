@@ -1,16 +1,22 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'date'
 
-# CA-04/05/06/08 + FC-CA-05/06/07/08 + BR-03: ActiveRecordSnapshotStore + the
-# pulse_snapshots migration. Asserts OBSERVABLE POST-STATE: the migrated table +
-# UNIQUE constraint; idempotent insert-or-ignore convergence to ONE row; scoped
-# invalidate_project returning a count; and the Date/Symbol round-trip fidelity that
-# lets a deserialized snapshot reconstruct ProjectMetrics and score identically.
+# ActiveRecordSnapshotStore + the pulse_snapshots migration. Asserts OBSERVABLE
+# POST-STATE: the migrated table + UNIQUE constraint; idempotent insert-or-ignore
+# convergence to ONE row; scoped invalidate_project returning a count; and the Date/Symbol
+# round-trip fidelity that lets a deserialized snapshot reconstruct ProjectMetrics and score
+# identically.
 #
-# Postgres-gated (FC-CA-38). RED until A9 builds the adapter + migration.
+# Runs on PostgreSQL (the production engine).
 class SnapshotStoreTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -36,7 +42,7 @@ class SnapshotStoreTest < ActiveSupport::TestCase
     conn.select_value("SELECT COUNT(*) FROM pulse_snapshots WHERE project_id = #{pid.to_i}").to_i
   end
 
-  # ─────────────── FC-CA-05: migration created the table + UNIQUE ────────────
+  # ─────────────── migration created the table + UNIQUE ────────────
 
   def test_pulse_snapshots_table_exists_with_columns
     assert conn.table_exists?(:pulse_snapshots), 'migration must create pulse_snapshots'
@@ -55,12 +61,12 @@ class SnapshotStoreTest < ActiveSupport::TestCase
   end
 
   def test_migration_does_not_touch_redmine_core_tables
-    # The plugin-prefixed table collides with no core table (CD-CA-03).
+    # The plugin-prefixed table collides with no core table.
     refute conn.table_exists?(:pulse_issues)
     assert conn.table_exists?(:issues), 'core issues table intact'
   end
 
-  # ─────────────────── FC-CA-04/06: fetch_row + idempotent store ─────────────
+  # ─────────────────── fetch_row + idempotent store ─────────────
 
   def test_fetch_row_returns_nil_on_miss
     assert_nil @store.fetch_row(@pid, @ctx, 'nope')
@@ -94,7 +100,7 @@ class SnapshotStoreTest < ActiveSupport::TestCase
     assert_equal 1, rows_for(@pid)
   end
 
-  # ── RT-04 (security-S2-dos): prune SUPERSEDED fingerprints on store ──────────
+  # ── prune SUPERSEDED fingerprints on store ──────────
   # Storing a NEW fingerprint for an existing (project_id, visibility_context_id) leaves the
   # OLD-fingerprint row behind. Every viewer's data change churns the fingerprint, so the
   # (pid, ctx) cell accretes one dead row per change without bound; every warm fetch then
@@ -116,15 +122,15 @@ class SnapshotStoreTest < ActiveSupport::TestCase
     )
   end
 
-  # RED now: storing fp2 over the same (pid, ctx) with a DIFFERENT fingerprint must leave
-  # ONLY the fp2 row (the superseded fp1 row is pruned). Currently BOTH rows persist.
+  # Storing fp2 over the same (pid, ctx) with a DIFFERENT fingerprint must leave
+  # ONLY the fp2 row (the superseded fp1 row is pruned).
   def test_store_new_fingerprint_prunes_superseded_row
     @store.store(@pid, @ctx, 'fp1', @payload)
     @store.store(@pid, @ctx, 'fp2', @payload.merge('effort_open' => 7))
 
     assert_equal 1, ctx_fp_rows(@pid, @ctx),
                  'a NEW fingerprint for the same (pid, ctx) supersedes the old one — ' \
-                 'exactly ONE row remains (RT-04 prune)'
+                 'exactly ONE row remains (prune)'
     assert_equal ['fp2'], fps_for(@pid, @ctx),
                  'the surviving row carries the CURRENT fingerprint (fp2); fp1 was pruned'
   end
@@ -141,7 +147,7 @@ class SnapshotStoreTest < ActiveSupport::TestCase
                  'a different (pid, ctx) cell is untouched by the ctxA prune (scoped)'
   end
 
-  # GREEN companion: a SAME-KEY store/refresh (identical fingerprint — the snapshot-max-age
+  # Companion: a SAME-KEY store/refresh (identical fingerprint — the snapshot-max-age
   # in-place update path) must NOT prune/delete the row. Only a genuinely NEW fingerprint
   # supersedes. #refresh uses update_all on the SAME key -> one row, no delete.
   def test_same_key_refresh_does_not_prune_the_row
@@ -153,7 +159,7 @@ class SnapshotStoreTest < ActiveSupport::TestCase
     assert_equal [@fp], fps_for(@pid, @ctx), 'the row keeps its (unchanged) fingerprint'
   end
 
-  # GREEN companion: a duplicate SAME-KEY store (insert-or-ignore) likewise leaves the row
+  # Companion: a duplicate SAME-KEY store (insert-or-ignore) likewise leaves the row
   # in place — a same-fingerprint re-store is NOT a supersede and must NOT prune.
   def test_same_key_store_does_not_prune_the_row
     @store.store(@pid, @ctx, @fp, @payload)
@@ -163,7 +169,7 @@ class SnapshotStoreTest < ActiveSupport::TestCase
     assert_equal [@fp], fps_for(@pid, @ctx)
   end
 
-  # ───────────────── FC-CA-08: scoped invalidate_project + count ─────────────
+  # ───────────────── scoped invalidate_project + count ─────────────
 
   def test_invalidate_project_deletes_only_target_returns_count
     @store.store(@pid, 'c1', 'f1', @payload)
@@ -181,7 +187,7 @@ class SnapshotStoreTest < ActiveSupport::TestCase
     assert_equal 0, @store.invalidate_project(999_999), 'idempotent: deletes 0, no error'
   end
 
-  # ─────────────── FC-CA-07 / BR-03: Date/Symbol round-trip fidelity ─────────
+  # ─────────────── Date/Symbol round-trip fidelity ─────────
 
   def test_round_trip_reconstructs_project_metrics_with_plain_date
     metrics = Pulse::Domain::ProjectMetrics.new(
@@ -190,7 +196,7 @@ class SnapshotStoreTest < ActiveSupport::TestCase
       risk_mapped: false, effort_mapped: false,
       event_series: [{ date: Date.new(2026, 6, 5), type: :issue_created }],
       version_due_dates: [{ version_id: 42, due_date: Date.new(2026, 9, 30), name: 'v1.0' }],
-      # C2 additive-required coverage inputs — round-trip through serialize/deserialize.
+      # additive coverage inputs — round-trip through serialize/deserialize.
       open_issue_count: 4, covered_sum: 2.5
     )
     # The store/controller serialize+deserialize pair must re-hydrate Date strings to
@@ -206,22 +212,22 @@ class SnapshotStoreTest < ActiveSupport::TestCase
     unless skip_helper
       rebuilt = @store.deserialize_metrics(fetched)
       assert_instance_of Date, rebuilt.reference_date,
-                         'reference_date re-hydrates to a PLAIN Date (FR-01)'
+                         'reference_date re-hydrates to a PLAIN Date'
       assert_instance_of Date, rebuilt.event_series.first[:date]
       assert_equal :issue_created, rebuilt.event_series.first[:type], 'type re-hydrated to Symbol'
       # Determinism: scoring the deserialized snapshot equals scoring the original.
       cfg = Pulse::Domain::ScoringConfig.new
       a = Pulse::Domain::Scoring.score(metrics, @clock, cfg).health_score
       b = Pulse::Domain::Scoring.score(rebuilt, @clock, cfg).health_score
-      assert_equal a, b, 'round-trip is lossless w.r.t. the score (FC-CA-07)'
+      assert_equal a, b, 'round-trip is lossless w.r.t. the score'
     end
   end
 
-  # ── snapshot-max-age-refresh (CT-02 EVOLUTION): SnapshotStore#refresh ─────────
+  # ── snapshot-max-age-refresh: SnapshotStore#refresh ─────────
   # refresh(project_id, visibility_context_id, fingerprint, payload) OVERWRITES the row
   # for that EXACT key (payload replaced + computed_at bumped to ~now), creating it if
   # absent (defensive). Distinct from #store (insert-or-ignore). Writes ONLY the SAME key
-  # (no new row — the growth characteristic is unchanged). RED until GREEN adds #refresh.
+  # (no new row — the growth characteristic is unchanged).
 
   def computed_at_for(pid, ctx, fp)
     conn.select_value(

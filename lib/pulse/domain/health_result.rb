@@ -10,7 +10,7 @@
 module Pulse
   module Domain
     # Immutable composite health result for one project. Carries NO Date / computed_at
-    # field (FC-31/OSD-08): the "as-of" day is consumed during scoring, not stored.
+    # field: the "as-of" day is consumed during scoring, not stored.
     class HealthResult
       attr_reader :project_id, :health_score, :rag, :dominant_signal,
                   :signal_completeness, :breakdown, :lens_keys, :effort_open

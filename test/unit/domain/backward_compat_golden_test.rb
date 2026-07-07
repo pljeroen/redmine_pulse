@@ -1,25 +1,31 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 require 'yaml'
 
-# FR-C1-08 / AC-C1-01 / FC-C1-13 — the RELEASE-CRITICAL byte-identical golden gate.
+# The RELEASE-CRITICAL byte-identical golden gate.
 #
-# The DEFAULT ScoringConfig — constructed via the NEW registry-backed default path
+# The DEFAULT ScoringConfig — constructed via the registry-backed default path
 # (Pulse::Domain::SignalRegistry-resolved enabled set + default weights) — MUST
-# produce a HealthResult EXACTLY equal (==, NO epsilon) to a captured pre-C1
-# full-precision baseline on ALL eight fields, over a representative fixture set.
+# produce a HealthResult EXACTLY equal (==, NO epsilon) to a captured baseline
+# full-precision result on ALL eight fields, over a representative fixture set.
 #
-# Baseline provenance (A-DATA-01): captured from the CURRENT (pre-C1) Scoring.score
-# with the DEFAULT config, serialized at full Float precision (Ruby Float#to_s =
-# shortest round-trippable string). Reparsing reconstructs bit-identical Floats, so
-# the comparison below is EXACT bit-equality (assert_equal on Floats), DISTINCT from
+# Baseline provenance: captured from the original Scoring.score with the DEFAULT
+# config, serialized at full Float precision (Ruby Float#to_s = shortest
+# round-trippable string). Reparsing reconstructs bit-identical Floats, so the
+# comparison below is EXACT bit-equality (assert_equal on Floats), DISTINCT from
 # the display-rounded golden_portfolio.yaml (which uses tolerances — FormulaFixturesTest).
 #
-# RED NOW: the "NEW registry-backed default path" does not exist yet
-# (Pulse::Domain::SignalRegistry is absent), so `default_config` raises NameError.
-# GREEN AFTER A9 reproduces exact values on the default enabled set.
+# The default config is built through the registry-backed default path
+# (Pulse::Domain::SignalRegistry-resolved enabled set + default weights) and
+# reproduces exact values on the default enabled set.
 class BackwardCompatGoldenTest < Minitest::Test
   include ScoringSupport
 
@@ -29,14 +35,13 @@ class BackwardCompatGoldenTest < Minitest::Test
     YAML.safe_load_file(BASELINE)['cases']
   end
 
-  # The DEFAULT config MUST be built through the NEW registry-backed default path —
-  # NOT the literal ScoringConfig.new — so the gate exercises the C1 default plumbing
+  # The DEFAULT config MUST be built through the registry-backed default path —
+  # NOT the literal ScoringConfig.new — so the gate exercises the default plumbing
   # (SignalRegistry.keys as enabled set, SignalRegistry.default_weights as weights).
-  # This is what makes the test RED before A9 wires the registry default path.
   def default_config
-    # C2 EVOLUTION: the default enabled set is the DEFAULT-ON keys (default_weights scopes to
-    # them, Σ==1.0). coverage_gap is registered but default_on:false, so the default-OFF
-    # golden path enables exactly the 5 default_on built-ins — dom(w) == default_on_keys.
+    # The default enabled set is the DEFAULT-ON keys (default_weights scopes to them,
+    # Σ==1.0). coverage_gap is registered but default_on:false, so the default-OFF golden
+    # path enables exactly the 5 default_on built-ins — dom(w) == default_on_keys.
     Pulse::Domain::ScoringConfig.new(
       enabled_signals: Pulse::Domain::SignalRegistry.default_on_keys,
       weights: Pulse::Domain::SignalRegistry.default_weights
@@ -128,11 +133,11 @@ class BackwardCompatGoldenTest < Minitest::Test
     end
   end
 
-  # FC-C1-12: the default no-data path is byte-identical (5 inactive SignalResults in
-  # canonical order, rag :no_data, nil score/dominant, completeness 0.0, all-nil lens).
+  # The default no-data path is byte-identical (5 inactive SignalResults in canonical
+  # order, rag :no_data, nil score/dominant, completeness 0.0, all-nil lens).
   def test_no_data_default_path_byte_identical
     nd = baseline.select { |_, row| row['expected']['rag'] == 'no_data' }
-    refute_empty nd, 'baseline must carry at least one no-data fixture (FC-C1-12)'
+    refute_empty nd, 'baseline must carry at least one no-data fixture'
     nd.each do |name, row|
       h = Pulse::Domain::Scoring.score(metrics_from(row['inputs']), fixed_clock, default_config)
       assert_equal :no_data, h.rag, "#{name}: no_data rag"

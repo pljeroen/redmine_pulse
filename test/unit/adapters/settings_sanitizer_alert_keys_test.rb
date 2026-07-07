@@ -9,13 +9,13 @@
 
 require 'minitest/autorun'
 
-# C1 lesson: pure-adapter unit test — add lib/ to $LOAD_PATH before requiring the adapter.
+# Note: pure-adapter unit test — add lib/ to $LOAD_PATH before requiring the adapter.
 lib = File.expand_path('../../../lib', __dir__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 require_relative '../../../lib/pulse/adapters/settings_sanitizer'
 
-# C6 settings — FR-C6-06/08 — two new alert settings keys, ALERT-OFF defaults:
+# Alert settings — two new alert settings keys, ALERT-OFF defaults:
 #   (1) pulse_alert_auto_subscribe_role_id (Integer|nil; nil = disabled, DEFAULT)
 #   (2) pulse_alert_score_delta_threshold  (Numeric|nil; nil/0 = disabled, DEFAULT)
 # SettingsSanitizer validates them ADDITIVELY (existing keys sanitize exactly as before —
@@ -24,8 +24,7 @@ require_relative '../../../lib/pulse/adapters/settings_sanitizer'
 # Nil/zero defaults ensure NO alert fires on install until the operator configures.
 #
 # The sanitizer surface: SettingsSanitizer.sanitize(incoming, previous) -> [sanitized, errors].
-# RED NOW: sanitize does not yet validate the two alert keys. GREEN after A9 adds the
-# additive validation. Pure-adapter lane: ruby -Itest -Ilib.
+# Pure-adapter lane: ruby -Itest -Ilib.
 class SettingsSanitizerAlertKeysTest < Minitest::Test
   S = Pulse::Adapters::SettingsSanitizer
 

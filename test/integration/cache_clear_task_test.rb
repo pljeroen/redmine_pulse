@@ -1,16 +1,22 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'date'
 
-# [THAW-RD-001 / GOLIVE ops] pulse:cache:clear rake task underlying behavior.
+# The pulse:cache:clear rake task underlying behavior.
 # The rake task body is a thin shell over the store's clear_all (global) and
 # invalidate_project (one project); this suite exercises those underlying methods
 # the task drives — asserting OBSERVABLE POST-STATE (rows deleted) — so the
 # admin-facing global cache flush is proven, independent of rake-runner wiring.
 #
-# Postgres-gated (FC-CA-38) for parity with the sibling store suite.
+# Runs on PostgreSQL (the production engine) for parity with the sibling store suite.
 class CacheClearTaskTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -72,7 +78,7 @@ class CacheClearTaskTest < ActiveSupport::TestCase
     assert_equal 1, rows_for(202), 'other project untouched'
   end
 
-  # ── clear_all writes ONLY pulse_snapshots (INV-READ-ONLY / FC-CA-13) ────────
+  # ── clear_all writes ONLY pulse_snapshots (read-only w.r.t. Redmine tables) ────────
 
   def test_clear_all_writes_no_redmine_domain_table
     seed!(101, 'c1', 'f1')

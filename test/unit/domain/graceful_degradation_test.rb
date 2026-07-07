@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 
-# FR-10, FR-16, FR-32, FR-33 / FC-10, FC-11, FC-16, FC-19, FC-26.
 # Graceful degradation: inactive signals present (active:false, nil numerics),
 # weight redistributed, signal_completeness 0.8/0.6, dominant_signal never nil.
 class GracefulDegradationTest < Minitest::Test
@@ -11,9 +16,9 @@ class GracefulDegradationTest < Minitest::Test
 
   def test_progress_zero_denominator_inactive
     # blocked_count:1 keeps the project NON-EMPTY (a real blocker) so it is a minimal-active
-    # project, NOT the no-data state (THAW-RA-001 no_data? now keys on per-project risk_raw==0,
-    # not the global risk_mapped flag). progress stays inactive (effort_total==0); the
-    # always-active signals (incl. blocked_load) renormalize over the active set.
+    # project, NOT the no-data state (no_data? keys on per-project risk_raw==0, not the
+    # global risk_mapped flag). progress stays inactive (effort_total==0); the always-active
+    # signals (incl. blocked_load) renormalize over the active set.
     h = Pulse::Domain::Scoring.score(
       metrics(effort_open: 0.0, effort_total: 0.0, blocked_count: 1), fixed_clock, config)
     prog = signal(h, :progress)
@@ -39,8 +44,8 @@ class GracefulDegradationTest < Minitest::Test
 
   def test_inactive_signals_present_not_omitted
     # blocked_count:1 keeps the project NON-EMPTY (real blocker) so it is a minimal-active
-    # project (3 always-active signals), NOT the no-data state (THAW-RA-001): the
-    # always-active signals are genuinely active and present here.
+    # project (3 always-active signals), NOT the no-data state: the always-active signals
+    # are genuinely active and present here.
     h = Pulse::Domain::Scoring.score(
       metrics(risk_mapped: false, effort_total: 0.0, effort_open: 0.0, blocked_count: 1),
       fixed_clock, config)
@@ -70,7 +75,7 @@ class GracefulDegradationTest < Minitest::Test
   end
 
   def test_standard_fields_only_progress_inactive_completeness_06
-    # blocked_count:1 => non-empty minimal-active project (NOT no-data; THAW-RA-001):
+    # blocked_count:1 => non-empty minimal-active project (NOT no-data):
     # 3 always-active signals, progress + risk inactive => completeness 0.6, dominant set.
     h = Pulse::Domain::Scoring.score(
       metrics(risk_mapped: false, effort_total: 0.0, effort_open: 0.0, blocked_count: 1),

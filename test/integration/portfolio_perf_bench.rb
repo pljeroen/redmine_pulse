@@ -1,14 +1,20 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# CA-30 / FC-CA-30perf: SOFT-PERF advisory benchmark (SHOULD/tier-2; does NOT block
-# GREEN on its own). With all portfolio projects warm (cache hit), the portfolio
-# overview GET completes well under 1s and the per-request projection is O(P) with NO
-# extra DB query per project (prefer a single bulk SnapshotStore fetch over N+1).
+# Advisory performance benchmark (does NOT block on its own). With all portfolio projects
+# warm (cache hit), the portfolio overview GET completes well under 1s and the per-request
+# projection is O(P) with NO extra DB query per project (prefer a single bulk SnapshotStore
+# fetch over N+1).
 #
-# Postgres-gated (FC-CA-38). RED until A9.
+# Runs on PostgreSQL (the production engine).
 class PortfolioPerfBench < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -19,8 +25,8 @@ class PortfolioPerfBench < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # Runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the MySQL CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"

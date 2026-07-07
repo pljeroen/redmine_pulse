@@ -1,36 +1,41 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 
-# FR-25..FR-30 / FC-23, FC-24, FC-25.
 # All five lens keys + nil-when-inactive (done) + tie-break by project_id + the
-# done-lens effort_open secondary sort (CR-03).
+# done-lens effort_open secondary sort.
 class LensesTest < Minitest::Test
   include ScoringSupport
 
-  # ---- FR-25: health lens key == health_score ----
+  # ---- health lens key == health_score ----
   def test_health_lens_key
     h = Pulse::Domain::Scoring.score(kernel_aios_metrics, fixed_clock, config)
     assert_equal h.health_score, h.lens_keys[:health]
     assert_kind_of Integer, h.lens_keys[:health]
   end
 
-  # ---- FR-27: stale lens key == staleness raw_value (days), always present ----
+  # ---- stale lens key == staleness raw_value (days), always present ----
   def test_stale_lens_key
     h = Pulse::Domain::Scoring.score(kernel_aios_metrics, fixed_clock, config)
     assert_equal 150, h.lens_keys[:stale]
     assert_kind_of Integer, h.lens_keys[:stale]
   end
 
-  # ---- FR-29: blocked lens key == blocked_count, always present ----
+  # ---- blocked lens key == blocked_count, always present ----
   def test_blocked_lens_key
     h = Pulse::Domain::Scoring.score(kernel_aios_metrics, fixed_clock, config)
     assert_equal 12, h.lens_keys[:blocked]
     assert_kind_of Integer, h.lens_keys[:blocked]
   end
 
-  # ---- FR-28: done lens key == progress_ratio*100 when active, else nil ----
+  # ---- done lens key == progress_ratio*100 when active, else nil ----
   def test_done_lens_key_active
     h = Pulse::Domain::Scoring.score(kernel_aios_metrics, fixed_clock, config) # ratio 0.30
     assert_in_delta 30.0, h.lens_keys[:done], 1e-9
@@ -42,7 +47,7 @@ class LensesTest < Minitest::Test
     assert_nil h.lens_keys[:done], 'done lens key is nil when progress inactive (sorts last)'
   end
 
-  # ---- FR-26: at_risk lens key = 100*Σ over A∩{risk_load,blocked_load,staleness} eff*(1-n) ----
+  # ---- at_risk lens key = 100*Σ over A∩{risk_load,blocked_load,staleness} eff*(1-n) ----
   def test_at_risk_lens_key_full_enrichment
     h = Pulse::Domain::Scoring.score(kernel_aios_metrics, fixed_clock, config)
     # staleness 0.25*(1-1/6) + risk 0.15*(1-0.20) + blocked 0.15*(1-0.40) = 0.41833 *100
@@ -65,7 +70,7 @@ class LensesTest < Minitest::Test
     assert_in_delta 0.0, h.lens_keys[:at_risk], 1e-9
   end
 
-  # ---- FR-30 / FC-25: lens tie-break by project_id ascending ----
+  # ---- lens tie-break by project_id ascending ----
   def test_lens_tiebreak_project_id_ascending
     # Three projects with IDENTICAL health_score -> sort must order by project_id asc.
     base = { reference_date: ScoringSupport::TODAY - 150, effort_open: 7.0, effort_total: 10.0,
@@ -79,7 +84,7 @@ class LensesTest < Minitest::Test
     assert_equal [10, 20, 30], sorted.map(&:project_id)
   end
 
-  # ---- CR-03: done-lens secondary sort uses HealthResult.effort_open ----
+  # ---- done-lens secondary sort uses HealthResult.effort_open ----
   def test_done_lens_secondary_sort_effort_open_then_project_id
     # Same done key (progress_ratio) but different effort_open -> effort_open asc.
     # ratio 0.5 for all (open/total=0.5) but vary effort_open via different total scale.

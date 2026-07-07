@@ -1,11 +1,17 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 require 'pulse/domain/scoring'
 require 'pulse/domain/scoring_config'
 
-# FC-C2-09 — enable-path six-signal scoring. Discharges FR-C2-06, AC-C2-01, AC-C2-03.
+# Enable-path six-signal scoring.
 #
 # When coverage_gap is ENABLED (a 6-signal ScoringConfig with renormalized weights Σ==1.0):
 #   (a) enabled_in_canonical_order returns 6 keys with coverage_gap LAST;
@@ -14,14 +20,10 @@ require 'pulse/domain/scoring_config'
 #       signal_completeness denominator == 6 — via the GENERIC machinery (no special-case);
 #   (d) dominant_signal can select coverage_gap when it is the argmin n;
 #   (e) the at_risk lens is UNCHANGED (coverage_gap at_risk? == false).
-#
-# RED NOW: a 6-key ScoringConfig with coverage_gap will fail at construction (coverage_gap
-# not registered), and Scoring.compute_signal(:coverage_gap) raises 'unknown signal'. GREEN
-# after A9 registers coverage_gap + adds the compute_signal branch.
 class CoverageGapEnableTest < Minitest::Test
   include ScoringSupport
 
-  # A 6-signal enabled config: the 5 C1 weights renormalized to make room for coverage_gap
+  # A 6-signal enabled config: the 5 base weights renormalized to make room for coverage_gap
   # (0.15), all six summing to 1.0. (0.25+0.25+0.20+0.15+0.15+0.15 = 1.15; scale by 1/1.15.)
   def six_signal_config
     raw = { staleness: 0.25, progress: 0.25, momentum: 0.20,
@@ -50,7 +52,7 @@ class CoverageGapEnableTest < Minitest::Test
   def test_enabled_order_places_coverage_gap_last
     order = Pulse::Domain::Scoring.enabled_in_canonical_order(six_signal_config)
     assert_equal 6, order.size, 'six enabled signals'
-    assert_equal :coverage_gap, order.last, 'coverage_gap is last (canonical_order 5)'
+    assert_equal :coverage_gap, order.last, 'coverage_gap is last in canonical order'
   end
 
   # --- (b)(c) coverage_gap scores with the correct n / effective_weight / contribution --
@@ -97,6 +99,6 @@ class CoverageGapEnableTest < Minitest::Test
     five = Pulse::Domain::ScoringConfig.new
     without_cg = Pulse::Domain::Scoring.score(m, fixed_clock, five)
     assert_equal without_cg.lens_keys[:at_risk], with_cg.lens_keys[:at_risk],
-                 'at_risk lens value unchanged whether or not coverage_gap is enabled (FC-C2-09 e)'
+                 'at_risk lens value unchanged whether or not coverage_gap is enabled'
   end
 end

@@ -1,17 +1,20 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 require 'pulse/domain/signal_registry'
 
-# FR-C1-05 / FC-C1-10 (dominant severity-first over enabled active in canonical order,
-#   tie -> earliest canonical, on_track override preserved) and
-# FR-C1-06 / FC-C1-11 (breakdown one-per-enabled in canonical order restricted to E;
-#   disabled signals OMITTED entirely; |breakdown| == |E|).
-#
-# RED NOW: enabled_signals: kwarg / SignalRegistry are absent, and the current Scoring
-# iterates the fixed CANONICAL_ORDER of 5 -> a 3-enabled config still yields 5 breakdown
-# rows / can name a disabled dominant. GREEN after A9 drives off the enabled set.
+# Dominant severity-first over the enabled active signals in canonical order (tie ->
+# earliest canonical, on_track override preserved); and breakdown one-per-enabled in
+# canonical order restricted to the enabled set E (disabled signals OMITTED entirely;
+# |breakdown| == |E|). Scoring must drive off the configured enabled set, so a 3-enabled
+# config yields a 3-row breakdown and can never name a disabled signal as dominant.
 class ScoringEnabledSetTest < Minitest::Test
   include ScoringSupport
 
@@ -23,11 +26,11 @@ class ScoringEnabledSetTest < Minitest::Test
     Pulse::Domain::Scoring.score(metrics, fixed_clock, config)
   end
 
-  # === FC-C1-11: breakdown is one-per-enabled, canonical order, disabled omitted
+  # === breakdown is one-per-enabled, canonical order, disabled omitted
   def test_breakdown_default_canonical_order
     h = score(kernel_aios_metrics, Pulse::Domain::ScoringConfig.new)
     assert_equal %i[staleness progress momentum risk_load blocked_load],
-                 h.breakdown.map(&:key), 'default breakdown canonical order (pre-C1 identical)'
+                 h.breakdown.map(&:key), 'default breakdown canonical order'
   end
 
   def test_breakdown_one_per_enabled_signal
@@ -63,7 +66,7 @@ class ScoringEnabledSetTest < Minitest::Test
     refute_includes keys, :risk_load, 'disabled risk_load omitted'
   end
 
-  # === FC-C1-10: dominant iterates enabled set, tie -> earliest canonical =====
+  # === dominant iterates enabled set, tie -> earliest canonical =====
   def test_dominant_iterates_only_enabled_active
     # A disabled signal that WOULD have been the worst must not be selected.
     # risk_load has the worst n (very high risk_raw) but is DISABLED -> dominant is
@@ -92,10 +95,9 @@ class ScoringEnabledSetTest < Minitest::Test
     assert_equal :staleness, h.dominant_signal, 'equal-n tie -> earliest canonical-order (staleness)'
   end
 
-  # === A10-C1-001 (FC-C1-12): no-data breakdown tracks the ENABLED set ==========
-  # PRE-fix, no_data_result ignored the config and always emitted the 5 canonical keys.
-  # Under C1 a NON-DEFAULT 3-signal enabled config must yield a 3-row no-data breakdown
-  # (exactly the enabled signals, canonical order, all inactive) — NOT 5 rows.
+  # === no-data breakdown tracks the ENABLED set ==========
+  # A NON-DEFAULT 3-signal enabled config must yield a 3-row no-data breakdown (exactly the
+  # enabled signals, canonical order, all inactive) — NOT 5 rows.
   def test_no_data_breakdown_tracks_non_default_enabled_set
     enabled = %i[staleness momentum blocked_load]
     w = { staleness: 0.5, momentum: 0.25, blocked_load: 0.25 }

@@ -107,11 +107,11 @@
         "health_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
         "rag": { "type": "string", "enum": ["green", "amber", "red", "no_data"] },
         "dominant_signal": { "type": ["string", "null"], "enum": ["staleness", "progress", "momentum", "risk_load", "blocked_load", "on_track", null] },
-        "main_concern": { "type": ["string", "null"], "description": "FR-PLB-15: already-localized dominant-signal label (single source: MainConcernLabels). null on the no-data path (mirrors dominant_signal nullability)." },
+        "main_concern": { "type": ["string", "null"], "description": "Already-localized dominant-signal label (single source: MainConcernLabels). null on the no-data path (mirrors dominant_signal nullability)." },
         "signal_completeness": { "type": "number", "minimum": 0, "maximum": 1 },
         "lens_keys": {
           "type": "object",
-          "description": "All five lens values are NULLABLE: a no-data project (zero scoreable issues, THAW-RA-001) emits null for every lens value alongside null health_score / dominant_signal and rag 'no_data'.",
+          "description": "All five lens values are NULLABLE: a no-data project (zero scoreable issues) emits null for every lens value alongside null health_score / dominant_signal and rag 'no_data'.",
           "required": ["health", "at_risk", "stale", "done", "blocked"],
           "additionalProperties": false,
           "properties": {

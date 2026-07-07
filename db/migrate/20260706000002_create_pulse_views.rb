@@ -7,20 +7,20 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
-# Creates the plugin-owned pulse_views CONFIG table (FC-C5-01/02/03). This is a
+# Creates the plugin-owned pulse_views CONFIG table. This is a
 # CONFIG table, NOT the snapshot cache — it is written ONLY in response to explicit
 # user actions (create / update / select / destroy) through the ActiveRecordViewStore
-# adapter (INV-C5-CONFIG-NOT-CACHE). The migration references pulse_views ONLY; it
-# never touches the cache table, so the "one reversible cache table" trust narrative
+# adapter (config, not cache). The migration references pulse_views ONLY; it
+# never touches the cache table, so the "one reversible cache table" property
 # holds (cache-table count 1 -> 1).
 #
 # The migration seeds EXACTLY three system-owned (user_id nil) built-in views idempotently
 # via PulseView.seed_builtins! (find_or_create_by!), so they are present after
-# `rake redmine:plugins:migrate` with no manual step (FC-C5-11).
+# `rake redmine:plugins:migrate` with no manual step.
 #
 # Reversible: `down` drops the table (drop_table drops its indexes too, so no separate
-# remove_index — matching the established reversible-create idiom). NOTE: rolling C5 back
-# drops ALL saved views (user-created AND built-in) — the reversible contract by design.
+# remove_index — matching the established reversible-create idiom). NOTE: rolling this back
+# drops ALL saved views (user-created AND built-in) — the reversible behavior by design.
 class CreatePulseViews < ActiveRecord::Migration[6.1]
   def up
     create_table :pulse_views do |t|

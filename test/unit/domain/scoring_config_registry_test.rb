@@ -1,22 +1,23 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'pulse/domain/scoring_config'
 require 'pulse/domain/signal_registry'
 
-# FR-C1-02 / FR-C1-03 — FC-C1-04, FC-C1-05, FC-C1-06, FC-C1-07, FC-C1-08.
 # ScoringConfig generalized to an ENABLED signal set: the enabled set is the DOMAIN
 # of `weights`. Validation generalizes from "exactly the 5 REQUIRED keys" to:
 #   - weights keys are a subset of registered signals, non-empty;
 #   - dom(w) == enabled set (exact cover of the declared enabled_signals);
 #   - each weight is a finite real Numeric >= 0 (type+finiteness BEFORE the sum);
 #   - Σ weights == 1.0 within 1e-9;
-#   - Σ_{enabled ∩ always-active} w > 0 (generalized RC-07).
+#   - Σ_{enabled ∩ always-active} w > 0 (the always-active weight-sum guard).
 # Default construction (no args) == the 5 built-ins with today's weights.
-#
-# RED NOW: Pulse::Domain::SignalRegistry is absent AND ScoringConfig does not accept
-# an enabled_signals: kwarg / does not validate against the registry -> these raise
-# NameError/ArgumentError (unknown keyword) before the real assertion. GREEN after A9.
 class ScoringConfigRegistryTest < Minitest::Test
   CFG = Pulse::Domain::ScoringConfig
   R = Pulse::Domain::SignalRegistry
@@ -47,9 +48,9 @@ class ScoringConfigRegistryTest < Minitest::Test
                  'the enabled set is the domain of weights'
   end
 
-  # === FC-C1-04: dom(w) == enabled set (exact cover) ==========================
+  # === dom(w) == enabled set (exact cover) ==========================
   def test_registry_backed_default_via_enabled_kwarg
-    # C2 EVOLUTION: default_weights scopes to the 5 default_on keys, so dom(w) ==
+    # default_weights scopes to the 5 default_on keys, so dom(w) ==
     # default_on_keys (coverage_gap is registered but default_on:false, absent from the
     # default weight map). Using R.keys (6) here would over-cover; default_on_keys is the
     # exact cover of the default weight set.
@@ -82,7 +83,7 @@ class ScoringConfigRegistryTest < Minitest::Test
     assert_raises(ArgumentError) { CFG.new(enabled_signals: [], weights: {}) }
   end
 
-  # === FC-C1-05: type + finiteness BEFORE the sum (fail loud, not TypeError) ==
+  # === type + finiteness BEFORE the sum (fail loud, not TypeError) ==
   def test_nan_weight_raises_argument_error
     w = default_weights
     w[:staleness] = Float::NAN
@@ -119,7 +120,7 @@ class ScoringConfigRegistryTest < Minitest::Test
     assert_instance_of ArgumentError, err
   end
 
-  # === FC-C1-06: non-negative =================================================
+  # === non-negative =================================================
   def test_negative_weight_raises
     # keep sum at 1.0 to isolate the non-negativity check.
     w = { staleness: 0.45, progress: 0.30, momentum: 0.20, risk_load: 0.15, blocked_load: -0.10 }
@@ -127,7 +128,7 @@ class ScoringConfigRegistryTest < Minitest::Test
     assert_raises(ArgumentError) { CFG.new(weights: w) }
   end
 
-  # === FC-C1-07: Σ w == 1.0 within 1e-9 =======================================
+  # === Σ w == 1.0 within 1e-9 =======================================
   def test_weights_over_enabled_sum_to_one
     # a map summing to 0.9 over the default 5 -> reject.
     w = { staleness: 0.25, progress: 0.25, momentum: 0.20, risk_load: 0.15, blocked_load: 0.05 }
@@ -151,11 +152,11 @@ class ScoringConfigRegistryTest < Minitest::Test
     assert_equal w, cfg.weights
   end
 
-  # === FC-C1-08: enabled ∩ always-active subset weight-sum > 0 (generalized RC-07)
+  # === enabled ∩ always-active subset weight-sum > 0 ==========================
   def test_enabled_always_active_subset_positive
     # over the default 5: all weight on the NON-always-active signals
     # {progress, risk_load}; the always-active subset {staleness,momentum,blocked_load}
-    # sums to 0.0 -> reject (else an empty active set is admissible; RC-07 recurs).
+    # sums to 0.0 -> reject (else an empty active set is admissible).
     w = { staleness: 0.0, progress: 0.6, momentum: 0.0, risk_load: 0.4, blocked_load: 0.0 }
     assert_in_delta 1.0, w.values.sum, 1e-9
     assert_raises(ArgumentError) { CFG.new(weights: w) }
@@ -172,7 +173,7 @@ class ScoringConfigRegistryTest < Minitest::Test
 
   def test_enabled_set_without_any_always_active_signal_raises
     # enable ONLY non-always-active signals -> the enabled ∩ always-active subset is
-    # empty -> its weight-sum is 0 -> reject (generalized RC-07).
+    # empty -> its weight-sum is 0 -> reject.
     enabled = %i[progress risk_load]
     w = { progress: 0.5, risk_load: 0.5 }
     assert_raises(ArgumentError) { CFG.new(enabled_signals: enabled, weights: w) }

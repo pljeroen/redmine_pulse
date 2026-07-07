@@ -9,14 +9,14 @@
 
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 
-# FC-C2-15 (presentation, HTML side) — HtmlPresenter renders an enabled coverage_gap as
+# Presentation (HTML side) — HtmlPresenter renders an enabled coverage_gap as
 # PLANNING COVERAGE = 100 × (1 − raw_value) (NOT the raw gap fraction), and OMITS the
-# coverage_gap row when it is absent from the breakdown. Discharges FR-C2-07.
+# coverage_gap row when it is absent from the breakdown.
 #
-# HARNESS lane (RED-by-construction): HtmlPresenter references plugin constants
-# (MainConcernLabels, JsonSerializer, SignalResult) resolved by Zeitwerk, so it must load
-# under the Redmine test harness, not standalone. RED until A9 extends
-# HtmlPresenter.SIGNAL_KEYS to include coverage_gap and renders the planning-coverage value.
+# HARNESS lane: HtmlPresenter references plugin constants (MainConcernLabels,
+# JsonSerializer, SignalResult) resolved by Zeitwerk, so it must load under the Redmine
+# test harness, not standalone. Requires HtmlPresenter.SIGNAL_KEYS to include coverage_gap
+# and to render the planning-coverage value.
 class HtmlPresenterCoverageGapTest < ActiveSupport::TestCase
   HP = Pulse::Adapters::HtmlPresenter
   SR = Pulse::Domain::SignalResult
@@ -27,7 +27,7 @@ class HtmlPresenterCoverageGapTest < ActiveSupport::TestCase
   FakeHealth = Struct.new(:breakdown)
   FakeProjection = Struct.new(:health, :project, :risk_tracker_ids)
 
-  # A HealthResult breakdown whose 5 C1 rows are inactive and a coverage_gap row is ACTIVE
+  # A HealthResult breakdown whose 5 default rows are inactive and a coverage_gap row is ACTIVE
   # with raw_value = r (the gap fraction). planning coverage == 100 × (1 − r).
   def breakdown_with_coverage_gap(raw_value:)
     c1 = %i[staleness progress momentum risk_load blocked_load].map do |k|
@@ -75,6 +75,6 @@ class HtmlPresenterCoverageGapTest < ActiveSupport::TestCase
     rows = HP.signal_rows(projection_for(breakdown_without_coverage_gap))
     assert_nil coverage_gap_row(rows),
                'signal_rows must NOT include a coverage_gap row when it is absent from the breakdown'
-    assert_equal 5, rows.size, 'only the 5 C1 rows render when coverage_gap is off'
+    assert_equal 5, rows.size, 'only the 5 default rows render when coverage_gap is off'
   end
 end

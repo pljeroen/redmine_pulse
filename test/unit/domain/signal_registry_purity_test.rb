@@ -1,14 +1,20 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 
-# FR-C1-10 / FC-C1-15 / INV-PURE-DOMAIN / A-ARCH-01.
-# Structural source-scan: the NEW signal_registry.rb and the MODIFIED scoring_config.rb
-# and scoring.rb import ZERO external dependencies — stdlib / intra-pulse-domain only,
-# no Rails/ActiveRecord/Redmine, no I/O, no adapter require (adapter->domain only).
+# The domain layer uses only the standard library.
+# Structural source-scan: signal_registry.rb, scoring_config.rb and scoring.rb import
+# ZERO external dependencies — stdlib / intra-pulse-domain only, no Rails/ActiveRecord/
+# Redmine, no I/O, no adapter require (adapter->domain only).
 #
-# RED NOW: lib/pulse/domain/signal_registry.rb does not exist -> test_registry_file_exists
-# fails (drives RED before GREEN). GREEN after A9 creates the pure-domain file.
+# The file-existence check drives the suite: until lib/pulse/domain/signal_registry.rb
+# exists, test_registry_file_exists fails; once the pure-domain file exists it passes.
 class SignalRegistryPurityTest < Minitest::Test
   ROOT = File.expand_path('../../../..', __FILE__)
   FILES = %w[

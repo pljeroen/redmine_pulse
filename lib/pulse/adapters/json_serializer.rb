@@ -11,16 +11,15 @@ require 'date'
 
 module Pulse
   module Adapters
-    # JsonSerializer — renders a PulseProjection into the frozen portfolio.json /
-    # project.json payloads (CA-14..CA-19). It performs NO scoring/timeline recompute
-    # (it reads the already-computed domain HealthResult/TimelineResult off the
-    # Projection) and NO re-rounding of contributions (explainability passthrough,
-    # FC-CA-23). All emitted dates carry a provenance tag from the CLOSED set
-    # {computed, redmine_timestamp, derived_bucket, version_due_date} — never
-    # projected/estimated (INV-NO-INVENTED-DATES).
+    # JsonSerializer — renders a PulseProjection into the portfolio.json / project.json
+    # payloads. It performs NO scoring/timeline recompute (it reads the already-computed
+    # domain HealthResult/TimelineResult off the Projection) and NO re-rounding of
+    # contributions (explainability passthrough). All emitted dates carry a provenance
+    # tag from the CLOSED set {computed, redmine_timestamp, derived_bucket,
+    # version_due_date} — never a projected/estimated date (no invented dates).
     module JsonSerializer
       SCHEMA_VERSION = '1.0'
-      # C2 (FC-C2-15): coverage_gap appended LAST. An entry is emitted ONLY for the keys
+      # coverage_gap appended LAST. An entry is emitted ONLY for the keys
       # present in the breakdown — coverage_gap is absent on the default-OFF path, so the JSON
       # payload stays byte-identical there.
       SIGNAL_ORDER = %w[staleness progress momentum risk_load blocked_load coverage_gap].freeze
@@ -118,7 +117,7 @@ module Pulse
       end
 
       # dominant_signal is a domain symbol on the normal path and nil on the no-data
-      # path (THAW-RA-001). Emit the string key when present and JSON null when nil —
+      # path. Emit the string key when present and JSON null when nil —
       # NOT "" (the old `nil.to_s`), which fails the schema enum.
       def dominant_signal_value(health)
         ds = health.dominant_signal
@@ -144,12 +143,12 @@ module Pulse
 
       # Exactly the 5 canonical signals, keyed by name; inactive -> active:false +
       # all-null numeric fields (+ null drill_url). Contributions emitted VERBATIM
-      # (no re-round) from the domain SignalResult (FC-CA-23).
+      # (no re-round) from the domain SignalResult.
       def signal_set(projection, with_drill:)
         by_key = projection.health.breakdown.to_h { |s| [s.key.to_s, s] }
         # Emit ONLY the signals present in the breakdown, in canonical order. coverage_gap is
-        # absent on the default-OFF path, so no 'coverage_gap' key appears then (FC-C2-15).
-        # raw_value stays the VERBATIM gap fraction (FC-CA-23 passthrough) — the planning-
+        # absent on the default-OFF path, so no 'coverage_gap' key appears then.
+        # raw_value stays the VERBATIM gap fraction (explainability passthrough) — the planning-
         # coverage transform is HTML-presentation-only.
         SIGNAL_ORDER.select { |key| by_key.key?(key) }.each_with_object({}) do |key, acc|
           s = by_key[key]
@@ -165,7 +164,7 @@ module Pulse
         end
       end
 
-      # Per-signal drill link into the visible Redmine issues/versions (DG-05; seed).
+      # Per-signal drill link into the visible Redmine issues/versions.
       # null when the signal is inactive.
       def drill_url(projection, key, signal)
         return nil unless signal.active

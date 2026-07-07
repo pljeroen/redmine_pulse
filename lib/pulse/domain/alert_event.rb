@@ -10,8 +10,8 @@
 module Pulse
   module Domain
     # AlertEvent — a deeply-frozen immutable value object describing ONE detected
-    # health transition for a project (C6 / FR-C6-05 / FC-C6-04). PURE DOMAIN: no
-    # ActiveRecord / Redmine / Setting / Mailer / clock reference; stdlib only.
+    # health transition for a project. PURE DOMAIN: no
+    # ActiveRecord / Redmine / Setting / Mailer / clock reference; standard library only.
     #
     # Fields:
     #   project_id     : Integer                (validated: Integer, else ArgumentError)

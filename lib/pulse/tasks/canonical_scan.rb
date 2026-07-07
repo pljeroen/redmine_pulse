@@ -13,13 +13,13 @@ require 'pulse/domain/timeline'
 
 module Pulse
   module Tasks
-    # CanonicalScan — shared composition-root wiring for the two rake tasks (C6 / FC-C6-12).
+    # CanonicalScan — shared composition-root wiring for the two rake tasks.
     # It builds the CANONICAL/global read: a privileged viewer + a profile-provider-less
-    # PulseProjection::Engine (so scoring uses the 'default' profile config — the pre-C4
+    # PulseProjection::Engine (so scoring uses the 'default' profile config — the
     # canonical behavior), and it computes one project's current canonical HealthResult.
     #
     # Alerting scores under the canonical profile ONLY (per-viewer alerting is explicitly
-    # out of scope, FR-C6-12) — the alert-state row is keyed by project_id alone, so a
+    # out of scope) — the alert-state row is keyed by project_id alone, so a
     # single canonical read per project is exactly right.
     module CanonicalScan
       module_function
@@ -44,7 +44,7 @@ module Pulse
           store: Pulse::Adapters::ActiveRecordSnapshotStore.new,
           settings_provider: settings_provider,
           clock: clock,
-          profile_provider: nil # canonical/global profile only (FR-C6-12)
+          profile_provider: nil # canonical/global profile only
         )
       end
 

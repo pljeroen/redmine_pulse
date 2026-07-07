@@ -7,11 +7,12 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
-# PulseAlertState — the per-project canonical alert-state row over pulse_alert_states
-# (C6 / FC-C6-05). Autoloaded by Rails from app/models (top-level constant, path-matched —
+# PulseAlertState — the per-project canonical alert-state row over pulse_alert_states.
+# Autoloaded by Rails from app/models (top-level constant, path-matched —
 # consistent with PulseSnapshot / PulseView). Keyed by project_id ONLY (per-project /
-# canonical profile; DEC-10). It is written ONLY by the scan_and_alert composition root
-# (via ActiveRecordAlertStateStore) — never on any request-cycle path (INV-ADDITIVE).
+# canonical profile). It is written ONLY by the scan_and_alert composition root
+# (via ActiveRecordAlertStateStore) — never on any request-cycle path (additive: the
+# alert scan runs off the request cycle).
 #
 # The table declares only updated_at (no created_at), so record_timestamps must NOT try to
 # stamp a missing created_at column; the store sets updated_at explicitly instead.

@@ -10,19 +10,19 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# H1 I18n sweep — RED guards for the two HTML-surface i18n gaps (F8, F6).
+# I18n sweep — guards for the two HTML-surface i18n gaps (lens labels, unit words).
 #
-#   I18N-F8  app/views/pulse/index.html.erb:17 — the lens selector renders the RAW
-#            machine key (<%= lens %>) as the <option> display text instead of the
-#            localized label t("label_pulse_lens_#{lens}"). A non-English user sees
+#   lens labels  app/views/pulse/index.html.erb:17 — the lens selector must render the
+#            localized label t("label_pulse_lens_#{lens}"), not the RAW machine key
+#            (<%= lens %>) as the <option> display text. Otherwise a non-English user sees
 #            "at_risk" in the dropdown. The 5 label_pulse_lens_* keys already exist.
 #
-#   I18N-F6  lib/pulse/adapters/html_presenter.rb#humanize_span — the unit words
+#   unit words  lib/pulse/adapters/html_presenter.rb#humanize_span — the unit words
 #            ('seconds'/'minutes'/'hours'/'days', and their singular forms) must resolve
 #            through I18n (pulse.unit_*) and be interpolated into the (localized)
 #            pulse.computed_ago string, so a translated wrapper emits a translated unit.
 #
-# Both once caught the hardcoded-string signature (pre-fix RED); they PASS now that the
+# Both once caught the hardcoded-string signature before the fix; they pass now that the
 # labels and unit words are localized.
 # Postgres-only evidence lane (mirrors pulse_controller_test); skips on non-Postgres so
 # the CI MySQL legs stay green.
@@ -52,7 +52,7 @@ class I18nLensAndUnitsTest < ActionDispatch::IntegrationTest
     User.current = user
   end
 
-  # ── I18N-F8 : lens <option> text must be the localized label, not the raw key ──
+  # ── lens <option> text must be the localized label, not the raw key ──
 
   # Isolate the lens <select> element body so we scan ONLY the option text, not the
   # whole page (the raw key appears legitimately as the option VALUE attribute and in
@@ -74,11 +74,11 @@ class I18nLensAndUnitsTest < ActionDispatch::IntegrationTest
     option_texts = body.scan(%r{<option[^>]*>(.*?)</option>}m).flatten.map(&:strip)
 
     assert_includes option_texts, at_risk_label,
-                    'I18N-F8: the lens <option> display TEXT must be the localized label ' \
+                    'the lens <option> display TEXT must be the localized label ' \
                     "#{at_risk_label.inspect} (t(:label_pulse_lens_at_risk)), not a raw key"
     refute_includes option_texts, 'at_risk',
-                    'I18N-F8: the raw machine key "at_risk" must NOT be the visible <option> ' \
-                    'text (index.html.erb:17 renders <%= lens %> verbatim today)'
+                    'the raw machine key "at_risk" must NOT be the visible <option> ' \
+                    'text (it must not render <%= lens %> verbatim)'
   end
 
   def test_every_lens_option_text_resolves_to_its_localized_label
@@ -92,10 +92,10 @@ class I18nLensAndUnitsTest < ActionDispatch::IntegrationTest
     %w[health at_risk stale done blocked].each do |lens|
       label = I18n.t("label_pulse_lens_#{lens}")
       assert_includes option_texts, label,
-                      "I18N-F8: lens '#{lens}' option text must render the localized label " \
+                      "lens '#{lens}' option text must render the localized label " \
                       "#{label.inspect}, not the raw key"
       refute_includes option_texts, lens,
-                      "I18N-F8: the raw lens key '#{lens}' must NOT appear as visible option text"
+                      "the raw lens key '#{lens}' must NOT appear as visible option text"
     end
   end
 
@@ -116,13 +116,14 @@ class I18nLensAndUnitsTest < ActionDispatch::IntegrationTest
                  'the main-concern column header must render in Dutch')
   end
 
-  # ── I18N-F6 : the computed-ago time UNIT must resolve through I18n, not be raw English ──
+  # ── the computed-ago time UNIT must resolve through I18n, not be raw English ──
 
   # Drive the rendered cockpit under a TEMPORARY override of the pulse.unit_* keys: if the
   # presenter resolves the unit through I18n (pulse.unit_days etc.), the override changes
   # the rendered unit; if it emits a hardcoded English 'days'/'hours', the override has NO
-  # effect and the English word still appears -> RED. We override only the unit keys (and
-  # keep computed_ago's wrapper intact) so the assertion isolates the unit slot.
+  # effect and the English word still appears (the failure we guard against). We override
+  # only the unit keys (and keep computed_ago's wrapper intact) so the assertion isolates
+  # the unit slot.
   def with_unit_overrides
     sentinel = {
       unit_seconds: 'XSEC', unit_minutes: 'XMIN', unit_hours: 'XHOUR', unit_days: 'XDAY',
@@ -154,15 +155,15 @@ class I18nLensAndUnitsTest < ActionDispatch::IntegrationTest
     # The portfolio row carries a "computed N <unit> ago" string. With the pulse.unit_*
     # keys overridden to sentinels, a presenter that resolves the unit via I18n emits the
     # sentinel (XDAY/XHOUR/XMIN/XSEC). A presenter that hardcoded the English word would emit
-    # 'days'/'hours'/... regardless -> this assertion would then FAIL (the pre-fix state).
+    # 'days'/'hours'/... regardless, and this assertion would then fail.
     computed_fragment = rendered[/computed\s+\d+\s+\S+\s+ago/i]
     refute_nil computed_fragment,
                'the portfolio must render a "computed N <unit> ago" string'
     assert_match(/X(?:SEC|MIN|HOUR|DAY)/, computed_fragment,
-                 'I18N-F6: the time UNIT in "computed N <unit> ago" must resolve through ' \
+                 'the time UNIT in "computed N <unit> ago" must resolve through ' \
                  'I18n (pulse.unit_*) — overriding the unit keys must change the rendered ' \
                  "unit. Got: #{computed_fragment.inspect} (must not bypass I18n)")
     refute_match(/\b(?:seconds|minutes|hours|days)\b/i, computed_fragment,
-                 'I18N-F6: a raw English unit word must NOT bypass I18n in the computed-ago string')
+                 'a raw English unit word must NOT bypass I18n in the computed-ago string')
   end
 end

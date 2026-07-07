@@ -12,19 +12,18 @@ require 'json'
 
 module Pulse
   module Adapters
-    # ActiveRecordSnapshotStore — the production SnapshotStore adapter (FC-CA-06/07/08).
-    # Owns ALL database I/O for the plugin-owned pulse_snapshots cache table; the
-    # SnapshotStore PORT stays stdlib-only. It NEVER writes a Redmine domain table —
-    # its sole write surface is pulse_snapshots (INV-READ-ONLY / FC-CA-13).
+    # ActiveRecordSnapshotStore — the production SnapshotStore adapter. Owns ALL database
+    # I/O for the plugin-owned pulse_snapshots cache table; the SnapshotStore PORT stays
+    # stdlib-only. It NEVER writes a Redmine domain table — read-only w.r.t. Redmine, its
+    # sole write surface is pulse_snapshots.
     #
-    # The payload column is JSON text (DG-03 / OSI-CA-02). Because JSON erases the
-    # Ruby Date/Symbol types ProjectMetrics requires (FR-01), serialize_metrics /
-    # deserialize_metrics explicitly round-trip Date<->String and Symbol<->String so a
-    # deserialized snapshot reconstructs ProjectMetrics and scores identically (BR-03 /
-    # FC-CA-07).
+    # The payload column is JSON text. Because JSON erases the Ruby Date/Symbol types
+    # ProjectMetrics requires, serialize_metrics / deserialize_metrics explicitly
+    # round-trip Date<->String and Symbol<->String so a deserialized snapshot reconstructs
+    # ProjectMetrics and scores identically.
     class ActiveRecordSnapshotStore
       # The plugin-owned cache row. Declared inline so the adapter is self-contained;
-      # it maps to the pulse_snapshots table created by the contract migration.
+      # it maps to the pulse_snapshots table created by the plugin migration.
       class PulseSnapshot < ActiveRecord::Base
         self.table_name = 'pulse_snapshots'
       end
@@ -34,7 +33,7 @@ module Pulse
       # fetch_row(project_id, visibility_context_id, fingerprint) -> {payload:, computed_at:} | nil
       # Like #fetch but returns the stored computed_at alongside the deserialized payload
       # in a SINGLE query (so the caller needs no second round-trip for the snapshot
-      # instant — FC-CA-15 with one SELECT per project, not two).
+      # instant — one SELECT per project, not two).
       def fetch_row(project_id, visibility_context_id, fingerprint)
         row = PulseSnapshot
               .where(project_id: project_id,
@@ -48,15 +47,15 @@ module Pulse
 
       # fetch_rows(keys) -> { [pid, ctx, fp] => {payload:, computed_at:} }
       # Bulk variant: ONE SELECT for a whole portfolio's worth of cache keys, so the warm
-      # portfolio path is O(1) queries, not N+1 (SOFT-PERF / CA-30). `keys` is an array
+      # portfolio path is O(1) queries, not N+1. `keys` is an array
       # of [project_id, visibility_context_id, fingerprint] tuples.
       def fetch_rows(keys)
         return {} if keys.empty?
 
-        # CDX-04 (security-S2-dos, perf): fetch ONLY the exact requested cache-key tuples
+        # Availability hardening (perf): fetch ONLY the exact requested cache-key tuples
         # instead of `where(project_id: pids).find_each` scanning + JSON-parsing every row for
-        # those projects (which, combined with the RT-04 accretion, was an unbounded scan/parse
-        # lever). We build an OR-of-tuples predicate with BOUND params (portable across Postgres
+        # those projects (which, combined with superseded-fingerprint accretion, was an unbounded
+        # scan/parse lever). We build an OR-of-tuples predicate with BOUND params (portable across Postgres
         # and MySQL; parameterized, so injection-safe) so only the requested rows are loaded and
         # deserialized. The return shape is identical: { [pid, ctx, fp] => {payload:, computed_at:} }.
         uniq_keys = keys.uniq
@@ -77,34 +76,34 @@ module Pulse
 
       # store(project_id, visibility_context_id, fingerprint, payload, profile_id:) -> void
       # Idempotent insert-or-ignore on the unique cache key: a duplicate-key store is a
-      # silent no-op (the concurrent cold-miss race converges to exactly one row,
-      # FC-CA-06). Writes ONLY pulse_snapshots.
+      # silent no-op (the concurrent cold-miss race converges to exactly one row).
+      # Writes ONLY pulse_snapshots.
       def store(project_id, visibility_context_id, fingerprint, payload,
                 computed_at: Time.now.utc, profile_id: '')
         now = computed_at
         pid = profile_id.to_s
-        # RT-04 (security-S2-dos): prune SUPERSEDED fingerprints. A changed fingerprint for the
+        # Availability hardening: prune SUPERSEDED fingerprints. A changed fingerprint for the
         # same (project_id, visibility_context_id) means the underlying DATA changed, so any row
         # under that cell carrying a DIFFERENT fingerprint is dead — it can never again be a valid
         # cache hit. Without this the cell accretes one dead row per data change (unbounded scan +
         # memory on every warm fetch — an availability lever).
         #
-        # C4 (INV-C4-CACHE-PARTITION / IT-C4-01): the prune is SCOPED to profile_id. Pre-C4 a
-        # (project, visibility_context) cell held at most ONE live fingerprint, so pruning every
-        # OTHER-fingerprint row was correct. With C4 the SAME cell legitimately holds one live row
-        # PER ACTIVE PROFILE (each a distinct fingerprint). An UNSCOPED prune would delete profile
-        # A's row when profile B is warmed under the same viewer — a cross-serve / cache-partition
-        # breach (A's row vanishes; a later A request misses and can even be served B's warmed row
-        # via the shared cell). Scoping to profile_id deletes only stale-DATA fingerprints WITHIN
-        # the SAME profile (RT-04's DoS bound preserved) while letting distinct profiles coexist.
-        # The reserved default/nil profile stores profile_id '' so a default-only install still
-        # collapses its cell to exactly one row (pre-C4 behavior unchanged).
+        # Cache partitioning by profile: the prune is SCOPED to profile_id. With a single
+        # scoring profile a (project, visibility_context) cell held at most ONE live fingerprint,
+        # so pruning every OTHER-fingerprint row was correct. With scoring profiles the SAME cell
+        # legitimately holds one live row PER ACTIVE PROFILE (each a distinct fingerprint). An
+        # UNSCOPED prune would delete profile A's row when profile B is warmed under the same viewer
+        # — a cross-serve / cache-partition breach (A's row vanishes; a later A request misses and
+        # can even be served B's warmed row via the shared cell). Scoping to profile_id deletes only
+        # stale-DATA fingerprints WITHIN the SAME profile (the availability bound preserved) while
+        # letting distinct profiles coexist. The reserved default/nil profile stores profile_id ''
+        # so a default-only install still collapses its cell to exactly one row.
         #
         # We delete only the OTHER-fingerprint rows for THIS profile (the SAME-key re-store /
         # #refresh path deletes nothing, so those stay one row), then create. Under a concurrent
         # create of the same NEW key the create raises RecordNotUnique and is swallowed below, so
         # the cell still converges to exactly one row per profile. Writes ONLY pulse_snapshots
-        # (INV-READ-ONLY / FC-CA-13).
+        # (read-only w.r.t. Redmine domain tables).
         PulseSnapshot
           .where(project_id: project_id, visibility_context_id: visibility_context_id,
                  profile_id: pid)
@@ -133,7 +132,7 @@ module Pulse
       # the deliberate overwrite. If no row exists for the key it CREATES one (store
       # fallback, defensive). Overwrites the SAME key -> no new row (growth unchanged).
       # Idempotent under concurrency (last-write-wins; the payload is identical since the
-      # fingerprint is unchanged). Writes ONLY pulse_snapshots (INV-READ-ONLY / FC-CA-13).
+      # fingerprint is unchanged). Writes ONLY pulse_snapshots (read-only w.r.t. Redmine).
       #
       # computed_at defaults to the wall-clock instant (Time.now.utc); the projection
       # engine passes its INJECTED @clock.now so the persisted freshness instant is the
@@ -159,7 +158,7 @@ module Pulse
       end
 
       # invalidate_project(project_id) -> Integer (deleted-row count)
-      # Per-project scope ONLY (CD-CA-04): deletes every cache row for that project,
+      # Per-project scope ONLY: deletes every cache row for that project,
       # touches no other project's rows, and returns the affected-row count (0 + no
       # error when nothing was cached).
       def invalidate_project(project_id)
@@ -167,12 +166,12 @@ module Pulse
       end
 
       # invalidate_context(project_id, visibility_context_id) -> Integer (deleted-row count)
-      # RT-06 (security-S2-dos): the caller-SCOPED runtime invalidation for POST /pulse/refresh.
+      # Availability hardening: the caller-SCOPED runtime invalidation for POST /pulse/refresh.
       # Deletes ONLY the rows for this (project_id, visibility_context_id) cell — every OTHER
       # visibility context's warmed snapshot for the same project is left intact, bounding the
       # blast radius of a single viewer's refresh to that viewer's own context. Returns the
       # affected-row count (0 + no error when nothing was cached). Writes ONLY pulse_snapshots
-      # (INV-READ-ONLY / FC-CA-13). invalidate_project (all contexts) stays for the admin rake
+      # (read-only w.r.t. Redmine). invalidate_project (all contexts) stays for the admin rake
       # flush; this is the least-privilege runtime path.
       def invalidate_context(project_id, visibility_context_id)
         PulseSnapshot
@@ -191,12 +190,12 @@ module Pulse
       # miss and removed only by invalidate_project (per-project refresh) or this method
       # (global clear). A long-lived instance with many viewers / churning fingerprints
       # accumulates rows unboundedly; `pulse:cache:clear` lets an admin reclaim the table.
-      # Writes ONLY pulse_snapshots (INV-READ-ONLY / FC-CA-13).
+      # Writes ONLY pulse_snapshots (read-only w.r.t. Redmine).
       def clear_all
         PulseSnapshot.delete_all
       end
 
-      # ---- BR-03 serialization round-trip (FC-CA-07; OPTIONAL helpers) -----------
+      # ---- serialization round-trip (OPTIONAL helpers) -----------
 
       # serialize_metrics(ProjectMetrics) -> Hash (JSON-safe; Dates -> ISO strings,
       # Symbols -> strings) suitable to pass to #store.
@@ -217,12 +216,12 @@ module Pulse
             { 'version_id' => v[:version_id], 'name' => v[:name], 'due_date' => v[:due_date].iso8601 }
           end
         }
-        # C2 (FC-C2-08 / A10-C2-003 b): coverage_gap signal inputs. Plain Integer/Float —
-        # JSON-safe as-is. OMITTED when they are the neutral default (0 / 0.0) — i.e. on the
-        # default-OFF path where coverage gathering is skipped (redmine_metrics_source returns
-        # 0/0.0). So a default-OFF snapshot payload is BYTE-IDENTICAL to a pre-C2 payload
-        # (no coverage keys), and the deserializer's pre-C2 fallback (absent => 0/0.0) restores
-        # them losslessly. Only an ENABLED snapshot with real coverage data persists the fields.
+        # coverage_gap signal inputs. Plain Integer/Float — JSON-safe as-is. OMITTED when
+        # they are the neutral default (0 / 0.0) — i.e. on the default-OFF path where coverage
+        # gathering is skipped (redmine_metrics_source returns 0/0.0). So a default-OFF snapshot
+        # payload is BYTE-IDENTICAL to a payload written before the coverage_gap signal existed
+        # (no coverage keys), and the deserializer's fallback (absent => 0/0.0) restores them
+        # losslessly. Only an ENABLED snapshot with real coverage data persists the fields.
         unless metrics.open_issue_count.zero? && metrics.covered_sum.zero?
           payload['open_issue_count'] = metrics.open_issue_count
           payload['covered_sum'] = metrics.covered_sum
@@ -250,10 +249,10 @@ module Pulse
           version_due_dates: Array(hash['version_due_dates']).map do |v|
             { version_id: v['version_id'], name: v['name'], due_date: Date.iso8601(v['due_date']) }
           end,
-          # C2 (FC-C2-08): coverage_gap inputs. PRE-C2 FALLBACK — a snapshot payload written
-          # before C2 lacks these keys; default open_issue_count:0 / covered_sum:0.0 places
-          # coverage_gap on the INACTIVE path so an old snapshot still deserializes and scores
-          # identically on the default-OFF (5-signal) path. `fetch` with a default preserves an
+          # coverage_gap inputs. BACKWARD-COMPAT FALLBACK — a snapshot payload written before
+          # the coverage_gap signal existed lacks these keys; default open_issue_count:0 /
+          # covered_sum:0.0 places coverage_gap on the INACTIVE path so an old snapshot still
+          # deserializes and scores identically on the default-OFF (5-signal) path. `fetch` with a default preserves an
           # explicit 0 while supplying the fallback only when the key is genuinely absent.
           open_issue_count: hash.fetch('open_issue_count', 0),
           covered_sum: (hash['covered_sum'].nil? ? 0.0 : hash['covered_sum'])

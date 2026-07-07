@@ -10,9 +10,9 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# IT-C6-CONC (INV-C6-ONCE, remediation of C6-CODEX-HIGH-002).
+# Concurrent-scan safety: the alert fires at most once per transition.
 #
-# The once-per-transition guarantee (FC-C6-15) must hold not only across SEQUENTIAL
+# The once-per-transition guarantee must hold not only across SEQUENTIAL
 # reruns but across OVERLAPPING cron invocations. Two `redmine_pulse:scan_and_alert`
 # processes that start at the same instant for the same project could both:
 #   (a) read the SAME prior alert-state (green),
@@ -21,7 +21,7 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #   (d) both advance state to amber
 # => DUPLICATE alert emails for ONE transition, breaking ONCE.
 #
-# The remediation serializes the per-project read->evaluate->deliver->advance section
+# The fix serializes the per-project read->evaluate->deliver->advance section
 # behind a PostgreSQL transaction-scoped ADVISORY LOCK keyed by project_id
 # (pg_advisory_xact_lock). Correct on the FIRST run (no state row need exist yet) and
 # reversible (no schema change). This suite proves BOTH:
@@ -89,7 +89,7 @@ class PulseScanConcurrencyTest < ActiveSupport::TestCase
     end
 
     assert_includes locked_keys, @project.id,
-                    'the scan must take a per-project lock around the critical section (HIGH-002)'
+                    'the scan must take a per-project lock around the critical section'
   end
 
   # ── (2) two concurrent scans against the same prior state deliver EXACTLY ONCE ─

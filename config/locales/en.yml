@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2026 Jeroen
+
 # English locale (shipped in v1). Structure is ready for additional locales
 # (SOFT-I18N: all user-facing strings localizable via config/locales).
 en:
@@ -5,14 +8,14 @@ en:
   label_pulse: "Pulse"
   label_pulse_portfolio: "Portfolio health"
 
-  # ── controllers-api contract: the 5 NEW canonicalized keys (D-CA-OQ01/04) ────
+  # ── the 5 canonicalized cockpit keys ────
   label_pulse_visibility_note: "Health computed from issues visible to you."
   label_pulse_rag_red: "Red"
   label_pulse_rag_amber: "Amber"
   label_pulse_rag_green: "Green"
   label_pulse_rag_aria_label: "Project health: %{state}"
 
-  # ── R-A no-data state (THAW-RB-001) — a 0-issue project has nothing to score ──
+  # ── no-data state — a 0-issue project has nothing to score ──
   label_pulse_rag_no_data: "No data"
   label_pulse_no_data: "No data — no issues to score yet"
   label_pulse_no_recent_activity: "No recent activity"
@@ -56,7 +59,7 @@ en:
 
   pulse:
     computed_ago: "computed %{n} %{unit} ago"
-    # Time-unit words for the "computed N <unit> ago" string (I18N-F6). The presenter
+    # Time-unit words for the "computed N <unit> ago" string. The presenter
     # resolves the unit through these keys so a translated locale emits a translated unit;
     # the English values keep the rendered text identical ("computed 3 days ago").
     unit_seconds: "seconds"
@@ -79,24 +82,24 @@ en:
     enable_hint_blocked_load: "inactive — blocked load needs visible open issues"
   pulse_enable_hint_generic: "inactive — map an enrichment field to enable"
 
-  # ── settings validation rejection (CA-23 / CA-A10-001) ───────────────────────
+  # ── settings validation rejection ───────────────────────
   # Surfaced as flash[:error] when an out-of-bounds settings value is rejected (the
   # prior valid value is kept; the invalid input is never persisted).
   error_pulse_settings_rejected: "Some Pulse settings were out of range and were not saved (kept the previous value): %{fields}."
 
-  # ── scoring profiles (C4) ────────────────────────────────────────────────────
+  # ── scoring profiles ────────────────────────────────────────────────────
   label_pulse_scored_under: "Scored under"
   label_pulse_profile_switcher: "Scoring profile"
   label_pulse_apply: "Apply"
-  # FC-C4-12 / FR-C4-09: the surfaced dangling-fallback warning + its subject fragments.
+  # The surfaced dangling-fallback warning + its subject fragments.
   label_pulse_profile_subject_selected: "the selected profile"
   label_pulse_profile_subject_role_bound: "the role-bound profile"
   pulse_profile_dangling_warning: "%{subject} %{id} is not a published profile — falling back to the system default."
-  # C5 (RC-C5-06 / FC-C5-16): the surfaced dangling-lens_ref warning (an active saved view's
+  # The surfaced dangling-lens_ref warning (an active saved view's
   # lens_ref referenced a removed/unknown lens; the cockpit fell back to the default lens).
   pulse_lens_dangling_warning: "%{lens} is not a known lens — falling back to the default (health) lens."
 
-  # ── saved views (C5) ─────────────────────────────────────────────────────────
+  # ── saved views ─────────────────────────────────────────────────────────
   label_pulse_views: "Saved views"
   label_pulse_views_empty: "You have no saved views yet."
   label_pulse_view_new: "New saved view"
@@ -141,8 +144,8 @@ en:
   label_pulse_role_binding_profile_id: "Profile id (or \"default\")"
   label_pulse_role_binding_new: "Add role binding"
 
-  # ── settings partial (CA-23) ─────────────────────────────────────────────────
-  # E1 self-service overview: the plain-language banner at the very top of the form.
+  # ── settings partial ─────────────────────────────────────────────────
+  # Self-service overview: the plain-language banner at the very top of the form.
   label_pulse_settings_overview: "Pulse gives every project a simple health score and a Red/Amber/Green chip on your portfolio dashboard, so you can see at a glance which projects need attention. It works out of the box with sensible defaults, so you can leave every field on this page blank and it will just work. Only change something here when you want to fine-tune how a score is calculated - and if in doubt, leave it blank."
   label_pulse_settings_enrichment: "Enrichment"
   label_pulse_settings_weights: "Weights"
@@ -170,7 +173,7 @@ en:
   label_pulse_on_track_threshold: "On-track threshold"
   label_pulse_snapshot_max_age_minutes: "Freshness cap (minutes)"
 
-  # ── settings help (E1): per-field inline help + per-group intros ─────────────
+  # ── settings help: per-field inline help + per-group intros ─────────────
   label_pulse_help_group_enrichment: "This section lets you point Pulse at extra fields you already use in Redmine to make the score smarter. You almost never need to touch it - leave everything blank and Pulse scores on standard Redmine data alone."
   label_pulse_help_group_weights: "This decides how much each health signal counts toward the score. The defaults are balanced and work well for most teams, so leave every box blank unless you want to emphasise something. If you do change them, either fill in all five (they must add up to 1.0) or leave all five blank."
   label_pulse_help_group_thresholds: "This sets the score cut-offs for the Red, Amber and Green health chips. The defaults are sensible - leave them blank unless your team wants a stricter or more relaxed definition of a healthy project."
@@ -198,7 +201,7 @@ en:
   label_pulse_help_momentum_direction_bias: "How much finishing more than you start (or the reverse) nudges the momentum trend up or down. Set 0 to ignore direction and score on busyness alone. Leave blank if unsure. Default: 0.15."
   label_pulse_help_on_track_threshold: "How healthy a project must be before its \"main concern\" simply reads \"On track\" instead of naming a weak spot. Raise it and fewer projects earn \"On track\". Leave blank if unsure. Default: 0.5."
   label_pulse_help_snapshot_max_age_minutes: "How long Pulse reuses a saved score before working it out again, so the dashboard loads fast. A lower number keeps scores fresher but recalculates more often; 0 means only refresh when the project's data actually changes. Leave blank if unsure. Default: 60 minutes."
-  # alerting contract (C6): health-alert email + settings labels.
+  # alerting: health-alert email + settings labels.
   label_pulse_settings_alerting: "Health alerting"
   label_pulse_help_group_alerting: "This can email your team when a project's health changes, so nobody has to keep checking the dashboard. It is off until you set it up, and it also needs your administrator to schedule the regular scan. Leave both fields blank if you are not using alerts yet."
   label_pulse_alert_auto_subscribe_role_id: "Auto-subscribe role"
@@ -206,7 +209,7 @@ en:
   label_pulse_alert_score_delta_threshold: "Score-delta alert threshold"
   label_pulse_help_alert_score_delta_threshold: "How big a jump or drop in a project's score should trigger an alert - a bigger number means only large swings get flagged. Leave blank or 0 if unsure; this alert stays off. Default: blank (off)."
   label_pulse_alert_auto_subscribe_disabled: "(disabled — no auto-subscribe)"
-  # C6 (FR-C6-08): the per-project "Watch project health" opt-in toggle on the cockpit.
+  # the per-project "Watch project health" opt-in toggle on the cockpit.
   label_pulse_watch_health: "Watch project health"
   label_pulse_unwatch_health: "Unwatch project health"
   notice_pulse_health_watched: "You are now watching this project's health alerts."
@@ -219,7 +222,7 @@ en:
   label_pulse_alert_event_no_data_appeared: "no scoreable data"
   label_pulse_alert_event_score_delta: "health score moved sharply"
 
-  # webhooks contract (C7 / FR-C7-02/06/09): the outbound-webhook settings section + the
+  # webhooks: the outbound-webhook settings section + the
   # admin test-event flash strings. All endpoints are OFF by default; nothing is sent until
   # the operator configures a destination. Safe defaults (HTTPS-only, SSRF-guard on) are
   # per-endpoint overridable.

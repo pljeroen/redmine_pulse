@@ -9,10 +9,10 @@
 
 module Pulse
   module Ports
-    # ProfileProvider (FR-C4-03 / FC-C4-06) — the DUCK-TYPED port (structural typing;
-    # stdlib only; no ABC / inheritance) for resolving which ScoringProfile is active for a
-    # viewer. It mirrors the as-built MetricsSource / Clock / SnapshotStore documentation
-    # modules: a plain Module carrying only the contract narrative, not an enforced base class.
+    # ProfileProvider — the DUCK-TYPED port (structural typing;
+    # standard library only; no ABC / inheritance) for resolving which ScoringProfile is active
+    # for a viewer. It mirrors the as-built MetricsSource / Clock / SnapshotStore documentation
+    # modules: a plain Module carrying only the protocol narrative, not an enforced base class.
     #
     # An implementation MUST respond to:
     #
@@ -21,14 +21,14 @@ module Pulse
     #        synthetic system default (id "default", config == the current global ScoringConfig).
     #
     #   #resolve(viewer, project, requested_id = nil)
-    #     -> Pulse::Domain::ScoringProfile, resolved by precedence (FC-C4-06):
+    #     -> Pulse::Domain::ScoringProfile, resolved by precedence:
     #          1. an explicit, transient requested_id (viewer selection) if it names a
     #             published profile;
     #          2. else the viewer's role-default binding (multi-role tie-break: FIRST match by
-    #             role.id ASCENDING, FC-C4-07);
+    #             role.id ASCENDING);
     #          3. else the system default.
     #        A requested/bound id that is NOT in the published set degrades to the system
-    #        default AND surfaces a non-empty warning via #last_warning (FC-C4-12) — never raises.
+    #        default AND surfaces a non-empty warning via #last_warning — never raises.
     #
     #   #last_warning
     #     -> String | nil, the human-readable warning from the LAST #resolve call (nil on a

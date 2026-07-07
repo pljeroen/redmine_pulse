@@ -7,13 +7,13 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
-# PulseView — the saved-view CONFIG record (FC-C5-04/05). Top-level constant (Zeitwerk
+# PulseView — the saved-view CONFIG record. Top-level constant (Zeitwerk
 # path match app/models/pulse_view.rb, consistent with the PulseSnapshot naming), so the
 # plugin boots without a Zeitwerk::NameError.
 #
-# A saved view captures a cockpit configuration: project scope, active lens (C3 CustomLens
-# name or a built-in lens key), active profile (C4 ScoringProfile id), sort, and column/
-# threshold preferences. Visibility mirrors IssueQuery (spec §6 / DEC-07):
+# A saved view captures a cockpit configuration: project scope, active lens (a CustomLens
+# name or a built-in lens key), active profile (a ScoringProfile id), sort, and column/
+# threshold preferences. Visibility mirrors IssueQuery:
 #   * private -> visible ONLY to its owner (user_id == viewer.id)
 #   * public  -> visible to any cockpit viewer (holds :view_pulse)
 #   * roles   -> visible ONLY to members holding a listed role (role_ids)
@@ -31,7 +31,7 @@ class PulseView < ActiveRecord::Base
   VISIBILITIES  = %w[private public roles].freeze
   PROJECT_SCOPES = %w[all selected status_filter].freeze
 
-  # The exactly-three built-in system views (FC-C5-11). Pinned name -> built-in lens key;
+  # The exactly-three built-in system views. Pinned name -> built-in lens key;
   # user_id nil (system-owned), visibility public, project_scope all, profile_ref nil.
   BUILTINS = [
     { name: 'Portfolio health', lens_ref: 'health' },
@@ -51,7 +51,7 @@ class PulseView < ActiveRecord::Base
   serialize :prefs,        coder: JSON
 
   # visibility defaults to 'private' at the DB level (column default). Guarantee the default
-  # on an in-memory PulseView.new(...) too (FR-C5-04), before validation reads it.
+  # on an in-memory PulseView.new(...) too, before validation reads it.
   after_initialize do
     self.visibility = 'private' if visibility.nil? && new_record?
   end
@@ -66,7 +66,7 @@ class PulseView < ActiveRecord::Base
   scope :system_owned, -> { where(user_id: nil) }
   scope :user_owned,   ->(user_id) { where(user_id: user_id) }
 
-  # visible_to(user) — the single authoritative READ visibility gate (FC-C5-05). Returns
+  # visible_to(user) — the single authoritative READ visibility gate. Returns
   # EXACTLY the union of:
   #   (private AND user_id = user.id) ∪ public ∪ (roles AND user holds a listed role_id)
   # No other record is ever returned.
@@ -95,7 +95,7 @@ class PulseView < ActiveRecord::Base
 
   # ── built-in seeding (idempotent) ───────────────────────────────────────────
 
-  # Seed EXACTLY the three built-in system views idempotently (FC-C5-11). find_or_create_by!
+  # Seed EXACTLY the three built-in system views idempotently. find_or_create_by!
   # keyed on (user_id: nil, name:) so a re-run never duplicates — the count stays == 3.
   def self.seed_builtins!
     BUILTINS.each do |b|
@@ -138,7 +138,7 @@ class PulseView < ActiveRecord::Base
   private
 
   # role_ids must deserialize to a NON-EMPTY Array iff visibility == 'roles'; irrelevant
-  # (not required) for private/public (FC-C5-04).
+  # (not required) for private/public.
   def role_ids_present_when_roles
     return unless visibility == 'roles'
 

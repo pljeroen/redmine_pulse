@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2026 Jeroen
+
 # redmine_pulse — Continuous Integration.
 #
 # SAFE-BY-DESIGN for public forks (the explicit threat model is a malicious fork
@@ -92,7 +95,7 @@ jobs:
 
       - name: Checkout Redmine 6.1.x (v6.1.2)
         # Pin the IMMUTABLE 6.1.2 tag, never the moving 6.1-stable branch — the
-        # tested substrate must not change without a repo change (CI-A10-002).
+        # tested substrate must not change without a repo change.
         run: git clone --depth 1 --branch 6.1.2 https://github.com/redmine/redmine.git redmine
 
       - name: Link plugin into Redmine

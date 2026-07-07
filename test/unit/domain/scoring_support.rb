@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require 'date'
 require 'pulse/domain/project_metrics'
 require 'pulse/domain/scoring_config'
@@ -11,7 +17,7 @@ require 'pulse/domain/scoring'
 # Shared builders for the pure-domain scoring tests. A test double Clock that
 # returns a FIXED Date satisfies the Pulse::Ports::Clock duck-type (#today -> Date).
 module ScoringSupport
-  # FixedClock: the only time source the domain may read (FR-05/FR-35).
+  # FixedClock: the only time source the domain may read.
   class FixedClock
     def initialize(date)
       @date = date
@@ -45,8 +51,8 @@ module ScoringSupport
       effort_mapped: true,
       event_series: [],
       version_due_dates: [],
-      # C2 additive-required coverage inputs. The 0/0.0 baseline places coverage_gap on
-      # the INACTIVE path (FR-C2-04) so it never affects the pre-C2 five-signal score.
+      # additive coverage inputs. The 0/0.0 baseline places coverage_gap on the INACTIVE
+      # path so it never affects the five-signal score.
       open_issue_count: 0,
       covered_sum: 0.0
     }

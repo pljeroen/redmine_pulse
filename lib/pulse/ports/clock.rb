@@ -12,8 +12,8 @@ require 'date'
 module Pulse
   module Ports
     # Clock is a duck-typed port: any object that responds to #today and returns a
-    # plain Date satisfies the contract. The domain reads the current day ONLY through
-    # an injected Clock (FR-05/FR-35); it never reads the system calendar directly.
+    # plain Date satisfies the protocol. The domain reads the current day ONLY through
+    # an injected Clock; it never reads the system calendar directly.
     #
     # Protocol:
     #   clock.today -> Date   # the "as-of" calendar day used for staleness/momentum

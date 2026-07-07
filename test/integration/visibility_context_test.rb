@@ -1,9 +1,15 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# VisibilityContext fingerprint correctness (MS-23/24/25, FC-24/25/26). RED until A9.
+# VisibilityContext fingerprint correctness.
 #
 # Canonical API:
 #   Pulse::Adapters::VisibilityContext.new(user, project).id -> String (deterministic)
@@ -21,7 +27,7 @@ class VisibilityContextTest < ActiveSupport::TestCase
     Pulse::Adapters::VisibilityContext.new(user, @project).id
   end
 
-  # --- MS-24 / FC-25: same identity-independent predicate -> same id -----------
+  # --- same identity-independent predicate -> same id -----------
 
   def test_two_all_visibility_users_share_context_id
     role = create_role!(name: 'CtxAll', issues_visibility: 'all')
@@ -33,7 +39,7 @@ class VisibilityContextTest < ActiveSupport::TestCase
                  'identity-independent (all) predicate is shareable'
   end
 
-  # --- MS-24 / FC-25: own-visibility collapses to per-user --------------------
+  # --- own-visibility collapses to per-user --------------------
 
   def test_own_visibility_users_get_distinct_per_user_context
     role = create_role!(name: 'CtxOwn', issues_visibility: 'own')
@@ -53,7 +59,7 @@ class VisibilityContextTest < ActiveSupport::TestCase
     assert_kind_of String, ctx_id(u)
   end
 
-  # --- MS-24 / FC-26: any predicate-affecting change moves the id -------------
+  # --- any predicate-affecting change moves the id -------------
 
   def test_group_membership_change_moves_context_id
     role = create_role!(name: 'CtxGrp', issues_visibility: 'own')
@@ -94,10 +100,10 @@ class VisibilityContextTest < ActiveSupport::TestCase
     add_member!(project: @project, principal: u, role: role)
     before = ctx_id(u)
     role.add_permission!(:view_changesets) # changeset visibility dimension changes
-    refute_equal before, ctx_id(u), ':view_changesets permission change participates (THAW-001)'
+    refute_equal before, ctx_id(u), ':view_changesets permission change participates'
   end
 
-  # --- MS-25 / FC-24: NO view_private_issues dimension ------------------------
+  # --- NO view_private_issues dimension ------------------------
 
   def test_no_view_private_issues_dimension
     role = create_role!(name: 'CtxNPV', issues_visibility: 'all')

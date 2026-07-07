@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 # Plugin-local gem dependencies. Redmine merges this into its own bundle at boot.
-# The domain layer itself is stdlib-only (INV-DOMAIN-PURITY); the only addition
-# here is a test-time JSON Schema validator for the API contract tests.
+# The domain layer itself uses only the standard library (no external gems); the only
+# addition here is a test-time JSON Schema validator for the API tests.
 
 group :test do
-  gem 'json-schema' # AC-API-SCHEMA: validate API payloads against contracts/schemas/*
+  gem 'json-schema' # validate API payloads against the JSON schemas
 end

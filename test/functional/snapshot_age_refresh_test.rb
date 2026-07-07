@@ -1,10 +1,16 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'date'
 
-# snapshot-max-age-refresh (CT-02 EVOLUTION) — the CORE engine age-check.
+# snapshot-max-age-refresh — the CORE engine age-check.
 #
 # A configurable snapshot_max_age_minutes freshness cap: when PulseProjection::Engine
 # finds a cached snapshot OLDER than the cap, the first requester recomputes and
@@ -21,17 +27,17 @@ require 'date'
 # project, with a CONTROLLABLE clock double exposing BOTH #today and #now, and forces
 # a row's computed_at via SQL to place it fresh / stale / exactly-at-boundary.
 #
-# The fingerprint EXCLUDES the clock (DEC-11), so advancing #now does not change the
-# key — only the age-refresh overwrites the row. Postgres-gated (COND-A8-004). RED
-# until GREEN adds Clock#now, SnapshotStore#refresh, the setting, and the engine
-# age-check on project_projection + portfolio_projections.
+# The fingerprint EXCLUDES the clock, so advancing #now does not change the key — only the
+# age-refresh overwrites the row. Runs on PostgreSQL (the production engine). Exercises
+# Clock#now, SnapshotStore#refresh, the setting, and the engine age-check on
+# project_projection + portfolio_projections.
 class SnapshotAgeRefreshTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
   fixtures :issue_statuses, :enumerations, :trackers, :users, :roles
 
-  # A clock double that satisfies BOTH the existing #today contract AND the new #now
-  # contract the age-check requires. `now` is fully controllable so a test can place the
+  # A clock double that satisfies BOTH the existing #today method AND the new #now
+  # method the age-check requires. `now` is fully controllable so a test can place the
   # cached row's age relative to the cap without sleeping.
   ControllableClock = Struct.new(:date, :instant) do
     def today

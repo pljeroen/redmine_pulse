@@ -1,23 +1,25 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'pulse/domain/weight_set'
 
-# FR-C3-01, FR-C3-05 / FC-C3-01, FC-C3-02, FC-C3-03, FC-C3-04.
 # WeightSet frozen VO: a map of registered-signal-key => weight over a SUBSET of the
-# registered signals. Validates: keys registered (else ArgumentError, AC-C3-01);
-# each weight a finite real Numeric >= 0, type-checked BEFORE compare (NaN/Inf/Complex/
-# String/nil => ArgumentError, AC-C3-02); at least one weight > 0 (else ArgumentError);
-# NO sum==1.0 requirement. Frozen (FrozenError on mutation, AC-C3-05). #to_h plain frozen
-# Hash; Hash-aware #== (for C4 reuse).
-#
-# RED NOW: Pulse::Domain::WeightSet is unimplemented -> require raises LoadError. GREEN
-# after A9 creates lib/pulse/domain/weight_set.rb to the exact public API these tests pin.
+# registered signals. Validates: keys registered (else ArgumentError); each weight a finite
+# real Numeric >= 0, type-checked BEFORE compare (NaN/Inf/Complex/String/nil =>
+# ArgumentError); at least one weight > 0 (else ArgumentError); NO sum==1.0 requirement.
+# Frozen (FrozenError on mutation). #to_h plain frozen Hash; Hash-aware #== (for profile
+# reuse).
 class WeightSetTest < Minitest::Test
   WS = Pulse::Domain::WeightSet
   R = Pulse::Domain::SignalRegistry
 
-  # === FC-C3-01: valid construction over a SUBSET of registered signals =========
+  # === valid construction over a SUBSET of registered signals =========
   def test_valid_subset_accepted
     ws = WS.new(staleness: 0.6, progress: 0.4)
     assert_instance_of WS, ws
@@ -47,7 +49,7 @@ class WeightSetTest < Minitest::Test
     assert_equal({ staleness: 0.0, progress: 1.0 }, ws.to_h)
   end
 
-  # === FC-C3-01: unregistered key => ArgumentError (AC-C3-01) ===================
+  # === unregistered key => ArgumentError ===================
   def test_unregistered_key_raises
     assert_raises(ArgumentError) { WS.new(not_a_signal: 1.0) }
   end
@@ -56,12 +58,12 @@ class WeightSetTest < Minitest::Test
     assert_raises(ArgumentError) { WS.new(staleness: 0.5, bogus: 0.5) }
   end
 
-  # === FC-C3-01: empty Hash => ArgumentError ===================================
+  # === empty Hash => ArgumentError ===================================
   def test_empty_weights_raises
     assert_raises(ArgumentError) { WS.new({}) }
   end
 
-  # === FC-C3-01: non-finite / non-real weights => ArgumentError (AC-C3-02) ======
+  # === non-finite / non-real weights => ArgumentError ======
   # Type/finiteness checked BEFORE compare so Complex/String never leak Type/NoMethodError.
   def test_non_numeric_string_weight_raises
     err = assert_raises(StandardError) { WS.new(staleness: '0.5', progress: 0.5) }
@@ -90,12 +92,12 @@ class WeightSetTest < Minitest::Test
     assert_instance_of ArgumentError, err
   end
 
-  # === FC-C3-01: negative weight => ArgumentError (AC-C3-02) ====================
+  # === negative weight => ArgumentError ====================
   def test_negative_weight_raises
     assert_raises(ArgumentError) { WS.new(staleness: -0.1, progress: 0.9) }
   end
 
-  # === FC-C3-01: all-zero weights => ArgumentError (>= 1 must be > 0) ============
+  # === all-zero weights => ArgumentError (>= 1 must be > 0) ============
   def test_all_zero_weights_raises
     assert_raises(ArgumentError) { WS.new(staleness: 0, progress: 0) }
   end
@@ -104,7 +106,7 @@ class WeightSetTest < Minitest::Test
     assert_raises(ArgumentError) { WS.new(staleness: 0.0, progress: 0.0, momentum: 0.0) }
   end
 
-  # === FC-C3-01: NO sum==1.0 requirement ========================================
+  # === NO sum==1.0 requirement ========================================
   def test_no_sum_to_one_requirement
     # A lens weight map is NOT a probability simplex; a sum != 1.0 constructs fine.
     ws = WS.new(risk_load: 0.5, blocked_load: 0.3, staleness: 0.2)  # sum 1.0 — fine
@@ -115,9 +117,9 @@ class WeightSetTest < Minitest::Test
     assert_equal({ staleness: 0.1, progress: 0.1 }, ws3.to_h)
   end
 
-  # === FC-C3-02: frozen VO; #to_h plain frozen Hash (AC-C3-05) ==================
+  # === frozen VO; #to_h plain frozen Hash ==================
   def test_weight_set_is_frozen
-    assert WS.new(staleness: 1.0).frozen?, 'WeightSet must be frozen (FC-C3-02)'
+    assert WS.new(staleness: 1.0).frozen?, 'WeightSet must be frozen'
   end
 
   def test_mutation_raises_frozen_error
@@ -129,7 +131,7 @@ class WeightSetTest < Minitest::Test
     ws = WS.new(staleness: 0.25, progress: 0.75)
     h = ws.to_h
     assert_instance_of Hash, h
-    assert h.frozen?, '#to_h must return a frozen Hash (FC-C3-02/FC-C3-03)'
+    assert h.frozen?, '#to_h must return a frozen Hash'
   end
 
   def test_mutating_to_h_raises_frozen_error
@@ -137,7 +139,7 @@ class WeightSetTest < Minitest::Test
     assert_raises(FrozenError) { ws.to_h[:staleness] = 0.9 }
   end
 
-  # === FC-C3-03: Hash-compatible read surface + insertion order + no drift =======
+  # === Hash-compatible read surface + insertion order + no drift =======
   def test_to_h_preserves_input_insertion_order
     ws = WS.new(staleness: 0.25, progress: 0.75)
     assert_equal %i[staleness progress], ws.to_h.keys
@@ -151,7 +153,7 @@ class WeightSetTest < Minitest::Test
     assert_equal 0.75, ws.to_h[:progress]
   end
 
-  # === FC-C3-04: Hash-aware, value-based #== (for C4 reuse) ======================
+  # === Hash-aware, value-based #== (for profile reuse) ======================
   def test_equality_against_plain_hash
     assert_equal({ staleness: 0.25, progress: 0.75 }, WS.new(staleness: 0.25, progress: 0.75).to_h)
     assert WS.new(staleness: 0.25, progress: 0.75) == { staleness: 0.25, progress: 0.75 }
@@ -171,7 +173,7 @@ class WeightSetTest < Minitest::Test
     assert WS.new(momentum: 0.6, progress: 0.4) == WS.new(momentum: 0.6, progress: 0.4)
   end
 
-  # === FC-C3-03: formal read surface #[] / #keys / #values (A10-C3-001) ==========
+  # === formal read surface #[] / #keys / #values ==========
   def test_index_returns_weight_for_present_key
     ws = WS.new(staleness: 0.25, progress: 0.75)
     assert_equal 0.25, ws[:staleness]
@@ -222,11 +224,11 @@ class WeightSetTest < Minitest::Test
     assert_equal %i[staleness progress], ws.to_h.keys
   end
 
-  # === FC-C3-14 (structural): no DSL / expression surface — declarative Hash only ===
+  # === no DSL / expression surface — declarative Hash only ===
   def test_no_eval_or_expression_surface_in_source
     src = File.read(File.expand_path('../../../../lib/pulse/domain/weight_set.rb', __FILE__))
     %w[eval instance_eval class_eval module_eval binding].each do |tok|
-      refute_match(/\b#{tok}\b/, src, "weight_set.rb must contain no #{tok} (no-DSL, FC-C3-14)")
+      refute_match(/\b#{tok}\b/, src, "weight_set.rb must contain no #{tok} (no-DSL)")
     end
   end
 end

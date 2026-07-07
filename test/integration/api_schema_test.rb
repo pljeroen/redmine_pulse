@@ -1,20 +1,25 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'json'
 require 'json-schema'
 require 'yaml'
 
-# CA-18/19 + FC-CA-18a/18b/19/32 + CA-15/16/17 + COND-A8-001: JSON SCHEMA conformance
-# of the LIVE portfolio + project payloads AND the seed examples against the frozen
-# schemas, PLUS the non-schema (functional) facts schema validation cannot catch:
+# JSON SCHEMA conformance of the LIVE portfolio + project payloads AND the seed examples
+# against the frozen schemas, PLUS the non-schema (functional) facts schema validation
+# cannot catch:
 #   * source/provenance distinction (snapshot_computed_at vs projected_at);
 #   * exact projection values equal the active ScoringConfig;
-#   * domain non-mutation (lib/pulse/domain git-diff-unchanged by this contract);
-#   * the EXACT English visibility_note literal (D-CA-OQ01).
+#   * the EXACT English visibility_note literal.
 #
-# Postgres-gated (FC-CA-38). RED until A9.
+# Runs on PostgreSQL (the production engine).
 class ApiSchemaTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -28,8 +33,8 @@ class ApiSchemaTest < ActionDispatch::IntegrationTest
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    # COND-A8-004 / GL-CI-MYSQL: Postgres-evidence lane — skip on non-Postgres adapters
-    # (counted as skips, not failures) so the CI MySQL legs stay green; on Postgres the
+    # Runs on PostgreSQL (the production engine) — skip on non-Postgres adapters
+    # (counted as skips, not failures) so the MySQL CI legs stay green; on Postgres the
     # guard never fires and the suite runs unchanged.
     unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
       skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
@@ -110,11 +115,10 @@ class ApiSchemaTest < ActionDispatch::IntegrationTest
     assert_schema(PORTFOLIO_SCHEMA, j)
   end
 
-  # ─── R-A no-data downstream (THAW-RB-001): a 0-issue project's payload validates ──
-  # against the schema with NULL health_score / dominant_signal / lens values. RED until
-  # the schema makes lens_keys.{health,at_risk,stale,blocked} nullable (A9-R-A gap, thaw-
-  # scoped here): the current schema types them as plain "number", so a no-data payload
-  # (all lens values nil) fails validation.
+  # ─── no-data downstream: a 0-issue project's payload validates against the schema with
+  # NULL health_score / dominant_signal / lens values. The schema must make
+  # lens_keys.{health,at_risk,stale,blocked} nullable: if they are typed as plain "number",
+  # a no-data payload (all lens values nil) fails validation.
 
   def test_no_data_project_validates_with_null_health_and_lens_keys
     nodata = create_project!(name: 'SchNoData', identifier: 'sch-nodata')
@@ -123,14 +127,14 @@ class ApiSchemaTest < ActionDispatch::IntegrationTest
     assert_response :success, 'a 0-issue (no-data) project must serialize, not crash'
     j = JSON.parse(response.body)
     # R-A no-data shape: health_score nil, rag 'no_data', dominant_signal nil, lens values nil.
-    assert_nil j['health_score'], 'no-data project: health_score is null (R-A)'
-    assert_equal 'no_data', j['rag'], 'no-data project: rag is no_data (R-A)'
-    assert_nil j['dominant_signal'], 'no-data project: dominant_signal is null (R-A)'
+    assert_nil j['health_score'], 'no-data project: health_score is null'
+    assert_equal 'no_data', j['rag'], 'no-data project: rag is no_data'
+    assert_nil j['dominant_signal'], 'no-data project: dominant_signal is null'
     %w[health at_risk stale done blocked].each do |k|
-      assert_nil j['lens_keys'][k], "no-data project: lens_keys.#{k} is null (R-A)"
+      assert_nil j['lens_keys'][k], "no-data project: lens_keys.#{k} is null"
     end
-    # The payload MUST validate against the (now-nullable) schema. RED until lens_keys.*
-    # is made nullable in project.json.
+    # The payload MUST validate against the (nullable) schema — lens_keys.* must be nullable
+    # in project.json.
     assert_schema(PROJECT_SCHEMA, j)
   end
 
@@ -142,31 +146,30 @@ class ApiSchemaTest < ActionDispatch::IntegrationTest
     j = JSON.parse(response.body)
     row = j['projects'].find { |p| p['identifier'] == 'sch-nodata-pf' }
     refute_nil row, 'the no-data project must appear in the portfolio'
-    assert_nil row['health_score'], 'portfolio no-data row: health_score is null (R-A)'
+    assert_nil row['health_score'], 'portfolio no-data row: health_score is null'
     assert_equal 'no_data', row['rag']
-    # The whole portfolio payload (incl. the null-lens no-data row) must validate. RED
-    # until portfolio.json lens_keys.* is made nullable.
+    # The whole portfolio payload (incl. the null-lens no-data row) must validate —
+    # portfolio.json lens_keys.* must be nullable.
     assert_schema(PORTFOLIO_SCHEMA, j)
   end
 
-  # ─── finding 3 (JSON side) — DELIBERATELY NOT a blanket "no long float" test ──
-  # The task asked to assert JSON numerics are rounded. A BLANKET /\d+\.\d{6,}/ refutation
-  # over the whole JSON body would DIRECTLY CONTRADICT the frozen FC-CA-23 explainability
-  # invariant (test/functional/explainability_passthrough_test.rb), which REQUIRES
-  # `contribution` and `effective_weight` to be emitted VERBATIM from the domain (those raw
-  # values ARE long floats, e.g. 0.3846153846153846). A test forcing both GREEN is
-  # unsatisfiable, so it is not authored (Symmetric Refusal / Falsifiability — surfaced to
-  # A9 in the RUN_LEDGER). The JSON float concern is bounded to the HTML PRESENTATION
+  # ─── DELIBERATELY NOT a blanket "no long float" test ──
+  # A BLANKET /\d+\.\d{6,}/ refutation over the whole JSON body would DIRECTLY CONTRADICT the
+  # explainability guarantee (test/functional/explainability_passthrough_test.rb), which
+  # REQUIRES `contribution` and `effective_weight` to be emitted VERBATIM from the domain
+  # (those raw values ARE long floats, e.g. 0.3846153846153846). A test forcing both to pass
+  # is unsatisfiable, so it is not authored. The JSON float concern is bounded to the HTML
+  # PRESENTATION
   # (pulse_controller_test#test_show_panel_has_no_long_float_in_value_cells), where rounding
   # for DISPLAY does not violate the API's explainability passthrough.
 
-  # ─── COND-A8-001: NON-schema facts (functional, not schema-only) ───────────
+  # ─── NON-schema facts (functional, not schema-only) ───────────
 
   def test_visibility_note_exact_english_literal
     get_project
     assert_response :success
     assert_equal VISIBILITY_LITERAL, JSON.parse(response.body)['visibility_note'],
-                 'D-CA-OQ01: API visibility_note is the EXACT fixed English literal'
+                 'API visibility_note is the EXACT fixed English literal'
   end
 
   def test_two_timestamps_have_distinct_sources
@@ -199,17 +202,14 @@ class ApiSchemaTest < ActionDispatch::IntegrationTest
     assert_match(/^\d{4}-\d{2}-\d{2}$/, proj['clock_today'], 'clock_today date-only')
   end
 
-  # FC-CA-25 guard RESCOPED / DEPRECATED (A10 coverage-gap ruling: obsolete_recommend_rescope,
-  # c2_blocker:false). The former test_domain_layer_unchanged_by_this_contract asserted
-  # `git diff HEAD -- lib/pulse/domain` was empty. That was a CONTROLLERS-API-era guard proving
-  # a NON-domain contract left the domain untouched; it is a working-tree-STATE check (it passes
-  # only while the domain changes are uncommitted, and passes again after commit even if the
-  # domain changed) and it MISFIRES on every domain-EVOLVING roadmap contract. The roadmap
-  # contracts — starting with C1 (the N-signal registry) and continuing through C2 (coverage_gap)
-  # and onward — INTENTIONALLY evolve lib/pulse/domain, so a blanket "domain unchanged"
-  # working-tree assertion is obsolete. Domain-change discipline is now enforced per-contract by
-  # the TDDv6 governance (frozen canonical tests + golden default-off byte-identity gates +
-  # adversarial review), not by this cross-cutting git-diff guard. The still-valid ApiSchemaTest
-  # tests above (schema conformance, provenance, projection equality, visibility literal) are
-  # retained. Method removed deliberately rather than left as a permanent skip.
+  # A former guard (test_domain_layer_unchanged_by_this_contract) asserted `git diff HEAD --
+  # lib/pulse/domain` was empty. That was an early guard proving a non-domain change left the
+  # domain untouched; it is a working-tree-STATE check (it passes only while the domain changes
+  # are uncommitted, and passes again after commit even if the domain changed) and it MISFIRES
+  # whenever the domain legitimately evolves. The domain intentionally evolves (the N-signal
+  # registry, coverage_gap, and onward), so a blanket "domain unchanged" working-tree assertion
+  # is obsolete. Domain-change discipline is enforced per-change by the per-signal tests +
+  # the default-off byte-identity tests, not by this cross-cutting git-diff guard.
+  # The still-valid tests above (schema conformance, provenance, projection equality, visibility
+  # literal) are retained. Method removed deliberately rather than left as a permanent skip.
 end

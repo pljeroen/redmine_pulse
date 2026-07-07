@@ -10,16 +10,14 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# FC-C2-12 — RedmineMetricsSource populates open_issue_count / covered_sum from ONLY the
-# OPEN issues VISIBLE to the requesting viewer, computing the three per-issue dimensions
+# RedmineMetricsSource populates open_issue_count / covered_sum from ONLY the OPEN issues
+# VISIBLE to the requesting viewer, computing the three per-issue dimensions
 # (has_estimate = estimated_hours present AND > 0; has_assignee = assigned_to non-nil;
-# has_schedule = due_date OR fixed_version present). All READ-ONLY. Discharges FR-C2-02,
-# FR-C2-03, AC-C2-04, AC-C2-06, INV-READ-ONLY, INV-VISIBILITY.
+# has_schedule = due_date OR fixed_version present). All READ-ONLY.
 #
-# HARNESS lane (RED-by-construction): needs the isolated Redmine harness (AR-over-fixtures).
-# RED until A9 adds coverage_inputs(visible) to RedmineMetricsSource + the ProjectMetrics
-# open_issue_count/covered_sum fields. Postgres-gated (COND-A8-004) as the sibling adapter
-# integration tests are.
+# Needs the isolated Redmine harness (AR-over-fixtures). Exercises coverage_inputs(visible)
+# on RedmineMetricsSource + the ProjectMetrics open_issue_count/covered_sum fields. Runs on
+# PostgreSQL (the production engine) as the sibling adapter integration tests are.
 class MetricsSourceCoverageTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -43,8 +41,8 @@ class MetricsSourceCoverageTest < ActiveSupport::TestCase
     Class.new do
       define_method(:scoring_config) { cfg }
       define_method(:settings_version_hash) { settings_version }
-      # A10-C2-003 remediation: coverage gathering runs ONLY when the provider says
-      # coverage_gap is enabled (the adapter gate added by A9). All tests in this
+      # coverage gathering runs ONLY when the provider says coverage_gap is enabled
+      # (the adapter gate). All tests in this
       # file exercise the gathering path, so enable it here.
       define_method(:coverage_gap_enabled?) { true }
     end.new
@@ -99,7 +97,7 @@ class MetricsSourceCoverageTest < ActiveSupport::TestCase
     open_i.reload
   end
 
-  # --- (a) AC-C2-06: an OPEN issue INVISIBLE to the viewer is EXCLUDED -----------------
+  # --- (a) an OPEN issue INVISIBLE to the viewer is EXCLUDED -----------------
   def test_invisible_open_issue_excluded
     # A private issue that the LIMITED viewer cannot see must not enter oic or any dim count.
     limited_role = create_role!(name: 'CovOwn', issues_visibility: 'own',
@@ -117,9 +115,9 @@ class MetricsSourceCoverageTest < ActiveSupport::TestCase
 
     m = metrics_for(viewer, @project)
     assert_equal 1, m.open_issue_count,
-                 'the invisible private issue is excluded from open_issue_count (AC-C2-06)'
+                 'the invisible private issue is excluded from open_issue_count'
     assert_in_delta 0.0, m.covered_sum, 1e-9,
-                    'the invisible covered issue does not leak into covered_sum (INV-VISIBILITY)'
+                    'the invisible covered issue does not leak into covered_sum'
   end
 
   # --- (c) has_estimate: estimated_hours == 0 counts as NOT covered (AA-01) ------------
@@ -132,7 +130,7 @@ class MetricsSourceCoverageTest < ActiveSupport::TestCase
                     'estimated_hours == 0 does NOT satisfy has_estimate (AA-01)'
   end
 
-  # --- (c) AC-C2-04: fixed_version WITHOUT due_date counts as has_schedule -------------
+  # --- (c) fixed_version WITHOUT due_date counts as has_schedule -------------
   def test_fixed_version_without_due_date_is_has_schedule
     version = create_version!(project: @project, name: 'v1')
     i = create_issue!(project: @project, author: @admin, status: open_status)
@@ -141,7 +139,7 @@ class MetricsSourceCoverageTest < ActiveSupport::TestCase
     assert_equal 1, m.open_issue_count
     # Only has_schedule is satisfied => fraction 1/3 => covered_sum (0+0+1)/3.
     assert_in_delta 1.0 / 3.0, m.covered_sum, 1e-9,
-                    'fixed_version alone satisfies has_schedule (AC-C2-04)'
+                    'fixed_version alone satisfies has_schedule'
   end
 
   def test_due_date_without_fixed_version_is_has_schedule
@@ -149,10 +147,10 @@ class MetricsSourceCoverageTest < ActiveSupport::TestCase
     stamp_coverage!(i, due_date: Date.new(2026, 8, 1)) # due_date present, no version
     m = metrics_for(@admin, @project)
     assert_in_delta 1.0 / 3.0, m.covered_sum, 1e-9,
-                    'due_date alone satisfies has_schedule (AC-C2-04)'
+                    'due_date alone satisfies has_schedule'
   end
 
-  # --- (e) INV-READ-ONLY: gathering coverage writes NO Redmine row --------------------
+  # --- (e) read-only: gathering coverage writes NO Redmine row --------------------
   def test_coverage_gathering_is_read_only
     create_issue!(project: @project, author: @admin, status: open_status, assigned_to: @admin)
     counts_before = {

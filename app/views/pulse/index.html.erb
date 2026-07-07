@@ -1,5 +1,7 @@
+<%# SPDX-License-Identifier: GPL-2.0-only
+    Copyright (C) 2026 Jeroen %>
 <%# Portfolio overview (HTML). Renders ONLY the precomputed HtmlPresenter view-model
-    (@view). No scoring/timeline/AR access here — COND-A4-001/002. %>
+    (@view). No scoring/timeline/AR access here — the view is a pure renderer. %>
 <% content_for :header_tags do %>
   <%= stylesheet_link_tag 'redmine_pulse', plugin: 'redmine_pulse' %>
 <% end %>
@@ -8,21 +10,21 @@
 
 <p class="pulse-visibility-note"><%= @view.visibility_note %></p>
 
-<%# C4 (FC-C4-12 / FR-C4-09): a SURFACED dangling-fallback warning for the portfolio — shown
+<%# A surfaced dangling-fallback warning for the portfolio — shown
     when a ?profile_id override referenced an unpublished profile (scoring fell back to the
-    system default for every project). Precomputed on @view (COND-A4-001). %>
+    system default for every project). Precomputed on @view. %>
 <% if @view.profile_warning %>
   <div class="flash warning pulse-profile-warning" role="alert"><%= @view.profile_warning %></div>
 <% end %>
 
-<%# C5 (RC-C5-06 / FC-C5-16): a SURFACED dangling-lens_ref warning — shown when an active saved
+<%# A surfaced dangling-lens_ref warning — shown when an active saved
     view's lens_ref referenced a removed/unknown lens (the cockpit fell back to the default lens).
-    Precomputed on @view (COND-A4-001). %>
+    Precomputed on @view. %>
 <% if @view.respond_to?(:lens_warning) && @view.lens_warning %>
   <div class="flash warning pulse-lens-warning" role="alert"><%= @view.lens_warning %></div>
 <% end %>
 
-<%# finding 4: the lens selector is a WORKING control — wrapped in a GET form that
+<%# The lens selector is a WORKING control — wrapped in a GET form that
     re-requests with ?lens=, and an onchange that submits for no-extra-click UX. %>
 <form method="get" action="<%= url_for(controller: 'pulse', action: 'index') %>" class="pulse-lens-selector">
   <label for="pulse-lens"><%= t(:label_pulse_lens) %>:</label>

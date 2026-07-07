@@ -10,7 +10,7 @@
 module Pulse
   module Ports
     # ViewStore is a duck-typed port: any object responding to the methods below satisfies
-    # the contract (FC-C5-15/18). It is stdlib-only — the port surface carries NO
+    # the port. It is stdlib-only — the port surface carries NO
     # framework/persistence types; the production adapter
     # (Pulse::Adapters::ActiveRecordViewStore) owns ALL pulse_views database I/O.
     #
@@ -18,7 +18,7 @@ module Pulse
     # and NEVER calls PulseView AR methods directly. The AR scope PulseView.visible_to stays
     # inside the adapter implementation. This keeps the controller boundary decoupled from
     # raw ActiveRecord and confines pulse_views persistence to the single adapter (the
-    # snapshot cache — pulse_snapshots — is a distinct store, INV-C5-CONFIG-NOT-CACHE).
+    # snapshot cache — pulse_snapshots — is a distinct store from saved-view config).
     #
     # Protocol:
     #   visible_to(user)      -> a relation of the views the user may SEE (the read gate).

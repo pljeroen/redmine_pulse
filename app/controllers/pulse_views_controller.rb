@@ -7,13 +7,13 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
-# PulseViewsController — the saved-views CRUD + selection surface (FC-C5-08/10/15/18).
-# TOP-LEVEL constant at app/controllers/pulse_views_controller.rb (RISK-C5-05: matches the
+# PulseViewsController — the saved-views CRUD + selection surface.
+# TOP-LEVEL constant at app/controllers/pulse_views_controller.rb (matches the
 # PulseController / PulseApiController convention; NOT Pulse::ViewsController — that would
 # require a pulse/ subdir Zeitwerk cannot resolve, the exact production-boot NameError the
 # project has hit before).
 #
-# SECURITY (tier-1):
+# SECURITY:
 #   * Every action that targets a view resolves it through @view_store.find_visible(id, user)
 #     — the ViewStore port routed to PulseView.visible_to. A view outside the caller's visible
 #     set raises RecordNotFound -> 404 (EXISTENCE HIDING). This runs on EVERY format (HTML +
@@ -27,7 +27,7 @@
 #     (incl admins / global-permission holders), BEFORE the ownership check. Otherwise owner? OR
 #     the global permission; else 403. WRITE denial is 403 (distinct from the READ 404).
 #
-# PERSISTENCE-BEHIND-PORT (FC-C5-18): the controller NEVER calls PulseView AR methods directly.
+# PERSISTENCE-BEHIND-PORT: the controller NEVER calls PulseView AR methods directly.
 # Every persistence op goes through @view_store (Pulse::Adapters::ActiveRecordViewStore, injected
 # per-request at the composition root). The AR scope stays inside the adapter.
 class PulseViewsController < PulseBaseController
@@ -49,7 +49,7 @@ class PulseViewsController < PulseBaseController
     render_404
   end
 
-  # GET /pulse/views — list ONLY the views visible to the caller (FC-C5-06).
+  # GET /pulse/views — list ONLY the views visible to the caller.
   def index
     @views = @view_store.visible_to(User.current).to_a
     respond_to do |format|
@@ -65,7 +65,7 @@ class PulseViewsController < PulseBaseController
   end
 
   # POST /pulse/views — create a saved view owned by the requester. Publishing public/roles
-  # is gated by the GLOBAL permission BEFORE persistence (FC-C5-07).
+  # is gated by the GLOBAL permission BEFORE persistence.
   def create
     return if deny_publish_without_permission(view_params[:visibility])
 
@@ -180,13 +180,13 @@ class PulseViewsController < PulseBaseController
   end
 
   # Composition root: inject the ViewStore adapter before any action / before_action uses it.
-  # The controller talks ONLY to @view_store (FC-C5-18) — never to PulseView directly.
+  # The controller talks ONLY to @view_store — never to PulseView directly.
   def wire_view_store
     @view_store = Pulse::Adapters::ActiveRecordViewStore.new
   end
 
   # Strong params for the saved-view record. role_ids / scope_params / sort / prefs are the
-  # structured (Array / Hash) columns the GUI form authors (A10-C5-001 / Rule 40): role_ids is
+  # structured (Array / Hash) columns the GUI form authors: role_ids is
   # an Array of role ids (roles visibility); scope_params carries project_ids (selected scope)
   # and status_id (status_filter scope); sort is a 2-element [column, direction] Array; prefs is
   # a free-form scalar Hash of threshold/column preferences. Permitting the exact scope_params

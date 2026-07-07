@@ -11,21 +11,17 @@ require File.expand_path('../../../../../test/test_helper', File.expand_path(__F
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# IT-C5-E2E — END-TO-END PERSISTENCE CHAIN (FR-C5-01..09; FC-C5-12 / FC-C5-13 / FC-C5-14)
+# END-TO-END PERSISTENCE CHAIN
 # ═══════════════════════════════════════════════════════════════════════════════
-# The C2/C4 regression lesson: exercise the WHOLE chain through the real controller +
-# ViewStore adapter, not the model in isolation. Create a view (through POST /pulse/views)
-# with a lens + a profile bound -> persist -> select it -> the cockpit (GET /pulse)
-# renders under that lens + that profile. This is the regression guard for the entire
-# persistence landing of C4's deferred FR-C4-03.
+# Exercise the WHOLE chain through the real controller + ViewStore adapter, not the model
+# in isolation. Create a view (through POST /pulse/views) with a lens + a profile bound ->
+# persist -> select it -> the cockpit (GET /pulse) renders under that lens + that profile.
+# This is the regression guard for the whole saved-view -> active-profile persistence chain.
 #
-# Also covers FR-C5-07: a user-authored/private CustomLens (C3) persists via the store,
-# owner-scoped (retrievable by its owner, not by another user).
+# Also covers: a user-authored/private custom lens persists via the store, owner-scoped
+# (retrievable by its owner, not by another user).
 #
-# RED-by-construction: PulseViewsController, the routes, the ViewStore adapter, and
-# PulseView do not exist yet. A9 implements GREEN.
-#
-# Postgres-evidence lane (COND-A8-004 / GL-CI-MYSQL): skip on non-Postgres.
+# Runs on PostgreSQL (the production engine): skip on non-Postgres.
 class PulseViewsIntegrationTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -53,7 +49,7 @@ class PulseViewsIntegrationTest < ActionDispatch::IntegrationTest
   def test_create_persist_select_cockpit_reflects_lens_and_profile
     login_as(@user)
 
-    # 1) CREATE through the real controller (routes through @view_store, FC-C5-18).
+    # 1) CREATE through the real controller (routes through @view_store).
     assert_difference -> { PulseView.count }, 1 do
       post '/pulse/views', params: { pulse_view: {
         name: 'My at-risk view', visibility: 'private', project_scope: 'all',
@@ -79,10 +75,10 @@ class PulseViewsIntegrationTest < ActionDispatch::IntegrationTest
     assert_response :success, 'the cockpit renders 200 after selecting the created view'
     assert_match(/at_risk/, response.body, "the selected view's lens_ref drives the active lens")
     assert_match(/not a published profile|falling back|system default/i, response.body,
-                 "the selected view's profile_ref reached the resolve path (FR-C4-03 landed)")
+                 "the selected view's profile_ref reached the resolve path")
   end
 
-  # A built-in system view is SELECTABLE (selectable != editable, ASM-C5-03).
+  # A built-in system view is SELECTABLE (selectable != editable).
   def test_builtin_view_is_selectable
     skip 'built-in seed not built yet' unless defined?(PulseView) &&
                                               PulseView.respond_to?(:seed_builtins!)
@@ -99,12 +95,12 @@ class PulseViewsIntegrationTest < ActionDispatch::IntegrationTest
     assert_match(/at_risk/, response.body, "selecting 'At risk' applies the at_risk lens")
   end
 
-  # ── FR-C5-07 / FC-C5-14 — a private user-authored lens persists via the store, owner-scoped ──
+  # ── a private user-authored lens persists via the store, owner-scoped ──
 
   def test_private_lens_persists_owner_scoped
     login_as(@user)
     # A private view carrying a user-authored lens_ref (the persistence surface for a
-    # private CustomLens per FR-C5-07 — embedded via lens_ref).
+    # private custom lens — embedded via lens_ref).
     post '/pulse/views', params: { pulse_view: {
       name: 'My private lens view', visibility: 'private', project_scope: 'all',
       lens_ref: 'my-private-lens'

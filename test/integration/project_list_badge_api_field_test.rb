@@ -1,27 +1,31 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 require 'json'
 require 'json-schema'
 require 'yaml'
 
-# project-list-badge contract — PLB-15-API-FIELD (FR-PLB-15 / D-PLB-C01 + D-PLB-C01a).
+# The project-list badge API field.
 # The additive, localized `main_concern` field on BOTH portfolio.json (project_health) and
 # project.json (top level), produced by a SINGLE shared adapter module reused by
-# HtmlPresenter AND JsonSerializer (DG-PLB-02). Schemas updated additively (main_concern in
-# properties AND required, additionalProperties:false preserved); seeds carry main_concern.
+# HtmlPresenter AND JsonSerializer. Schemas updated additively (main_concern in properties
+# AND required, additionalProperties:false preserved); seeds carry main_concern.
 #
-# This file asserts the SCHEMA/value half (Ruby-testable). The DOM render half
-# (PLB-08-15-MAINCONCERN-RENDER) is AIEYES_LIVE, verified later.
+# This file asserts the SCHEMA/value half (Ruby-testable). The DOM render half is verified
+# separately in the browser.
 #
-# Authoritative label mapping (DG-PLB-02, en.yml-confirmed):
+# Authoritative label mapping (en.yml-confirmed):
 #   staleness->"Stale", momentum->"Losing momentum", progress->"Behind schedule",
 #   risk_load->"At risk", blocked_load->"Blocked", nil->null.
 #
-# Postgres-gated (FC-CA-38). RED until A9 adds the field + shared module + schema/seed
-# updates. Until then: schema validation rejects the field (required key absent) and the
-# shared module constant is undefined.
+# Runs on PostgreSQL (the production engine).
 class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -83,13 +87,13 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
 
   def test_shared_main_concern_label_module_exists_and_is_authoritative
     # The mapping is EXTRACTED into ONE adapter module under lib/pulse/adapters/ (stays out
-    # of the domain — it uses Rails I18n). ABSENT until A9 -> NameError -> RED.
+    # of the domain — it uses Rails I18n).
     assert defined?(Pulse::Adapters::MainConcernLabels),
-           'FR-PLB-15: a SHARED Pulse::Adapters::MainConcernLabels module MUST exist (DRY single source)'
+           'a SHARED Pulse::Adapters::MainConcernLabels module MUST exist (DRY single source)'
 
     EXPECTED_LABELS.each do |signal, label|
       assert_equal label, Pulse::Adapters::MainConcernLabels.label(signal),
-                   "shared module MUST map #{signal} -> #{label.inspect} (DG-PLB-02)"
+                   "shared module MUST map #{signal} -> #{label.inspect}"
     end
     assert_nil Pulse::Adapters::MainConcernLabels.label(nil),
                'shared module MUST map nil (no-data) -> nil (mirrors dominant_signal)'
@@ -103,7 +107,7 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
       cockpit = Pulse::Adapters::HtmlPresenter.main_concern_label(signal.to_sym)
       shared  = Pulse::Adapters::MainConcernLabels.label(signal)
       assert_equal shared, cockpit,
-                   "HtmlPresenter and the shared module MUST agree for #{signal} (single source, FR-PLB-15)"
+                   "HtmlPresenter and the shared module MUST agree for #{signal} (single source)"
     end
   end
 
@@ -113,7 +117,7 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
     seed = YAML.load_file(File.join(SPEC, 'seeds/portfolio.yaml'))
     seed['projects'].each do |row|
       assert row.key?('main_concern'),
-             "FR-PLB-15: every portfolio seed project_health row MUST carry main_concern (got #{row['identifier']})"
+             "every portfolio seed project_health row MUST carry main_concern (got #{row['identifier']})"
     end
     assert_schema(PORTFOLIO_SCHEMA, seed)
   end
@@ -121,7 +125,7 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
   def test_project_seed_carries_and_validates_main_concern
     seed = YAML.load_file(File.join(SPEC, 'seeds/project.yaml'))
     assert seed.key?('main_concern'),
-           'FR-PLB-15 (D-PLB-C01a): the project seed top level MUST carry main_concern'
+           'the project seed top level MUST carry main_concern'
     assert_schema(PROJECT_SCHEMA, seed)
   end
 
@@ -132,7 +136,7 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
     ph = schema.dig('$defs', 'project_health')
     refute_nil ph, 'portfolio schema must define project_health'
     assert_includes ph['required'], 'main_concern',
-                    'FR-PLB-15: portfolio project_health MUST require main_concern'
+                    'portfolio project_health MUST require main_concern'
     type = ph.dig('properties', 'main_concern', 'type')
     assert_equal %w[string null].sort, Array(type).sort,
                  'main_concern MUST be ["string","null"] (mirrors dominant_signal nullability)'
@@ -143,7 +147,7 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
   def test_project_schema_requires_nullable_main_concern_top_level
     schema = JSON.parse(File.read(PROJECT_SCHEMA))
     assert_includes schema['required'], 'main_concern',
-                    'FR-PLB-15 (D-PLB-C01a): project.json MUST require top-level main_concern'
+                    'project.json MUST require top-level main_concern'
     type = schema.dig('properties', 'main_concern', 'type')
     assert_equal %w[string null].sort, Array(type).sort,
                  'project.json main_concern MUST be ["string","null"]'
@@ -191,14 +195,14 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
     schema = JSON.parse(File.read(PORTFOLIO_SCHEMA))
     enum = schema.dig('$defs', 'project_health', 'properties', 'dominant_signal', 'enum')
     assert_includes enum, 'on_track',
-                    'momentum-broaden §9: portfolio dominant_signal enum MUST include on_track'
+                    'momentum-broaden: portfolio dominant_signal enum MUST include on_track'
   end
 
   def test_project_schema_dominant_signal_enum_includes_on_track
     schema = JSON.parse(File.read(PROJECT_SCHEMA))
     enum = schema.dig('properties', 'dominant_signal', 'enum')
     assert_includes enum, 'on_track',
-                    'momentum-broaden §9: project.json dominant_signal enum MUST include on_track'
+                    'momentum-broaden: project.json dominant_signal enum MUST include on_track'
   end
 
   # An "on track" project (worst active signal n >= 0.5) serializes dominant_signal
@@ -251,7 +255,7 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
     assert_nil j['dominant_signal'], 'no-data: dominant_signal is null'
     assert j.key?('main_concern'), 'no-data project.json MUST still carry the main_concern key'
     assert_nil j['main_concern'],
-               'FR-PLB-15: main_concern is JSON null on the no-data path (mirrors dominant_signal)'
+               'main_concern is JSON null on the no-data path (mirrors dominant_signal)'
     assert_schema(PROJECT_SCHEMA, j)
   end
 
@@ -267,9 +271,9 @@ class ProjectListBadgeApiFieldTest < ActionDispatch::IntegrationTest
     # The KEY must be present (additive required field) AND its value JSON null — asserting
     # only `assert_nil` would pass vacuously while the field is still absent (false green).
     assert row.key?('main_concern'),
-           'FR-PLB-15: portfolio no-data row MUST carry the main_concern key (additive required field)'
+           'portfolio no-data row MUST carry the main_concern key (additive required field)'
     assert_nil row['main_concern'],
-               'FR-PLB-15: portfolio no-data row main_concern is JSON null'
+               'portfolio no-data row main_concern is JSON null'
     assert_schema(PORTFOLIO_SCHEMA, j)
   end
 end

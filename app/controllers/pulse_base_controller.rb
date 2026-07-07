@@ -58,7 +58,7 @@ class PulseBaseController < ApplicationController
     )
   end
 
-  # C4: the ProfileProvider resolves the active scoring profile per viewer (transient
+  # The ProfileProvider resolves the active scoring profile per viewer (transient
   # selection > role binding > system default). Injected into the engine so scoring is
   # driven by the resolved profile's config and the cache is profile-partitioned.
   def profile_provider
@@ -75,8 +75,8 @@ class PulseBaseController < ApplicationController
     )
   end
 
-  # C4 (FC-C4-06): the canonical transient profile selection param is `profile_id` (the
-  # validated-intent name). `profile` is retained ONLY as a backward-compat alias for callers
+  # The canonical transient profile selection param is `profile_id` (the validated-intent
+  # name). `profile` is retained ONLY as a backward-compat alias for callers
   # that predate the rename; `profile_id` wins when both are present. nil when neither is set
   # (=> role-default / system-default resolution inside the provider).
   def selected_profile_id

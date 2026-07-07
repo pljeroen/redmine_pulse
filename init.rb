@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
 # redmine_pulse — portfolio / project-health cockpit for Redmine 6.x.
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 #
 # This file is the plugin MANIFEST: declarative registration + tunable setting
 # defaults. The behavioural code (the pure-Ruby scoring engine under
@@ -21,50 +27,50 @@ Redmine::Plugin.register :redmine_pulse do
 
   requires_redmine version_or_higher: '6.1.0'
 
-  # Tunable scoring configuration (spec §4.2 composite, §5.3 settings).
-  # Community-sane defaults; OQ-2/OQ-3/OQ-4. Empty enrichment mappings mean the
+  # Tunable scoring configuration.
+  # Community-sane defaults. Empty enrichment mappings mean the
   # corresponding signal is omitted and its weight redistributed (graceful
-  # degradation, INV-DEGRADES-GRACEFULLY) — never faked.
+  # degradation) — never faked.
   settings default: {
-    'rag_green_min'        => 67,   # OQ-4 — RAG green threshold
-    'rag_amber_min'        => 34,   # OQ-4 — RAG amber threshold (below => red)
-    'h_stale'              => 180,  # DEC-13 — staleness horizon (days)
-    'h_risk'               => 50,   # DEC-13 — risk horizon
-    'h_blocked'            => 20,   # DEC-13 — blocked horizon
-    'activity_window_days' => 30,   # OQ-3 — trailing window for momentum/recompute
+    'rag_green_min'        => 67,   # RAG green threshold
+    'rag_amber_min'        => 34,   # RAG amber threshold (below => red)
+    'h_stale'              => 180,  # staleness horizon (days)
+    'h_risk'               => 50,   # risk horizon
+    'h_blocked'            => 20,   # blocked horizon
+    'activity_window_days' => 30,   # trailing window for momentum/recompute
     'momentum_activity_half'  => 8.0,  # activity count read as neutral momentum (0.5)
     'momentum_direction_bias' => 0.15, # net open/close direction nudge, capped at ±this
     'on_track_threshold'      => 0.5,  # worst-signal n at/above which main concern = on-track
-    'snapshot_max_age_minutes' => 60,  # CT-02 — cache freshness cap (minutes); 0 = disabled
+    'snapshot_max_age_minutes' => 60,  # cache freshness cap (minutes); 0 = disabled
     'weights'              => {},   # per-signal weight overrides; empty => engine defaults
-    'effort_field'         => '',   # OQ-2 — optional effort/story-points field mapping
+    'effort_field'         => '',   # optional effort/story-points field mapping
     'risk_trackers'        => [],   # optional risk-tracker mapping
     'blocked_status'       => '',   # optional blocked-status mapping
-    # alerting contract (C6 / FR-C6-06/08): two alert-OFF defaults so NO alert fires on
+    # alerting: two alert-OFF defaults so NO alert fires on
     # install until the operator configures them. Both are consumed ONLY by the rake-task
     # composition root (never the request cycle). nil = disabled (auto-subscribe off /
     # score_delta off).
     'pulse_alert_auto_subscribe_role_id' => nil, # Redmine role id to auto-subscribe (nil = off)
     'pulse_alert_score_delta_threshold'  => nil, # min |Δscore| to fire score_delta (nil/0 = off)
-    # webhooks contract (C7 / FR-C7-02): two OFF-by-default webhook-endpoint keys so NO
+    # webhooks: two OFF-by-default webhook-endpoint keys so NO
     # outbound HTTP fires on install until the operator configures a destination. Both are
     # consumed ONLY by the rake-task composition root (scan_and_alert) + the admin test-event
-    # action — NEVER the scoring request cycle (INV-ADDITIVE). An empty list is the shipped
+    # action — NEVER the scoring request cycle (additive). An empty list is the shipped
     # state; the dispatcher's per-endpoint loop then never runs (structural short-circuit).
     'pulse_webhook_endpoints_global'      => [], # Array<EndpointConfig>; [] = off (no endpoints)
     'pulse_webhook_endpoints_per_project' => {}  # Hash<project_id, Array<EndpointConfig>>; {} = off
-    # COND-CA-02 / DEC-12: deliverables_field is REMOVED — it was a deferred feature
+    # deliverables_field is REMOVED — it was a deferred feature
     # that never shipped, so the manifest must not advertise it (the settings partial
-    # exposes only the CA-23 field set).
+    # exposes only the shipped field set).
   }, partial: 'settings/pulse_settings'
 
-  # CA-01/02/03 (BR-01): the pulse project module gates the :view_pulse permission
+  # the pulse project module gates the :view_pulse permission
   # over EXACTLY the controller actions { pulse: [index,show,refresh],
   # pulse_api: [portfolio,project] }, read-only. Registered here (with the
   # controllers/views that satisfy it) so the plugin never advertises a route or
   # partial that 404s.
   project_module :pulse do
-    # C6 (FR-C6-08): :view_pulse EXPANDS additively to cover the pulse#watch/#unwatch
+    # :view_pulse EXPANDS additively to cover the pulse#watch/#unwatch
     # health-watch toggle actions. These are member write-actions on the viewer's OWN
     # subscription (a Watcher row), not a Redmine-domain write — read:true is retained
     # because the permission still gates read visibility; the per-action authorize ladder
@@ -73,7 +79,7 @@ Redmine::Plugin.register :redmine_pulse do
                { pulse: %i[index show refresh watch unwatch], pulse_api: %i[portfolio project],
                  pulse_views: %i[index new create show edit update destroy select] },
                read: true
-    # C5: publishing public/role-scoped saved views is portfolio-wide config — a GLOBAL
+    # publishing public/role-scoped saved views is portfolio-wide config — a GLOBAL
     # permission (global: true), NOT per-project. The check everywhere is
     # User.current.allowed_to?(:manage_public_pulse_views, nil, global: true). A holder on an
     # unrelated project ONLY does not satisfy the global check (global-semantics falsifier).
@@ -83,7 +89,7 @@ Redmine::Plugin.register :redmine_pulse do
                global: true
   end
 
-  # CA-02: a project-menu tab -> pulse#show, gated on the pulse module being enabled
+  # a project-menu tab -> pulse#show, gated on the pulse module being enabled
   # (the permission is enforced per-action by the controller's authorize ladder).
   menu :project_menu, :pulse,
        { controller: 'pulse', action: 'show' },
@@ -99,8 +105,8 @@ Redmine::Plugin.register :redmine_pulse do
   # NOTE: this :if gate is INTENTIONALLY stricter than pulse#index. The index action
   # has no authorize gate -- it self-scopes to visible projects and renders a 200
   # empty-state for users with no visible Pulse projects (the never-403 portfolio
-  # contract). So this condition controls link VISIBILITY only and must NOT be used
-  # to justify adding an authorize gate to index, which would break that contract.
+  # guarantee). So this condition controls link VISIBILITY only and must NOT be used
+  # to justify adding an authorize gate to index, which would break that guarantee.
   menu :top_menu, :pulse, '/pulse',
        caption: :label_pulse,
        if: proc { User.current.allowed_to?(:view_pulse, nil, global: true) }
@@ -127,14 +133,14 @@ require 'pulse/adapters/visibility_context'
 require 'pulse/adapters/snapshot_fingerprint'
 require 'pulse/adapters/redmine_metrics_source'
 
-# Controllers-api contract: the SnapshotStore port (stdlib-only) + the AR-backed
+# Controllers + API: the SnapshotStore port (standard library only) + the AR-backed
 # cache adapter, the settings sanitizer, the per-request projection engine, and the
 # JSON serializer / lens ranker / HTML presenter the controllers (composition root)
 # wire together. The PulseSnapshot AR model is defined at require time, so these load
 # after Rails/ActiveRecord is available (init.rb runs post-boot).
 require 'pulse/ports/snapshot_store'
 require 'pulse/adapters/active_record_snapshot_store'
-# saved-views (C5): the ViewStore port (stdlib-only) + the pulse_views-backed adapter, in the
+# saved-views: the ViewStore port (standard library only) + the pulse_views-backed adapter, in the
 # established port->adapter order. The PulseView AR model + PulseViewsController are autoloaded
 # by Rails from app/models / app/controllers (top-level constants, path-matched — no explicit
 # require, consistent with PulseSnapshot / PulseController).
@@ -142,7 +148,7 @@ require 'pulse/ports/view_store'
 require 'pulse/adapters/active_record_view_store'
 require 'pulse/adapters/settings_sanitizer'
 require 'pulse/adapters/pulse_projection'
-# FR-PLB-15: the SINGLE authoritative dominant_signal -> localized label mapping, reused
+# the SINGLE authoritative dominant_signal -> localized label mapping, reused
 # by BOTH JsonSerializer and HtmlPresenter (DRY) — required BEFORE them so the constant
 # is resolved when they delegate to it.
 require 'pulse/adapters/main_concern_labels'
@@ -150,10 +156,10 @@ require 'pulse/adapters/json_serializer'
 require 'pulse/adapters/lens_ranker'
 require 'pulse/adapters/html_presenter'
 
-# alerting contract (C6): the pure alert domain + the alert ports/adapters + the two
+# alerting: the pure alert domain + the alert ports/adapters + the two
 # task composition roots. These are reachable ONLY from lib/tasks/pulse.rake (the
 # scan_and_alert / recompute rake tasks) and the Watch-toggle controller action — NEVER
-# from the scoring request cycle (INV-ADDITIVE; the additive no-coupling grep confirms the
+# from the scoring request cycle (additive; a no-coupling scan confirms the
 # 7 alert symbols never appear under app/controllers, app/helpers, or served app/views).
 # The alert-state is a SEPARATE table (pulse_alert_states) from the pulse_snapshots cache.
 require 'pulse/domain/alert_event'
@@ -169,10 +175,10 @@ require 'pulse/adapters/redmine_alert_delivery'
 # hooks). It subclasses Redmine's ::Mailer base (loadable by plugin-init time). Its HTML +
 # text views live at app/views/pulse/mailer/ (resolved via the plugin's view path).
 require 'pulse/mailer'
-# webhooks contract (C7): the WebhookDispatcher port (stdlib + domain only) + the three
+# webhooks: the WebhookDispatcher port (standard library + domain only) + the three
 # adapters (SSRF guard, payload serializer, HTTP dispatcher). Reachable ONLY from the
 # scan_and_alert composition root + the admin test-event action — NEVER from the scoring
-# request cycle (INV-ADDITIVE; the no-coupling grep confirms the webhook symbols appear on
+# request cycle (additive; a no-coupling scan confirms the webhook symbols appear on
 # the request cycle solely in pulse_controller's test-event action). All outbound HTTP /
 # DNS / HMAC lives in the adapters (Net::HTTP -> http_webhook_dispatcher; Resolv -> ssrf_guard).
 require 'pulse/ports/webhook_dispatcher'
@@ -183,15 +189,15 @@ require 'pulse/tasks/canonical_scan'
 require 'pulse/tasks/recompute'
 require 'pulse/tasks/scan_and_alert'
 
-# project-list-badge contract (B2 server-inline, D-PLB-C04): the view hook that emits the
+# project-list-badge (server-inline): the view hook that emits the
 # RAG-chip stylesheet, the badge JS asset, and the inlined viewer-scoped portfolio blob on
 # projects#index for a user with global :view_pulse. Required after the adapters it wires.
 #
-# DEF-RG-01 (Zeitwerk eager-load safety): Redmine 6.x puts each plugin's lib/ on
+# Zeitwerk eager-load safety: Redmine 6.x puts each plugin's lib/ on
 # Rails.autoloaders.main and EAGER-LOADS it in production. Zeitwerk derives the constant a
 # file MUST define from its path, so it expects lib/redmine_pulse/hooks.rb to define
 # `RedminePulse::Hooks`. This file deliberately defines the TOP-LEVEL `RedminePulseHooks`
-# (the hook class the registration + the contract tests rely on), so the path/constant
+# (the hook class the registration + the tests rely on), so the path/constant
 # mismatch makes `Rails.application.eager_load!` raise `Zeitwerk::NameError`
 # (uninitialized constant RedminePulse::Hooks) at production boot. We tell Zeitwerk to
 # IGNORE this file (it is loaded classically by the explicit require just below, which
@@ -203,12 +209,12 @@ require 'pulse/tasks/scan_and_alert'
 Rails.autoloaders.main.ignore(File.expand_path('lib/redmine_pulse/hooks.rb', __dir__))
 require 'redmine_pulse/hooks'
 
-# CA-23 / COND-CA-03 / FC-CA-30 / CA-A10-001: the admin settings POST persists via
+# the admin settings POST persists via
 # Redmine's SettingsController#plugin, which writes params[:settings] straight to
 # Setting.plugin_redmine_pulse= and then UNCONDITIONALLY flashes
 # l(:notice_successful_update) and redirects — there is no per-plugin validation hook
 # (see Redmine 6.1.2 app/controllers/settings_controller.rb#plugin). To enforce the
-# EXACT ScoringConfig bounds (DG-07) we (1) wrap that setter so an invalid scalar is
+# EXACT ScoringConfig bounds we (1) wrap that setter so an invalid scalar is
 # REJECTED — the previously-persisted value is kept; the invalid input is never
 # persisted — and (2) record the rejected keys in a per-thread slot so the controller
 # can surface a user-facing, LOCALIZED rejection error instead of a silent success.
@@ -240,7 +246,7 @@ if defined?(Setting) && !Setting.singleton_class.method_defined?(:pulse_sanitizi
   end)
 end
 
-# CA-A10-001: surface the sanitizer's rejection as a user-facing, LOCALIZED error.
+# surface the sanitizer's rejection as a user-facing, LOCALIZED error.
 # Redmine's SettingsController#plugin flashes success unconditionally after calling the
 # setter, so we add an after_action (scoped to :plugin, and only when THIS plugin's
 # settings were the POST target) that reads the per-thread rejection slot and replaces
@@ -248,7 +254,7 @@ end
 # persisted (the setter kept the prior value); this closes the silent-success gap.
 #
 # We ALSO include PulseSettingsHelper so the settings partial can consume the prepared
-# tracker option data (COND-A4-002 / Rule 18 — no AR access in the ERB view).
+# tracker option data (no AR access in the ERB view).
 if defined?(SettingsController)
   unless SettingsController.method_defined?(:pulse_settings_rejection_guard_installed)
     # Expose PulseSettingsHelper to the SettingsController's VIEW chain. Redmine
@@ -258,7 +264,7 @@ if defined?(SettingsController)
     # registers the module on the controller's _helpers module so the method is
     # reachable from the partial. The plain `include` is also kept so the
     # after_action guard (controller scope) can call it if needed; `helper` is
-    # the load-bearing fix for the settings-500 (THAW-RB-001 finding 1).
+    # the load-bearing fix for the settings-page 500 error.
     SettingsController.include(PulseSettingsHelper)
     SettingsController.helper(PulseSettingsHelper)
     SettingsController.prepend(Module.new do
@@ -286,34 +292,34 @@ if defined?(SettingsController)
   end
 end
 
-# Test-environment scenario prerequisites (NOT production behaviour). The frozen
+# Test-environment scenario prerequisites (NOT production behaviour). The
 # adapter test-support builders construct a Repository::Filesystem (needs the
 # Filesystem SCM enabled) and a cross-project `blocks` relation (needs
-# cross_project_issue_relations) to exercise FC-17/FC-28. Redmine's
+# cross_project_issue_relations) to exercise cross-project blockers. Redmine's
 # `db:test:prepare` purges the settings table to settings.yml defaults, which omit
 # both, so we re-assert them at plugin load under the test env only. Guarded so it
 # can never affect a real instance.
 if defined?(Rails) && Rails.env.test?
   require 'active_support/test_case'
 
-  # alerting contract (C6) — Minitest stubbing (test env ONLY). The C6 mailer / task suites
+  # alerting — Minitest stubbing (test env ONLY). The mailer / task suites
   # (pulse_mailer_test, pulse_alert_tasks_test) exercise best-effort delivery via
   # Pulse::Mailer.stub / Rails.stub, but Redmine 6.1.2's test_helper does not require
   # minitest/mock, so Object#stub is otherwise undefined on the harness. Requiring it here
-  # (guarded to the test env) makes the frozen suites' stub calls resolve. Best-effort.
+  # (guarded to the test env) makes those suites' stub calls resolve. Best-effort.
   begin
     require 'minitest/mock'
   rescue LoadError
     nil
   end
 
-  # JSON-Schema draft-07 support (test env ONLY). The frozen API schemas declare
+  # JSON-Schema draft-07 support (test env ONLY). The API schemas declare
   # "$schema": draft-07, but the bundled json-schema 6.2.0 ships validators only up to
   # draft-06 (it cannot resolve the draft-07 meta-schema URI). The features the
   # redmine_pulse schemas actually use (required, additionalProperties, const, enum,
   # pattern, $ref JSON-pointers into $defs, format) are all draft-06-compatible, so we
   # register a draft-07 validator that reuses the draft-06 attribute set under the
-  # draft-07 URI. This lets the AC-API-SCHEMA suite validate against the as-frozen
+  # draft-07 URI. This lets the API-schema suite validate against the published
   # schemas without a gem upgrade. Best-effort; never affects a real instance.
   begin
     require 'json-schema'
@@ -329,11 +335,11 @@ if defined?(Rails) && Rails.env.test?
       JSON::Validator.register_validator(draft07.new)
     end
   rescue LoadError, StandardError
-    # json-schema not present / API shape differs — the AC-API-SCHEMA suite will report.
+    # json-schema not present / API shape differs — the API-schema suite will report.
   end
 
   # Test-assertion availability shims (test env ONLY; never affects a real instance).
-  # The controllers-api frozen suites call two assertion helpers that this Redmine
+  # The controller/API suites call two assertion helpers that this Redmine
   # 6.1.2 / Minitest build does not provide on ActiveSupport::TestCase out of the box:
   #   * assert_routing — needs ActionDispatch::Assertions::RoutingAssertions mixed in
   #     (+ @routes bound) for the route-recognition assertions in RegistrationTest.
@@ -368,14 +374,14 @@ if defined?(Rails) && Rails.env.test?
     Setting.enabled_scm = (Setting.enabled_scm | ['Filesystem'])
     Setting.cross_project_issue_relations = '1'
     # Projects are private by default so a non-member genuinely cannot see another
-    # project's issues (the cross-project hidden-blocker scenario, FC-17/FC-28).
+    # project's issues (the cross-project hidden-blocker scenario).
     Setting.default_projects_public = '0'
-    # Persist rest_api_enabled so the controllers-api read-only suites — which wrap the
+    # Persist rest_api_enabled so the read-only API suites — which wrap the
     # GET in `with_settings rest_api_enabled: '1'` INSIDE the captured write block — see
     # an UNCHANGED setting (no INSERT/UPDATE on the settings table) rather than the
     # first-time row creation. The GET path itself performs no Redmine-domain writes;
     # this pre-seed keeps the with_settings save a no-op so the write-set is genuinely
-    # empty (FC-CA-11). It does NOT affect the explicit rest_api_enabled '0'/'1'
+    # empty. It does NOT affect the explicit rest_api_enabled '0'/'1'
     # toggling the access suites rely on (they save/restore their own value).
     Setting.rest_api_enabled = '1'
   rescue ActiveRecord::StatementInvalid, ActiveRecord::NoDatabaseError

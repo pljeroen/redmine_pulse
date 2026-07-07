@@ -2,7 +2,7 @@
 # (A) a red project with full enrichment (all 5 signals active), (B) a green project on
 # standard fields only (risk_load inactive -> present with active:false + nulls, weight
 # redistributed). Contributions are NON-NEGATIVE and active contributions round to
-# health_score (explainability, §4.2). Ranked by the default 'health' lens, worst-first.
+# health_score (explainability). Ranked by the default 'health' lens, worst-first.
 # Signals are keyed by canonical name; provenance is pinned per field; snapshot vs
 # projection timestamps are separate; projection clock/config is exposed.
 schema_version: "1.0"

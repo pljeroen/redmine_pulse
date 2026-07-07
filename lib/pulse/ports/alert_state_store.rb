@@ -9,11 +9,11 @@
 
 module Pulse
   module Ports
-    # AlertStateStore — a duck-typed port (C6 / FC-C6-05). Any object responding to the
-    # methods below satisfies the contract. It is stdlib-only — the port carries NO
+    # AlertStateStore — a duck-typed port. Any object responding to the
+    # methods below satisfies the protocol. It is standard-library-only — the port carries NO
     # persistence types; the production adapter (ActiveRecordAlertStateStore) owns all I/O.
     #
-    # Keyed SOLELY by project_id (per-project / canonical profile; DEC-10 / FC-C6-12).
+    # Keyed SOLELY by project_id (per-project / canonical profile).
     #
     # Protocol:
     #   find_by_project(project_id)

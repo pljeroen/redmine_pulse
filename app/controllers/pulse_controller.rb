@@ -7,16 +7,16 @@
 # the terms of version 2 of the GNU General Public License as published by the
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
-# PulseController — the HTML adapter surface + composition root (CA-10/11/12).
+# PulseController — the HTML adapter surface + composition root.
 # It instantiates the Redmine adapters per request and injects them into the pure-
 # domain Scoring/Timeline functions via PulseProjection::Engine; the ERB views render
-# ONLY the precomputed HtmlPresenter view-model (COND-A4-001/002).
+# ONLY the precomputed HtmlPresenter view-model (no domain/AR access in the view).
 #
-# Access: per-project show/refresh enforce the EXACT 404/403 decision (FC-CA-01/02):
+# Access: per-project show/refresh enforce the EXACT 404/403 decision:
 #   not in Project.visible(viewer) / nonexistent / archived -> 404 (existence not
 #   leaked); visible-but-module-off or visible-but-no-view_pulse -> 403; else 200.
 # Read-only: GET writes nothing on Redmine domain tables; refresh writes only
-# pulse_snapshots (INV-READ-ONLY / FC-CA-11/13).
+# pulse_snapshots (the plugin's cache table, never a Redmine domain table).
 class PulseController < PulseBaseController
   # No global require_login: anonymous access is governed by the per-project
   # visibility + permission ladder (R7 — anonymous holding view_pulse on a PUBLIC,
@@ -25,10 +25,10 @@ class PulseController < PulseBaseController
 
   # GET /pulse — portfolio overview (never 404/403 for selection; empty -> 200).
   def index
-    active = active_pulse_view # C5: the selected saved view (visible-only) or nil (pre-C5 path)
+    active = active_pulse_view # the selected saved view (visible-only) or nil (no active view)
 
-    # C5 (FC-C5-13/16/17): an active view drives the lens (surfacing a dangling-lens_ref
-    # warning); with no active view the lens comes from params[:lens] exactly as pre-C5.
+    # an active view drives the lens (surfacing a dangling-lens_ref
+    # warning); with no active view the lens comes from params[:lens].
     if active&.lens_ref
       lens, lens_warning = Pulse::Adapters::LensRanker.normalize_lens_with_warning(active.lens_ref)
     else
@@ -36,13 +36,13 @@ class PulseController < PulseBaseController
       lens_warning = nil
     end
 
-    # C5 (FC-C5-13): an active view's profile_ref is the effective selected_profile_id fed into
-    # the resolve path (the requested_id — landing C4's deferred FR-C4-03); else the params path.
+    # an active view's profile_ref is the effective selected_profile_id fed into
+    # the resolve path (the requested_id); else the params path.
     # A dangling id degrades to the system default inside the provider (surfaced as a banner).
     profile_id = active&.profile_ref.presence || selected_profile_id
     projections = engine.portfolio_projections(User.current, profile_id)
 
-    # C5 (FC-C5-13): project_scope pre-filters the portfolio before ranking (a new pre-filter
+    # project_scope pre-filters the portfolio before ranking (a pre-filter
     # step; the engine internals are untouched). 'selected' -> scope_params[:project_ids].
     projections = apply_view_scope(projections, active)
 
@@ -60,14 +60,14 @@ class PulseController < PulseBaseController
 
     return unless authorize_pulse(project) # 403 already rendered when false
 
-    # C4: the transient profile selection (?profile_id=<id>) — a per-request override that
-    # beats the viewer's role binding (FC-C4-06 level 1). A dangling id degrades to the
+    # the transient profile selection (?profile_id=<id>) — a per-request override that
+    # beats the viewer's role binding. A dangling id degrades to the
     # system default inside the provider (never a crash). Visibility scoping stays
-    # PRE-profile (INV-C4-PERM-UNCHANGED) — the profile only reweights visible metrics.
+    # PRE-profile (the profile does not change permissions) — it only reweights visible metrics.
     projection = engine.project_projection(User.current, project, selected_profile_id)
     @view = Pulse::Adapters::HtmlPresenter.panel_view(
       projection, now: Time.now.utc, gantt_url: gantt_url_for(project),
-      # C6 (FR-C6-08): the health-watch toggle state — offered only to a real logged-in
+      # the health-watch toggle state — offered only to a real logged-in
       # user (anonymous cannot own a subscription), reflecting their current watch state.
       watch_offer: User.current.logged?, watching: watching_health?(project)
     )
@@ -92,7 +92,7 @@ class PulseController < PulseBaseController
 
     return unless authorize_pulse(project)
 
-    # RT-06 (security-S2-dos): scope the eviction to the ACTING caller's own visibility
+    # DoS guard: scope the eviction to the ACTING caller's own visibility
     # context only. invalidate_project would delete EVERY visibility context's rows for the
     # project, letting one viewer evict every other viewer's warmed snapshot (a cross-context
     # cache-stampede lever). Deleting only (project_id, this caller's ctx id) keeps the blast
@@ -109,15 +109,15 @@ class PulseController < PulseBaseController
   # dereferenced). It MUST equal the value the scan-side subscription reader keys on. Defined
   # here (as a literal, not by referencing the alert adapter's constant) so the request-cycle
   # code names NONE of the alert-pipeline symbols — the alert scan stays rake-only
-  # (INV-ADDITIVE / T1-ADD-03). The scan-side reader and this writer share the same literal by
-  # contract; the frozen recipient-permission suite covers that they agree.
+  # (additive). The scan-side reader and this writer share the same literal by
+  # convention; the recipient-permission suite covers that they agree.
   PULSE_HEALTH_WATCHABLE = 'PulseHealth'
 
-  # POST /projects/:id/pulse/watch — the "Watch project health" opt-in (C6 / FR-C6-08).
+  # POST /projects/:id/pulse/watch — the "Watch project health" opt-in.
   # A logged-in, :view_pulse-holding viewer subscribes THEMSELVES to the project's health
   # alerts by writing ONE plugin-private Watcher row (watchable_type PULSE_HEALTH_WATCHABLE,
   # watchable_id = project.id). That row is exactly what the scan reads via subscribers_for.
-  # INV-ADDITIVE: this action writes a single subscription record and triggers NO scoring /
+  # Additive: this action writes a single subscription record and triggers NO scoring /
   # alert scan — the scan is reachable ONLY from the rake composition root. Watcher is a
   # plugin-agnostic membership table (NOT a Redmine scoring/alert domain model), so this stays
   # a read-only-toward-scoring action.
@@ -133,11 +133,11 @@ class PulseController < PulseBaseController
   # ADMIN-ONLY: run `require_admin` (User.current.admin?) BEFORE #webhook_test — STRICTER than
   # the :view_pulse authorize_pulse ladder. A non-admin (incl. a :view_pulse-only user) and an
   # anonymous request are FORBIDDEN (403/redirect) with NO dispatch. This is the SOLE
-  # request-cycle webhook gate (FR-C7-09 / FC-C7-08). Scoped to webhook_test only so the
+  # request-cycle webhook gate. Scoped to webhook_test only so the
   # read-only pulse surface is unaffected.
   before_action :require_admin, only: :webhook_test
 
-  # POST /pulse/webhook_test — the admin "send test event" diagnostic (C7 / FR-C7-09).
+  # POST /pulse/webhook_test — the admin "send test event" diagnostic.
   # Builds a SYNTHETIC AlertEvent (+ synthetic Project + HealthResult + previous) OFF the domain
   # scan path and delivers it to EXACTLY ONE operator-selected global endpoint (params[:endpoint]
   # is its index) via the SHARED HttpWebhookDispatcher pipeline (HTTPS -> SSRF -> serialize ->
@@ -183,7 +183,7 @@ class PulseController < PulseBaseController
   # Build the synthetic delivery inputs and run the ONE-endpoint diagnostic through the shared
   # dispatcher. Returns { ok:, status:, error: }. The synthetic Project/HealthResult are plain
   # duck-typed value carriers (Struct) so no domain scan or Redmine read is triggered here — the
-  # request cycle stays scan-free (INV-ADDITIVE). The synthetic Project#id mirrors the AlertEvent
+  # request cycle stays scan-free (additive). The synthetic Project#id mirrors the AlertEvent
   # project_id so the payload is self-consistent (a representative id, not a real project read).
   def deliver_test_event(endpoint)
     occurred_at = Time.now.utc
@@ -210,7 +210,7 @@ class PulseController < PulseBaseController
   # leaked; module-off / no-view_pulse -> 403), require a real logged-in user (anonymous
   # cannot own a subscription), toggle the subscription Watcher row, then redirect back to the
   # panel. The write is confined to ONE plugin-private Watcher row — no scoring/alert symbol is
-  # named or invoked in the request cycle (INV-ADDITIVE).
+  # named or invoked in the request cycle (additive).
   def toggle_health_watch(subscribe:)
     project = visible_project(params[:id])
     return if project.nil? # 404 already rendered
@@ -242,12 +242,12 @@ class PulseController < PulseBaseController
                   user_id: User.current.id).exists?
   end
 
-  # ── C5 saved-view selection wiring (FC-C5-13/16/17) ─────────────────────────
+  # ── saved-view selection wiring ─────────────────────────────────────────────
 
   # The active saved view for this request, resolved THROUGH the ViewStore visibility gate
   # (session[:active_pulse_view_id]). Returns nil when no view is selected OR the referenced
   # view is no longer visible to the viewer — in which case the cockpit behaves EXACTLY as
-  # pre-C5 (additive-compat, FC-C5-17). Never raises.
+  # if no view were selected (additive-compat). Never raises.
   def active_pulse_view
     id = session[:active_pulse_view_id]
     return nil if id.nil?
@@ -257,14 +257,14 @@ class PulseController < PulseBaseController
     nil
   end
 
-  # Pre-filter the ranked-input projections by the active view's project_scope (FC-C5-13). This
+  # Pre-filter the ranked-input projections by the active view's project_scope. This
   # is a controller-side pre-filter — the engine internals are untouched. It only ever NARROWS
   # the already-visibility-scoped portfolio; it NEVER widens the visible project set (visibility
   # stays PRE-scope). 'all' / no active view -> no change.
   #   'selected'      -> keep only scope_params[:project_ids].
   #   'status_filter' -> keep only projects whose PROJECT status (Project#status:
   #                      STATUS_ACTIVE=1 / STATUS_CLOSED=5 / STATUS_ARCHIVED=9) equals the view's
-  #                      stored scope_params[:status_id] (FR-C5-01). A blank/unset status filter
+  #                      stored scope_params[:status_id]. A blank/unset status filter
   #                      leaves the portfolio unchanged (no coherent narrowing target).
   def apply_view_scope(projections, active)
     return projections if active.nil?
@@ -307,7 +307,7 @@ class PulseController < PulseBaseController
     @view_store ||= Pulse::Adapters::ActiveRecordViewStore.new
   end
 
-  # ── the EXACT 404/403 ladder (FC-CA-02 D1..D4) ──────────────────────────────
+  # ── the EXACT 404/403 visibility ladder ─────────────────────────────────────
 
   # D1: not in Project.visible / nonexistent / archived -> 404 (existence not leaked).
   # HTML-specific: assigns @project so Redmine's base layout renders the project

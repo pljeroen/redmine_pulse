@@ -1,16 +1,18 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'pulse/domain/weight_set'
 require 'pulse/domain/custom_lens'
 
-# FR-C3-02 / FC-C3-05, FC-C3-06.
 # CustomLens frozen VO = { name (non-empty String), weight_set (a WeightSet),
 # sort_direction (:asc | :desc), threshold (Numeric or nil) }. Fails loud
-# (ArgumentError) on invalid input (AC-C3-06). Frozen; mutation => FrozenError (AC-C3-05).
-#
-# RED NOW: Pulse::Domain::CustomLens is unimplemented -> require raises LoadError. GREEN
-# after A9 creates lib/pulse/domain/custom_lens.rb to the exact public API these tests pin.
+# (ArgumentError) on invalid input. Frozen; mutation => FrozenError.
 class CustomLensTest < Minitest::Test
   CL = Pulse::Domain::CustomLens
   WS = Pulse::Domain::WeightSet
@@ -24,7 +26,7 @@ class CustomLensTest < Minitest::Test
     CL.new(**defaults.merge(over))
   end
 
-  # === FC-C3-05: valid construction ============================================
+  # === valid construction ============================================
   def test_valid_construction_asc_no_threshold
     l = lens
     assert_equal 'Delivery risk', l.name
@@ -44,7 +46,7 @@ class CustomLensTest < Minitest::Test
     assert_equal 0.75, l.threshold
   end
 
-  # === FC-C3-05: name must be a non-empty String (AC-C3-06) =====================
+  # === name must be a non-empty String =====================
   def test_empty_name_raises
     assert_raises(ArgumentError) { lens(name: '') }
   end
@@ -62,7 +64,7 @@ class CustomLensTest < Minitest::Test
     assert_raises(ArgumentError) { lens(name: :delivery_risk) }
   end
 
-  # === FC-C3-05: sort_direction in {:asc, :desc} (AC-C3-06) =====================
+  # === sort_direction in {:asc, :desc} =====================
   def test_bad_sort_direction_symbol_raises
     assert_raises(ArgumentError) { lens(sort_direction: :up) }
   end
@@ -75,12 +77,12 @@ class CustomLensTest < Minitest::Test
     assert_raises(ArgumentError) { lens(sort_direction: nil) }
   end
 
-  # === FC-C3-05: threshold is nil OR a finite real Numeric =====================
+  # === threshold is nil OR a finite real Numeric =====================
   def test_non_numeric_threshold_raises
     assert_raises(ArgumentError) { lens(threshold: 'x') }
   end
 
-  # A10-C3-002: threshold must be a FINITE REAL Numeric — NaN/Inf/Complex rejected.
+  # threshold must be a FINITE REAL Numeric — NaN/Inf/Complex rejected.
   def test_nan_threshold_raises
     assert_raises(ArgumentError) { lens(threshold: Float::NAN) }
   end
@@ -103,7 +105,7 @@ class CustomLensTest < Minitest::Test
     assert_nil lens(threshold: nil).threshold
   end
 
-  # === FC-C3-05: weight_set must be a WeightSet (a raw Hash is rejected) =========
+  # === weight_set must be a WeightSet (a raw Hash is rejected) =========
   def test_raw_hash_weight_set_raises
     assert_raises(ArgumentError) do
       CL.new(name: 'x', weight_set: { staleness: 1.0 }, sort_direction: :asc, threshold: nil)
@@ -114,9 +116,9 @@ class CustomLensTest < Minitest::Test
     assert_raises(ArgumentError) { lens(weight_set: nil) }
   end
 
-  # === FC-C3-06: frozen VO; mutation => FrozenError (AC-C3-05) ==================
+  # === frozen VO; mutation => FrozenError ==================
   def test_lens_is_frozen
-    assert lens.frozen?, 'CustomLens must be frozen (FC-C3-06)'
+    assert lens.frozen?, 'CustomLens must be frozen'
   end
 
   def test_mutation_raises_frozen_error
@@ -124,22 +126,22 @@ class CustomLensTest < Minitest::Test
     assert_raises(FrozenError) { l.instance_variable_set(:@name, 'other') }
   end
 
-  # A10-C3-003: the caller-owned name String must not be able to mutate lens.name after
-  # construction — the classic dup.freeze immutability hole. Store @name = name.dup.freeze.
+  # The caller-owned name String must not be able to mutate lens.name after construction —
+  # the classic dup.freeze immutability hole. Store @name = name.dup.freeze.
   def test_name_is_isolated_from_caller_string_mutation
     original = +'Delivery risk'   # unary + => an explicitly mutable String
     l = CL.new(name: original, weight_set: valid_ws, sort_direction: :asc, threshold: nil)
     original << ' MUTATED'
     assert_equal 'Delivery risk', l.name,
                  'lens.name must be isolated from post-construction mutation of the caller String'
-    assert l.name.frozen?, 'lens.name must itself be frozen (FC-C3-06)'
+    assert l.name.frozen?, 'lens.name must itself be frozen'
   end
 
-  # === FC-C3-14 (structural): no DSL / expression surface — declarative fields only ===
+  # === no DSL / expression surface — declarative fields only ===
   def test_no_eval_or_expression_surface_in_source
     src = File.read(File.expand_path('../../../../lib/pulse/domain/custom_lens.rb', __FILE__))
     %w[eval instance_eval class_eval module_eval binding].each do |tok|
-      refute_match(/\b#{tok}\b/, src, "custom_lens.rb must contain no #{tok} (no-DSL, FC-C3-14)")
+      refute_match(/\b#{tok}\b/, src, "custom_lens.rb must contain no #{tok} (no DSL)")
     end
   end
 end

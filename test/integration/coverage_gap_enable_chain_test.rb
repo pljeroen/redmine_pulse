@@ -10,10 +10,10 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# A10-C2-005 — the END-TO-END coverage_gap ENABLE-CHAIN regression guard.
+# The END-TO-END coverage_gap ENABLE-CHAIN regression guard.
 #
-# The C2 unit tests proved each stage against a HANDCRAFTED 6-key config / 6-key settings
-# hash; NONE of them exercised the REAL chain the shipped settings form drives:
+# The coverage_gap unit tests proved each stage against a HANDCRAFTED 6-key config / 6-key
+# settings hash; NONE of them exercised the REAL chain the shipped settings form drives:
 #
 #   default persisted settings (coverage_gap OFF, 5-key)
 #     -> SettingsSanitizer.sanitize (as the admin POST writer does)
@@ -22,27 +22,23 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #     -> Pulse::Domain::Scoring.score             (the real signal dispatch + no-data gate)
 #     -> HtmlPresenter.signal_rows / JsonSerializer.signal_set   (the real surfaces)
 #
-# This is the test that would have caught the CRITICAL A10-C2-001 (enable_coverage_gap
-# persisted while ScoringConfig still enabled only the 5 C1 signals): it starts from the
+# This is the test that would have caught the bug where enable_coverage_gap was persisted
+# while ScoringConfig still enabled only the 5 baseline signals: it starts from the
 # DEFAULT 5-key settings, enables coverage_gap the way the form POSTs (enable checkbox +
 # the 5 weight inputs the form ships), and asserts the sixth signal is enabled, scored,
 # NOT suppressed by no_data, and surfaced in BOTH presenters — then asserts the DEFAULT-OFF
 # path is byte-identical (no coverage keys anywhere).
 #
-# HARNESS lane: RedmineSettingsProvider reads Setting.plugin_redmine_pulse and the presenters
-# resolve plugin constants via Zeitwerk, so it must load under the Redmine test harness. It
-# is NOT run in the pure `ruby -Itest -Ilib` lane (that lane cannot resolve Setting / the
+# RedmineSettingsProvider reads Setting.plugin_redmine_pulse and the presenters resolve
+# plugin constants via Zeitwerk, so this must load under the Redmine test harness. It is
+# NOT run in the pure `ruby -Itest -Ilib` lane (that lane cannot resolve Setting / the
 # adapter constants); the orchestrator runs it via scripts/test-redmine/run-tests.sh.
-#
-# It MUST fail against the pre-A9 code (the enable flag would not enable the signal; the
-# no-data short-circuit would suppress it; the label would be unused) and PASS against the
-# current (A9-fixed) code. Discharges FR-C2-05/06/07, FC-C2-09/10/14/15.
 class CoverageGapEnableChainTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
   PLUGIN_KEY = 'plugin_redmine_pulse'
   CG = :coverage_gap
-  # The dedicated localized "Planning coverage" display label (A10-C2-004).
+  # The dedicated localized "Planning coverage" display label.
   PLANNING_COVERAGE_LABEL = I18n.t(:label_pulse_planning_coverage)
 
   # The DEFAULT persisted plugin settings — coverage_gap OFF, the 5-key baseline the admin
@@ -56,7 +52,7 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
 
   # The 5 weight inputs the settings form actually renders WHILE coverage_gap is OFF (the
   # 6th input appears only once enabled). Enabling POSTs the checkbox PLUS these 5 — the
-  # exact shape that surfaced A10-C2-001 (a naive 6-key rejection left the config at 5).
+  # exact shape that surfaced the bug (a naive 6-key rejection left the config at 5).
   FORM_FIVE_WEIGHTS = {
     'staleness' => '0.25', 'progress' => '0.25', 'momentum' => '0.2',
     'risk_load' => '0.15', 'blocked_load' => '0.15'
@@ -89,9 +85,10 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
     Pulse::Adapters::RedmineSettingsProvider.new.scoring_config
   end
 
-  # A coverage-bearing ProjectMetrics that is ALSO a C1 no-data candidate: effort_total 0,
+  # A coverage-bearing ProjectMetrics that is ALSO a baseline no-data candidate: effort_total 0,
   # empty event_series, no blockers, no risk issues — but open_issue_count > 0 with partial
-  # coverage. Under C1 this would be no_data; with coverage_gap ENABLED it must be ACTIVE.
+  # coverage. Under the baseline signals this would be no_data; with coverage_gap ENABLED it
+  # must be ACTIVE.
   def coverage_bearing_metrics(open_issue_count:, covered_sum:)
     Pulse::Domain::ProjectMetrics.new(
       project_id: 42,
@@ -131,7 +128,7 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
 
     # (2) Enable coverage_gap the way the settings form POSTs: the enable checkbox PLUS the
     # 5 weight inputs the form ships while off. Write it through the REAL sanitize+persist
-    # path (NOT a handcrafted 6-key hash) — this is the exact shape A10-C2-001 surfaced.
+    # path (NOT a handcrafted 6-key hash) — this is the exact shape that surfaced the bug.
     persisted = persist_via_settings_writer(
       DEFAULT_SETTINGS.merge('enable_coverage_gap' => '1', 'weights' => FORM_FIVE_WEIGHTS)
     )
@@ -144,20 +141,20 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
     # INCLUDES coverage_gap, and the 6 weights renormalized to sum 1.0.
     cfg = scoring_config
     assert_includes cfg.enabled_signals, CG,
-                    'A10-C2-001 REGRESSION GUARD: enabling coverage_gap must make the provider ' \
-                    'ScoringConfig enable the sixth signal (not silently stay at the 5 C1 signals)'
+                    'REGRESSION GUARD: enabling coverage_gap must make the provider ' \
+                    'ScoringConfig enable the sixth signal (not silently stay at the 5 baseline signals)'
     assert_equal 6, cfg.enabled_signals.size, 'exactly the 6 signals are enabled'
     assert_in_delta 1.0, cfg.weights.values.sum, 1e-9, 'the 6 weights renormalize to Σ==1.0'
 
-    # (4) Score a coverage-bearing project that would be no_data under C1 (no effort/activity/
-    # risk/blockers) but has open issues with PARTIAL planning coverage. With coverage_gap
-    # enabled it must NOT be suppressed by the no-data short-circuit (A10-C2-002).
+    # (4) Score a coverage-bearing project that would be no_data under the baseline signals
+    # (no effort/activity/risk/blockers) but has open issues with PARTIAL planning coverage.
+    # With coverage_gap enabled it must NOT be suppressed by the no-data short-circuit.
     #   open_issue_count 4, covered_sum 1.0 => mean_cov 0.25 => gap raw_value 0.75, n 0.25.
     metrics = coverage_bearing_metrics(open_issue_count: 4, covered_sum: 1.0)
     assert Pulse::Domain::Scoring.coverage_gap_active?(metrics, cfg),
            'coverage_gap is active for the enabled config with open issues'
     refute Pulse::Domain::Scoring.no_data?(metrics, cfg),
-           'A10-C2-002 REGRESSION GUARD: an enabled coverage-bearing project must NOT be ' \
+           'REGRESSION GUARD: an enabled coverage-bearing project must NOT be ' \
            'suppressed to no_data before Signals.coverage_gap is dispatched'
     health = score(metrics, cfg)
     refute_equal Pulse::Domain::Scoring::NO_DATA_RAG, health.rag,
@@ -173,7 +170,7 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
     row = coverage_gap_row(rows)
     refute_nil row, 'HtmlPresenter renders a coverage_gap row when it is in the breakdown'
     assert_equal PLANNING_COVERAGE_LABEL, row.label,
-                 'A10-C2-004: the coverage_gap row uses the localized planning-coverage label'
+                 'the coverage_gap row uses the localized planning-coverage label'
     # The DISPLAYED value is the PLANNING-COVERAGE percentage 100*(1-raw_value) == 25, NOT the
     # raw gap 0.75 (mean_cov 0.25 => 25% planned).
     assert_in_delta 25.0, row.raw_value.to_f, 1e-9,
@@ -182,9 +179,9 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
     set = Pulse::Adapters::JsonSerializer.signal_set(projection_for(health), with_drill: false)
     assert_includes set.keys, 'coverage_gap', 'JsonSerializer includes a coverage_gap entry'
     assert_equal true, set['coverage_gap']['active'], 'the JSON coverage_gap entry is active'
-    # JSON emits the VERBATIM gap fraction (FC-CA-23 passthrough), NOT the planning-coverage %.
+    # JSON emits the VERBATIM gap fraction (explainability passthrough), NOT the planning-coverage %.
     assert_in_delta 0.75, set['coverage_gap']['raw_value'].to_f, 1e-12,
-                    'JSON raw_value is the verbatim gap fraction (FC-CA-23 passthrough)'
+                    'JSON raw_value is the verbatim gap fraction (explainability passthrough)'
   end
 
   # ── the empty-weights enable POST (fresh instance renders the 5 inputs blank => {}) also
@@ -200,7 +197,7 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
   end
 
   # ────────────────────────────────────────────────────────────────────────────────────
-  # 6 — DEFAULT-OFF (coverage_gap disabled): the whole chain is byte-identical to pre-C2:
+  # 6 — DEFAULT-OFF (coverage_gap disabled): the whole chain is byte-identical to the baseline:
   # no coverage key in the config/weights, coverage_gap ABSENT from HealthResult + both
   # presenters, even when the metrics carry non-zero coverage inputs (present-but-UNREAD).
   # ────────────────────────────────────────────────────────────────────────────────────
@@ -210,17 +207,17 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
     refute cfg.enabled_signals.include?(CG),
            'default-OFF: coverage_gap is not in the enabled set'
     refute cfg.weights.key?(CG), 'default-OFF: no coverage_gap weight key'
-    assert_equal 5, cfg.enabled_signals.size, 'default-OFF: exactly the 5 C1 signals'
+    assert_equal 5, cfg.enabled_signals.size, 'default-OFF: exactly the 5 baseline signals'
 
     # Metrics carry non-zero coverage inputs, but with coverage_gap OFF they must be UNREAD:
     # this project (no effort/activity/risk/blockers) is genuinely no_data on the default path.
     metrics = coverage_bearing_metrics(open_issue_count: 7, covered_sum: 3.5)
     assert Pulse::Domain::Scoring.no_data?(metrics, cfg),
-           'default-OFF: coverage inputs are UNREAD, so this project is no_data (C1 behavior)'
+           'default-OFF: coverage inputs are UNREAD, so this project is no_data (baseline behavior)'
     health = score(metrics, cfg)
     assert_nil health.breakdown.find { |s| s.key == CG },
                'default-OFF: coverage_gap is ABSENT from the HealthResult breakdown'
-    assert_equal 5, health.breakdown.size, 'default-OFF: exactly the 5 C1 rows'
+    assert_equal 5, health.breakdown.size, 'default-OFF: exactly the 5 baseline rows'
 
     rows = Pulse::Adapters::HtmlPresenter.signal_rows(projection_for(health))
     assert_nil coverage_gap_row(rows), 'default-OFF: HtmlPresenter renders no coverage_gap row'
@@ -229,7 +226,7 @@ class CoverageGapEnableChainTest < ActiveSupport::TestCase
   end
 
   # An ACTIVE scoring path (not no_data) is ALSO byte-identical off: a project WITH effort
-  # scores its 5 C1 signals and never grows a coverage_gap row while disabled.
+  # scores its 5 baseline signals and never grows a coverage_gap row while disabled.
   def test_default_off_active_project_has_no_coverage_gap_row
     Setting.send("#{PLUGIN_KEY}=", DEFAULT_SETTINGS.dup)
     cfg = scoring_config

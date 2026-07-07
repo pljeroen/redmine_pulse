@@ -1,16 +1,19 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require_relative 'scoring_support'
 require 'pulse/domain/signal_registry'
 
-# FR-C1-04 / FC-C1-09 — signal_completeness = active_count / enabled_count.
+# signal_completeness = active_count / enabled_count.
 # The literal /5.0 is generalized to /enabled_count. Boundary identity: on the
 # default 5-signal set, active.size/enabled_count is bit-identical to active.size/5.0.
-#
-# RED NOW: an enabled_signals: kwarg on ScoringConfig / SignalRegistry are absent, and
-# the current Scoring divides by a hardcoded 5.0 -> the enabled_count != 5 case fails.
-# GREEN after A9 drives completeness off config.enabled_signals.size.
+# Completeness is driven off config.enabled_signals.size.
 class ScoringCompletenessTest < Minitest::Test
   include ScoringSupport
 

@@ -15,7 +15,7 @@ require 'pulse/adapters/webhook_payload_serializer'
 
 module Pulse
   module Adapters
-    # HttpWebhookDispatcher — the WebhookDispatcher port implementation (C7 / FR-C7-05/06/07/08).
+    # HttpWebhookDispatcher — the WebhookDispatcher port implementation.
     # It is the ONLY place in the plugin that performs outbound HTTP (Net::HTTP) and HMAC signing.
     #
     # Delivery pipeline per endpoint (#deliver):
@@ -23,15 +23,15 @@ module Pulse
     #   the vetted IP) -> serialize (redaction applied) -> HMAC-SHA256 over the EXACT posted
     #   body -> POST with ~5s open+read timeout -> bounded ≤3 retry + backoff -> dead-letter.
     #
-    # BEST-EFFORT (GR-05): every failure mode — an HTTPS/SSRF reject, a timeout, a 5xx, a
+    # BEST-EFFORT: every failure mode — an HTTPS/SSRF reject, a timeout, a 5xx, a
     # connection error — is RESCUED + LOGGED (no secret) and NEVER propagates out. State
     # advancement in the composition root is therefore never gated on delivery outcome.
     #
     # Fan-out (#dispatch) iterates the settings-configured endpoint list; an EMPTY list makes
-    # ZERO POSTs (the OFF-by-default structural short-circuit, FC-C7-02). A disabled endpoint
+    # ZERO POSTs (the OFF-by-default structural short-circuit). A disabled endpoint
     # (enabled:false) is skipped entirely.
     #
-    # Injection seams (A8 hermeticity contract): the ctor accepts `post:` (a callable of shape
+    # Injection seams (for hermetic testing): the ctor accepts `post:` (a callable of shape
     # ->(uri:, body:, headers:, open_timeout:, read_timeout:) -> response|raise; defaults to the
     # real Net::HTTP path), `logger:`, and `endpoints:`. #sleep is a plain method so the backoff
     # can be stubbed to 0 in tests.
@@ -95,7 +95,7 @@ module Pulse
       end
 
       # deliver_test(alert_event, endpoint, project:, health_result:, previous:) -> a diagnostic
-      # result Hash { ok:, status:, error: } for the admin test-event action (FR-C7-09). Same
+      # result Hash { ok:, status:, error: } for the admin test-event action. Same
       # pipeline as #deliver (event_filter is ignored — the operator explicitly targets this
       # endpoint — but HTTPS/SSRF/serialize/HMAC and the ~5s timeout still apply), but a SINGLE
       # attempt whose OUTCOME is REPORTED (not swallowed): this action is a diagnostic surface.
@@ -149,7 +149,7 @@ module Pulse
         last_response = nil
 
         # Bind the SSRF-vetted pin IP to the default seam WITHOUT widening the injectable
-        # `post:` contract (A8 pins it to exactly ->(uri:,body:,headers:,open_timeout:,
+        # `post:` signature (fixed at exactly ->(uri:,body:,headers:,open_timeout:,
         # read_timeout:)). The default Net::HTTP seam takes pin_ip; an injected seam never sees it.
         post = @injected_post ? @injected_post : pinned_post(vetted_ip)
 
@@ -228,9 +228,9 @@ module Pulse
       # #ipaddr= directs the socket to the vetted IP): the TLS SNI and the cert-hostname
       # verification therefore target the HOSTNAME (a real cert issued for the hostname passes
       # VERIFY_PEER), while the connection opens to the pinned IP WITHOUT any independent
-      # re-resolution at connect time (TOCTOU closure, SF-C7-04 / FC-C7-06c). The earlier
+      # re-resolution at connect time (closes the TOCTOU DNS-rebinding gap). The earlier
       # Net::HTTP.start(ip, ...) form set @address = the IP, which broke SNI/verify for every
-      # real HTTPS endpoint (WH-01). A nil pin_ip (ssrf_override with an unresolvable host)
+      # real HTTPS endpoint. A nil pin_ip (ssrf_override with an unresolvable host)
       # leaves @ipaddr unset so Net::HTTP resolves the hostname itself.
       def net_http_post(uri:, body:, headers:, open_timeout:, read_timeout:, pin_ip: nil)
         parsed = URI.parse(uri)
@@ -251,7 +251,7 @@ module Pulse
       # Construct the pinned Net::HTTP instance. @address stays the HOSTNAME (correct SNI +
       # cert-hostname verification); #ipaddr= pins the socket to the vetted IP so no DNS
       # re-resolution happens at connect (TOCTOU closure). Split out so the transport
-      # construction is unit-testable without a live TLS handshake (WH-01 blind-spot closure).
+      # construction is unit-testable without a live TLS handshake.
       def build_http(host, port, use_ssl, open_timeout, read_timeout, pin_ip)
         http = Net::HTTP.new(host, port)
         http.ipaddr = pin_ip.to_s if pin_ip
@@ -265,8 +265,8 @@ module Pulse
       end
 
       # Best-effort dead-letter log. Carries url + event_type + project_id + reason; NEVER the
-      # endpoint secret (FC-C7-09). A logger that is absent or itself raises must not mask the
-      # swallow (the caller keeps going, GR-05).
+      # endpoint secret. A logger that is absent or itself raises must not mask the
+      # swallow (the caller keeps going).
       def dead_letter(endpoint, alert_event, reason)
         logger = resolve_logger
         return if logger.nil?

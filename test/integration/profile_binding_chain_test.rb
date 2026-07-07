@@ -10,9 +10,9 @@
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# IT-C4-07 (END-TO-END CHAIN, the C2 lesson) — the whole-chain regression guard, modeled on
-# coverage_gap_enable_chain_test.rb. The C2 unit tests each proved one stage against a
-# HANDCRAFTED hash; NONE exercised the REAL chain the shipped settings form drives. This
+# END-TO-END CHAIN — the whole-chain regression guard, modeled on
+# coverage_gap_enable_chain_test.rb. The per-stage unit tests each proved one stage against
+# a HANDCRAFTED hash; NONE exercised the REAL chain the shipped settings form drives. This
 # test starts from DEFAULT settings and walks the REAL wiring:
 #
 #   default persisted settings (no admin profiles)
@@ -25,14 +25,13 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #     -> Pulse::Domain::Scoring.score(metrics, clock, active.config)      (real scoring)
 #     -> HtmlPresenter.panel_view(...).active_profile_name                (real surface)
 #
-# It MUST fail against pre-A9 HEAD (no RedmineProfileProvider; SnapshotFingerprint takes no
-# active_profile_id:; the Engine takes no profile_provider:; the presenter has no
-# active_profile_name) and PASS against the A9-wired code. Discharges FR-C4-02/03/04/05/06/08,
-# FC-C4-05, FC-C4-06, FC-C4-08, FC-C4-09, FC-C4-10SC, FC-C4-14, FC-C4-17.
+# It MUST fail against code without the profile wiring (no RedmineProfileProvider;
+# SnapshotFingerprint takes no active_profile_id:; the Engine takes no profile_provider:;
+# the presenter has no active_profile_name) and PASS once the profile wiring is in place.
 #
-# HARNESS lane (RED-by-construction): reads Setting.plugin_redmine_pulse + resolves plugin
-# constants via Zeitwerk, so it loads under the Redmine harness — NOT the pure lane. The
-# orchestrator runs it via scripts/test-redmine/run-tests.sh. Postgres-gated evidence lane.
+# HARNESS lane: reads Setting.plugin_redmine_pulse + resolves plugin constants via
+# Zeitwerk, so it loads under the Redmine harness — NOT the pure lane. It runs via
+# scripts/test-redmine/run-tests.sh. Runs on PostgreSQL.
 class ProfileBindingChainTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -129,7 +128,7 @@ class ProfileBindingChainTest < ActiveSupport::TestCase
     # (role-binding beats default; no explicit selection).
     active = profile_provider.resolve(@user, @project, nil)
     assert_equal 'risk-heavy', active.id,
-                 'the role-bound profile must resolve for a viewer holding the bound role (FC-C4-06)'
+                 'the role-bound profile must resolve for a viewer holding the bound role'
     assert_equal 'Risk Heavy', active.name, 'the resolved profile carries the published name'
     assert_includes profile_provider.profiles.map(&:id), 'risk-heavy',
                     'the published set includes the admin-defined profile + the synthetic default'
@@ -144,29 +143,29 @@ class ProfileBindingChainTest < ActiveSupport::TestCase
       @user, @project, settings_provider: settings_provider, active_profile_id: 'default'
     ).value
     refute_equal fp_default, fp_active,
-                 'the non-default resolved profile folds a distinct fingerprint component (FC-C4-09)'
+                 'the non-default resolved profile folds a distinct fingerprint component'
 
     proj = engine.project_projection(@user, @project, nil) # resolves the bound profile internally
     row = Pulse::Adapters::ActiveRecordSnapshotStore::PulseSnapshot
           .where(project_id: @project.id, snapshot_fingerprint: fp_active).first
     refute_nil row,
-               'the snapshot is cached under the resolved (bound) profile\'s fingerprint (FC-C4-08/09)'
+               'the snapshot is cached under the resolved (bound) profile\'s fingerprint'
 
     # (5) Scoring reflects the profile config (staleness-heavy => distinct from the default score).
     default_config = settings_provider.scoring_config
     default_h = Pulse::Domain::Scoring.score(proj.metrics, @clock, default_config)
     refute_equal default_h.health_score, proj.health.health_score,
                  'the projection scored under the bound profile differs from the default-config ' \
-                 'score (scoring reflects active_profile.config, FC-C4-10SC)'
+                 'score (scoring reflects active_profile.config)'
 
-    # (6) The presenter surfaces the active profile NAME (FC-C4-17).
+    # (6) The presenter surfaces the active profile NAME.
     view = Pulse::Adapters::HtmlPresenter.panel_view(proj, now: @clock.now)
     assert_equal 'Risk Heavy', view.active_profile_name,
-                 'the cockpit shows "scored under: Risk Heavy" (FC-C4-17)'
+                 'the cockpit shows "scored under: Risk Heavy"'
   end
 
   # ── an EXPLICIT transient selection (?profile_id) overrides the role binding through the
-  # full engine chain (FR-C4-03 level-1 transient path). ─────────────────────────────────
+  # full engine chain (level-1 transient path). ─────────────────────────────────
   def test_transient_selection_overrides_role_binding_through_engine
     persist_via_settings_writer(
       DEFAULT_SETTINGS.merge(
@@ -183,10 +182,10 @@ class ProfileBindingChainTest < ActiveSupport::TestCase
       )
     )
     # The viewer is bound to risk-heavy, but explicitly selects stale-light via the transient
-    # ?profile_id param — the selection must win (FC-C4-06 level 1).
+    # ?profile_id param — the selection must win (level 1).
     active = profile_provider.resolve(@user, @project, 'stale-light')
     assert_equal 'stale-light', active.id,
-                 'an explicit transient selection overrides the role binding (FC-C4-06 level 1)'
+                 'an explicit transient selection overrides the role binding (level 1)'
 
     proj_selected = engine.project_projection(@user, @project, 'stale-light')
     view = Pulse::Adapters::HtmlPresenter.panel_view(proj_selected, now: @clock.now)

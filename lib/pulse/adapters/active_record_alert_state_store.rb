@@ -10,12 +10,13 @@
 module Pulse
   module Adapters
     # ActiveRecordAlertStateStore — the AlertStateStore port over the PulseAlertState AR
-    # model / pulse_alert_states table (C6 / FC-C6-05). Keyed SOLELY by project_id (the
-    # canonical/global profile; DEC-10). A second upsert on the same project_id UPDATES the
-    # existing row (the UNIQUE index guarantees one row per project) — never a second row.
+    # model / pulse_alert_states table. Keyed SOLELY by project_id (the canonical/global
+    # scoring profile). A second upsert on the same project_id UPDATES the existing row
+    # (the UNIQUE index guarantees one row per project) — never a second row.
     #
     # This adapter is reachable ONLY from the scan_and_alert composition root
-    # (lib/tasks/pulse.rake) — NEVER from any request-cycle path (INV-ADDITIVE).
+    # (lib/tasks/pulse.rake) — NEVER from any request-cycle path (it is additive: no
+    # request ever reads or writes alert state).
     class ActiveRecordAlertStateStore
       # -> { last_rag:, last_dominant:, last_no_data:, last_score: } | nil.
       # nil on first run (no prior row for this project).

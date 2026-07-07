@@ -12,12 +12,12 @@ require 'pulse/domain/custom_lens'
 
 module Pulse
   module Domain
-    # BuiltInLenses — the v1 seed catalog of ranking lenses (FC-C3-15, FC-C3-16, FC-C3-19).
+    # BuiltInLenses — the v1 seed catalog of ranking lenses.
     # EXACTLY 2 frozen CustomLens entries, IN ORDER:
     #   [0] "Delivery risk": {risk_load: 0.5, blocked_load: 0.3, staleness: 0.2}, :asc, nil
     #   [1] "Momentum":      {momentum: 0.6, progress: 0.4},                       :asc, nil
     # Only weighted-signal-score lenses — NO raw-metric (stale/done/blocked) pass-throughs.
-    # Every entry is LensRanking-computable by the same machinery a user/C5 lens uses.
+    # Every entry is LensRanking-computable by the same machinery a user-defined saved lens uses.
     module BuiltInLenses
       ALL = [
         CustomLens.new(

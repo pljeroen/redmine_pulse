@@ -13,7 +13,6 @@ require 'pulse/domain/scoring_profile'
 require 'pulse/domain/scoring'
 require 'pulse/domain/project_metrics'
 
-# IT-C4-03 (scoring slice) — FR-C4-06 / FR-C4-07 / FC-C4-10SC + AC-C4-03.
 # Scoring under a profile uses EXACTLY that profile's ScoringConfig:
 #   (a) two profiles with DIFFERENT weights on the SAME metrics yield DIFFERENT
 #       health_score / rag / dominant_signal (where the weights differ);
@@ -21,12 +20,11 @@ require 'pulse/domain/project_metrics'
 #   (c) a profile DISABLING a signal s => s absent from the breakdown, never dominant,
 #       and health_score equals the score computed WITHOUT s.
 #
-# The existing Scoring domain is already parameterized on ScoringConfig (C1); the C4
-# guarantee is that scoring is driven by active_profile.config (NOT a global config).
-# This is proved at the domain layer: Scoring.score(metrics, clock, active_profile.config).
+# The Scoring domain is parameterized on ScoringConfig; the guarantee is that scoring is
+# driven by active_profile.config (NOT a global config). This is proved at the domain
+# layer: Scoring.score(metrics, clock, active_profile.config).
 #
-# RED NOW: Pulse::Domain::ScoringProfile is unimplemented -> `require` raises LoadError.
-# GREEN after A9 creates lib/pulse/domain/scoring_profile.rb. Pure lane: ruby -Itest -Ilib.
+# Pure lane: ruby -Itest -Ilib.
 class ScoringUnderProfileTest < Minitest::Test
   SP = Pulse::Domain::ScoringProfile
   SC = Pulse::Domain::ScoringConfig
@@ -60,7 +58,7 @@ class ScoringUnderProfileTest < Minitest::Test
     Scoring.score(metrics, clock, prof.config)
   end
 
-  # === FC-C4-10SC (a): different weights => different score / rag / dominant =====
+  # === (a): different weights => different score / rag / dominant =====
   def test_reweighting_changes_the_health_score
     a = profile('balanced',
                 { staleness: 0.25, progress: 0.25, momentum: 0.20,
@@ -72,7 +70,7 @@ class ScoringUnderProfileTest < Minitest::Test
     hb = score_under(b)
     refute_equal ha.health_score, hb.health_score,
                  'a profile with different weights must produce a different health_score ' \
-                 '(scoring is driven by the profile config, FC-C4-10SC a)'
+                 '(scoring is driven by the profile config)'
   end
 
   def test_reweighting_can_change_dominant_signal_or_rag
@@ -93,7 +91,7 @@ class ScoringUnderProfileTest < Minitest::Test
            'reweighting must move at least one of {health_score, rag, dominant_signal}'
   end
 
-  # === FC-C4-10SC (b): enabling coverage_gap yields a distinct breakdown =========
+  # === (b): enabling coverage_gap yields a distinct breakdown =========
   def test_enabling_coverage_gap_yields_distinct_breakdown
     base = profile('base',
                    { staleness: 0.25, progress: 0.25, momentum: 0.20,
@@ -107,12 +105,12 @@ class ScoringUnderProfileTest < Minitest::Test
     refute_includes base_keys, :coverage_gap,
                     'the base profile breakdown omits coverage_gap'
     assert_includes cov_keys, :coverage_gap,
-                    'the coverage profile breakdown INCLUDES coverage_gap (FC-C4-10SC b)'
+                    'the coverage profile breakdown INCLUDES coverage_gap'
     refute_equal base_keys, cov_keys,
                  'the two profiles yield distinct breakdown key-sets'
   end
 
-  # === FC-C4-10SC (c): a disabled signal is omitted end-to-end ===================
+  # === (c): a disabled signal is omitted end-to-end ===================
   def test_disabling_a_signal_omits_it_from_breakdown
     # A profile that DISABLES risk_load (its key is absent from the weight domain).
     minus = profile('no-risk',
@@ -120,7 +118,7 @@ class ScoringUnderProfileTest < Minitest::Test
     h = score_under(minus)
     keys = h.breakdown.map(&:key)
     refute_includes keys, :risk_load,
-                    'a disabled signal (risk_load) must be ABSENT from the breakdown (FC-C4-10SC c)'
+                    'a disabled signal (risk_load) must be ABSENT from the breakdown'
     refute_equal :risk_load, h.dominant_signal,
                  'a disabled signal can never be the dominant_signal'
   end
@@ -140,7 +138,7 @@ class ScoringUnderProfileTest < Minitest::Test
 
   # === Anchor: scoring reads active_profile.config, not a global default =========
   # A profile whose config differs from the default must produce a NON-default score,
-  # proving the config passed to Scoring is the profile's own (FC-C4-10SC c / URISK-C4-05).
+  # proving the config passed to Scoring is the profile's own.
   def test_profile_config_is_what_drives_scoring_not_the_default
     default_h = Scoring.score(metrics, clock, SC.new) # global default config
     prof_h = score_under(profile('stale-heavy',
@@ -148,6 +146,6 @@ class ScoringUnderProfileTest < Minitest::Test
                                    risk_load: 0.05, blocked_load: 0.05 }))
     refute_equal default_h.health_score, prof_h.health_score,
                  'scoring under a non-default profile must NOT equal the default-config score ' \
-                 '(no global-config leak, FC-C4-10SC)'
+                 '(no global-config leak)'
   end
 end

@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require_relative '../../domain_test_helper'
 require 'date'
 require 'pulse/domain/project_metrics'
@@ -8,11 +14,10 @@ require 'pulse/domain/timeline'
 require 'pulse/domain/retrospective_bucket'
 require 'pulse/domain/milestone_marker'
 
-# TL-01..TL-06, TL-08 / TC-01..TC-06, TC-08.
 # Retrospective bucket construction over the rolling, half-open, today-exclusive,
-# oldest-first window (D-TL-A / D-TL-B). RED until Pulse::Domain::Timeline exists.
+# oldest-first window.
 class TimelineBucketTest < Minitest::Test
-  # FixedClock: the SOLE 'now' source the domain may read (TL-01/TL-17). Records its
+  # FixedClock: the SOLE 'now' source the domain may read. Records its
   # #today call count so we can assert the domain anchors on the injected clock only.
   class FixedClock
     attr_reader :today_calls
@@ -30,8 +35,8 @@ class TimelineBucketTest < Minitest::Test
 
   TODAY = Date.new(2026, 6, 20)
 
-  # version_due_dates entries carry :name per D-TL-C (TC-11c); these fixtures keep the
-  # forward axis empty unless a test needs it, so name is moot here but supplied valid.
+  # version_due_dates entries carry :name; these fixtures keep the forward axis empty
+  # unless a test needs it, so name is moot here but supplied valid.
   def metrics(event_series: [], version_due_dates: [], reference_date: TODAY)
     Pulse::Domain::ProjectMetrics.new(
       project_id: 1,
@@ -40,7 +45,7 @@ class TimelineBucketTest < Minitest::Test
       blocked_count: 0, risk_mapped: true, effort_mapped: true,
       event_series: event_series,
       version_due_dates: version_due_dates,
-      open_issue_count: 0, covered_sum: 0.0 # C2 additive-required (inactive baseline)
+      open_issue_count: 0, covered_sum: 0.0 # additive coverage inputs (inactive baseline)
     )
   end
 
@@ -62,7 +67,7 @@ class TimelineBucketTest < Minitest::Test
     (w + d - 1) / d
   end
 
-  # --- TC-02: bucket_count == ceil(W/7), with the edge ladder ---
+  # --- bucket_count == ceil(W/7), with the edge ladder ---
   def test_bucket_count_ceil_w_over_7_edge_ladder
     ladder = { 1 => 1, 6 => 1, 7 => 1, 8 => 2, 14 => 2, 29 => 5, 30 => 5, 35 => 5, 36 => 6 }
     ladder.each do |w, expected_count|
@@ -81,7 +86,7 @@ class TimelineBucketTest < Minitest::Test
     end
   end
 
-  # --- TC-03: half-open contiguous 7-day boundaries anchored at clock.today,
+  # --- half-open contiguous 7-day boundaries anchored at clock.today,
   #            most-recent == [today-7, today), oldest-first ---
   def test_buckets_are_contiguous_seven_day_half_open_intervals
     w = 30
@@ -104,7 +109,7 @@ class TimelineBucketTest < Minitest::Test
     most_recent = result.retrospective.last
     assert_equal TODAY - 7, most_recent.start[:at], 'most-recent bucket starts at today-7'
     assert_equal TODAY, most_recent.end[:at],
-                 'most-recent bucket ends AT clock.today (exclusive supremum, D-TL-A)'
+                 'most-recent bucket ends AT clock.today (exclusive supremum)'
   end
 
   def test_oldest_bucket_first_and_oldest_start_anchored
@@ -112,17 +117,17 @@ class TimelineBucketTest < Minitest::Test
     n = ceil_div(w, 7) # 5
     result, = build(window: w)
     buckets = result.retrospective
-    # D-TL-B: retrospective[0] is the OLDEST.
+    # retrospective[0] is the OLDEST.
     assert_equal TODAY - 7 * n, buckets.first.start[:at],
                  'oldest bucket (index 0) starts at today - 7*ceil(W/7)'
     # Strictly increasing start dates => index 0 is oldest, last is most recent.
     buckets.each_cons(2) do |a, b|
       assert_operator a.start[:at], :<, b.start[:at],
-                      'array must be OLDEST-FIRST (ascending start dates, D-TL-B)'
+                      'array must be OLDEST-FIRST (ascending start dates)'
     end
   end
 
-  # --- TC-01: clock.today is the sole 'now'; swapping today shifts every boundary ---
+  # --- clock.today is the sole 'now'; swapping today shifts every boundary ---
   def test_today_sourced_only_from_injected_clock
     result_a, clock_a = build(window: 30, today: TODAY)
     result_b, = build(window: 30, today: TODAY + 10)
@@ -140,7 +145,7 @@ class TimelineBucketTest < Minitest::Test
     end
   end
 
-  # --- TC-05: half-open event membership (start inclusive, end exclusive) ---
+  # --- half-open event membership (start inclusive, end exclusive) ---
   def test_event_at_bucket_start_is_in_that_bucket
     # An event dated exactly the most-recent bucket's start (today-7) is IN it.
     result, = build(event_series: [{ date: TODAY - 7, type: :issue_created }], window: 7)
@@ -161,7 +166,7 @@ class TimelineBucketTest < Minitest::Test
   end
 
   def test_event_dated_exactly_today_is_in_no_bucket
-    # D-TL-A: clock.today is the EXCLUSIVE supremum; an event @ today is unbucketed.
+    # clock.today is the EXCLUSIVE supremum; an event @ today is unbucketed.
     result, = build(event_series: [{ date: TODAY, type: :issue_closed }], window: 30)
     total = result.retrospective.sum(&:event_count)
     assert_equal 0, total, 'event dated exactly clock.today must fall in NO bucket'
@@ -191,11 +196,11 @@ class TimelineBucketTest < Minitest::Test
     assert_equal 4, total, 'every in-window event counted exactly once (no drop, no double-count)'
   end
 
-  # --- momentum-broaden D3 / §8: sparkline counts issue_created/issue_closed ONLY ---
-  # event_series now also carries :issue_commented and :commit (consumed by momentum), but
-  # the retrospective sparkline MUST keep counting ONLY issue_created/issue_closed. A
-  # comment/commit event INSIDE the window must NOT change any bucket count (behaviour-
-  # preserving guard). RED until count_events_in gains the issue-events-only type filter.
+  # --- sparkline counts issue_created/issue_closed ONLY ---
+  # event_series also carries :issue_commented and :commit (consumed by momentum), but the
+  # retrospective sparkline MUST keep counting ONLY issue_created/issue_closed. A
+  # comment/commit event INSIDE the window must NOT change any bucket count
+  # (behaviour-preserving guard).
   def test_sparkline_ignores_issue_commented_and_commit_events
     issue_only = [
       { date: TODAY - 1, type: :issue_created },
@@ -211,7 +216,7 @@ class TimelineBucketTest < Minitest::Test
     base_counts  = base.retrospective.map(&:event_count)
     broad_counts = broad.retrospective.map(&:event_count)
     assert_equal base_counts, broad_counts,
-                 'sparkline buckets must be UNCHANGED by :issue_commented/:commit events (D3 / §8)'
+                 'sparkline buckets must be UNCHANGED by :issue_commented/:commit events'
     assert_equal 2, broad_counts.sum,
                  'only the two issue_created/issue_closed events are bucketed (comment+commit ignored)'
   end
@@ -226,10 +231,10 @@ class TimelineBucketTest < Minitest::Test
     ]
     result, = build(event_series: series, window: 30)
     assert_equal 0, result.retrospective.sum(&:event_count),
-                 'comment/commit-only series => zero sparkline counts (issue-events-only, §8)'
+                 'comment/commit-only series => zero sparkline counts (issue-events-only)'
   end
 
-  # --- TC-06: real zeros, no omission, no smoothing ---
+  # --- real zeros, no omission, no smoothing ---
   def test_empty_event_series_yields_real_zero_buckets_no_omission
     w = 30
     result, = build(event_series: [], window: w)
@@ -251,7 +256,7 @@ class TimelineBucketTest < Minitest::Test
     assert_equal counts.length - 1, counts.count { |c| c.zero? }, 'all other buckets are real zero (no bleed)'
   end
 
-  # --- TC-08: retrospective determinism (referential transparency) ---
+  # --- retrospective determinism (referential transparency) ---
   def test_retrospective_is_deterministic_across_invocations
     series = [
       { date: TODAY - 1, type: :issue_created },

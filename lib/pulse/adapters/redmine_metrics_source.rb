@@ -11,18 +11,17 @@ module Pulse
   module Adapters
     # MetricsSource implementation: builds a visibility-scoped Pulse::Domain::
     # ProjectMetrics per project for a requesting user, computed ENTIRELY over the
-    # issues/changesets/versions/relations that user is allowed to see (§3.1 /
-    # INV-PERMISSION-SAFE). READ-ONLY — it never writes a Redmine domain table
-    # (INV-READ-ONLY / FC-02).
+    # issues/changesets/versions/relations that user is allowed to see (permission-safe).
+    # READ-ONLY — it never writes a Redmine domain table.
     #
-    # All aggregate derivations follow spec §4.1 / FC-09..FC-22.
+    # All aggregate derivations follow the documented health-metric definitions.
     class RedmineMetricsSource
       def initialize(settings_provider:, clock:)
         @settings_provider = settings_provider
         @clock = clock
       end
 
-      # MS-01 / FC-34: ordered project_id ascending; Array<ProjectMetrics>.
+      # Ordered project_id ascending; Array<ProjectMetrics>.
       #   project_ids nil   => the user's full portfolio set
       #   project_ids Array => the visibility-filtered subset of those ids
       def metrics_for(user, project_ids: nil)
@@ -37,7 +36,7 @@ module Pulse
         end
       end
 
-      # MS-04 / FC-05: per-project HTTP-status decision function.
+      # Per-project HTTP-status decision function.
       def access_decision(user, project_id)
         project = Project.visible(user).find_by(id: project_id)
         return :not_found if project.nil?
@@ -48,7 +47,7 @@ module Pulse
         :ok
       end
 
-      # MS-05 / FC-04: visible AND pulse-module-on AND view_pulse subset.
+      # Visible AND pulse-module-on AND view_pulse subset.
       def portfolio_project_ids(user)
         Project.visible(user)
                .where(id: pulse_enabled_project_ids)
@@ -85,10 +84,10 @@ module Pulse
         )
       end
 
-      # --- coverage inputs (FC-C2-12, FR-C2-02/03) -----------------------------
+      # --- coverage inputs -----------------------------
       # Aggregate the coverage_gap signal inputs over ONLY the visible OPEN issues
       # (the `visible` scope is already the requester's permission-safe set, so this is
-      # INV-VISIBILITY-safe). READ-ONLY — plucks fields, writes nothing (INV-READ-ONLY).
+      # visibility-safe). READ-ONLY — plucks fields, writes nothing.
       #   open_issue_count = count of visible OPEN issues
       #   covered_sum      = Σ per-issue coverage fraction, where each issue's fraction is the
       #                      mean over the 3 FIXED planning dimensions:
@@ -97,12 +96,13 @@ module Pulse
       #                        has_schedule  = due_date present OR fixed_version_id present
       #                      => fraction = (has_estimate + has_assignee + has_schedule) / 3.0
       #
-      # A10-C2-003 (a): the 3 coverage COUNT queries run ONLY when coverage_gap is ENABLED.
-      # When the signal is off (the default) we return 0/0.0 WITHOUT touching the DB — saving the
-      # work AND keeping the ProjectMetrics coverage fields at their neutral defaults, so the
-      # default-OFF snapshot payload stays byte-identical to pre-C2 (the serializer omits the
-      # default 0/0.0). coverage_gap is inactive at 0/0.0 (FC-C2-02), so the default score is
-      # unaffected. The enable flag is read off the injected settings provider (authoritative).
+      # The 3 coverage COUNT queries run ONLY when coverage_gap is ENABLED. When the signal
+      # is off (the default) we return 0/0.0 WITHOUT touching the DB — saving the work AND
+      # keeping the ProjectMetrics coverage fields at their neutral defaults, so the
+      # default-OFF snapshot payload stays byte-identical to one written before the coverage_gap
+      # signal existed (the serializer omits the default 0/0.0). coverage_gap is inactive at
+      # 0/0.0, so the default score is unaffected. The enable flag is read off the injected
+      # settings provider (authoritative).
       def coverage_inputs(visible)
         return [0, 0.0] unless coverage_gap_enabled?
 
@@ -120,7 +120,7 @@ module Pulse
         flag ? 1 : 0
       end
 
-      # A10-C2-003 (a): whether the optional coverage_gap signal is enabled (authoritative,
+      # Whether the optional coverage_gap signal is enabled (authoritative,
       # off the injected settings provider). Defensive: a provider without the accessor (older
       # test double) => false => no coverage gathering, no coverage payload (default-OFF).
       def coverage_gap_enabled?
@@ -128,17 +128,17 @@ module Pulse
           @settings_provider.coverage_gap_enabled?
       end
 
-      # The requester's visible issue set for the project (INV-PERMISSION-SAFE).
+      # The requester's visible issue set for the project (permission-safe).
       def visible_issues(user, project)
         Issue.where(project_id: project.id).visible(user)
       end
 
-      # --- reference_date (MS-08/09, FC-09/10) ---------------------------------
+      # --- reference_date ---------------------------------
 
       def reference_date(user, project, visible)
         # reference_date = max(latest visible issue.updated_on, latest visible eligible
         # changeset.committed_on, project.created_on) — project.created_on is a FULL
-        # max participant, not a fallback (spec §4.1 / FC-09 / MS-08): a freshly-created
+        # max participant, not a fallback: a freshly-created
         # project reads as fresh. project.created_on guarantees a non-nil result.
         candidates = [project.created_on]
         latest_issue = visible.maximum(:updated_on)
@@ -151,7 +151,7 @@ module Pulse
       end
 
       # Changeset date ONLY when repository module + :view_changesets (NOT
-      # :browse_repository) — THAW-001 / EA-MS-001.
+      # :browse_repository).
       def latest_changeset_committed_on(user, project)
         return nil unless project.module_enabled?(:repository)
         return nil unless user.allowed_to?(:view_changesets, project)
@@ -160,7 +160,7 @@ module Pulse
         Changeset.where(repository_id: project.repository.id).maximum(:committed_on)
       end
 
-      # --- effort (MS-10/10a/11/12, FC-11/12/13) -------------------------------
+      # --- effort -------------------------------
 
       def effort(user, project, visible)
         if @settings_provider.respond_to?(:effort_mapped?) && @settings_provider.effort_mapped? &&
@@ -174,7 +174,7 @@ module Pulse
         end
       end
 
-      # RT-02 / INV-PERMISSION-SAFE: sum the configured effort custom field ONLY when the
+      # Permission-safe: sum the configured effort custom field ONLY when the
       # REQUESTER may see that field on the project. A field-blind viewer must never receive
       # field-derived numbers, so we degrade to the unmapped issue-count fallback. Absent or
       # unresolvable field => not visible.
@@ -186,7 +186,7 @@ module Pulse
         field.visible_by?(project, user)
       end
 
-      # Per-issue NULL/blank/unparseable contributes 0 (MS-10a) — NOT excluded.
+      # Per-issue NULL/blank/unparseable contributes 0 — NOT excluded.
       def sum_custom_field(scope, field_id)
         ids = scope.pluck(:id)
         return 0 if ids.empty?
@@ -209,7 +209,7 @@ module Pulse
         0
       end
 
-      # --- risk (MS-13/14, FC-14/15) -------------------------------------------
+      # --- risk -------------------------------------------
 
       def risk(visible)
         return [0, false] unless @settings_provider.respond_to?(:risk_mapped?) &&
@@ -225,7 +225,7 @@ module Pulse
         [raw, true]
       end
 
-      # --- blocked_count (MS-15/16/17, FC-16/17) -------------------------------
+      # --- blocked_count -------------------------------
 
       def blocked_count(user, visible)
         visible_all = visible.to_a
@@ -240,7 +240,7 @@ module Pulse
         relation_blocked = open_ids.empty? ? [] : relation_blocked_ids(user, open_ids)
 
         # (b) status rule: a visible OPEN issue carrying the configured blocked status
-        # (FC-16/MS-15 — blocked_count is over visible OPEN issues only). A visible
+        # (blocked_count is over visible OPEN issues only). A visible
         # CLOSED issue whose status maps to the blocked status is NOT counted. An issue
         # that is itself an active blocker of another issue is NOT itself "blocked" and
         # is excluded, so an issue satisfying both rules is still counted exactly once.
@@ -286,14 +286,14 @@ module Pulse
         end
       end
 
-      # --- event_series (MS-18/19/20/21, FC-18/19/20/21) -----------------------
+      # --- event_series -----------------------
 
       def event_series(user, project, visible)
         events = []
-        # Order source issues by id so iteration is independent of DB row order (FC-36).
+        # Order source issues by id so iteration is independent of DB row order.
         issues = visible.includes(:journals).order(:id).to_a
 
-        # momentum-broaden §7: the activity window bounds the broadened :issue_commented /
+        # momentum-broaden: the activity window bounds the broadened :issue_commented /
         # :commit payload so the snapshot stays bounded (only momentum consumes these);
         # :issue_created / :issue_closed remain full-history (unchanged).
         today = @clock.today
@@ -306,8 +306,8 @@ module Pulse
             events << { date: d, type: :issue_closed, source_id: issue.id }
           end
           # :issue_commented — every journal whose created_on (local date) is in-window
-          # (a close-journal also counting as activity is acceptable per §7).
-          # M-01 / INV-PERMISSION-SAFE: a private-notes journal is counted ONLY when the
+          # (a close-journal also counting as activity is acceptable).
+          # Permission-safe: a private-notes journal is counted ONLY when the
           # requester may view private notes on the project (symmetric with the :commit
           # gate); otherwise momentum/health would leak the existence/timing of private
           # activity to a user who cannot see it. Non-private journals are always counted.
@@ -332,7 +332,7 @@ module Pulse
         end
 
         # Stable defined order: [date, type_rank, source_id]; drop the internal sort key so
-        # only the frozen public fields (:date, :type) remain (FC-36).
+        # only the frozen public fields (:date, :type) remain.
         type_rank = { issue_created: 0, issue_closed: 1, issue_commented: 2, commit: 3 }
         events
           .sort_by { |e| [e[:date], type_rank[e[:type]], e[:source_id]] }
@@ -340,7 +340,7 @@ module Pulse
       end
 
       # In-window-eligible changesets for the :commit activity events. SAME gate as
-      # latest_changeset_committed_on (THAW-001 / EA-MS-001): repository module enabled,
+      # latest_changeset_committed_on: repository module enabled,
       # :view_changesets (NOT :browse_repository), and a configured repository. Returns
       # [[changeset_id, committed_on], ...]; [] is the graceful no-repo/no-permission path.
       def commit_changesets(user, project)
@@ -348,7 +348,7 @@ module Pulse
         return [] unless user.allowed_to?(:view_changesets, project)
         return [] unless project.repository
 
-        # RT-03 (security-S2-dos): push the activity-window predicate into SQL rather than
+        # Availability hardening: push the activity-window predicate into SQL rather than
         # plucking the WHOLE repository and Ruby-filtering (an unbounded scan/transfer lever on a
         # large repo). The window is the SAME half-open [today - activity_window_days, today) the
         # :commit event filter (event_series#in_window) applies, evaluated by LOCAL date. Because
@@ -369,20 +369,20 @@ module Pulse
           .pluck(:id, :committed_on)
       end
 
-      # Whether the requester may see private-notes journals on this project (M-01 /
-      # INV-PERMISSION-SAFE). Computed once per project (hoisted out of the issue loop)
+      # Whether the requester may see private-notes journals on this project
+      # (permission-safe). Computed once per project (hoisted out of the issue loop)
       # so the :issue_commented gate adds no per-issue query.
       def view_private_notes?(user, project)
         user.allowed_to?(:view_private_notes, project)
       end
 
       # Activity window (days) read from the injected settings provider's scoring config —
-      # the same ScoringConfig the domain consumes (momentum-broaden §7).
+      # the same ScoringConfig the domain consumes.
       def activity_window_days
         @settings_provider.scoring_config.activity_window_days
       end
 
-      # Closing events for one issue (§4.1 / FC-19):
+      # Closing events for one issue:
       #   * a journal status detail whose OLD status had is_closed=false and NEW
       #     status has is_closed=true -> one event at journal.created_on; plus
       #   * an issue created directly in a closed status -> one event at created_on
@@ -426,7 +426,7 @@ module Pulse
         @closed_status_ids ||= IssueStatus.where(is_closed: true).pluck(:id)
       end
 
-      # --- version_due_dates (MS-22, FC-22) ------------------------------------
+      # --- version_due_dates ------------------------------------
 
       def version_due_dates(project)
         Version.where(project_id: project.id)
@@ -438,8 +438,8 @@ module Pulse
 
       # --- date helpers --------------------------------------------------------
 
-      # Normalize a timestamp to a plain Date in the instance-configured timezone
-      # (MS-18 / FC-18). Accepts Time/ActiveSupport::TimeWithZone; returns Date.
+      # Normalize a timestamp to a plain Date in the instance-configured timezone.
+      # Accepts Time/ActiveSupport::TimeWithZone; returns Date.
       def to_local_date(value)
         return value if value.instance_of?(Date)
 

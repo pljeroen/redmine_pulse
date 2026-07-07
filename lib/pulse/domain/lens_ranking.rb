@@ -11,8 +11,8 @@ require 'pulse/domain/scoring_config'
 
 module Pulse
   module Domain
-    # LensRanking — a pure, side-effect-free module computing one lens's ranking score
-    # (FC-C3-07..FC-C3-10). The score is the normalized weighted mean
+    # LensRanking — a pure, side-effect-free module computing one lens's ranking score.
+    # The score is the normalized weighted mean
     #   Σ_{k∈INCLUDED}(wₖ · nₖ) / Σ_{k∈INCLUDED}(wₖ)
     # over the lens's chosen signals (keys of its WeightSet) that are BOTH
     #   * enabled  — k ∈ config.enabled_signals, AND

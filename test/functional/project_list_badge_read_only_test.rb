@@ -1,19 +1,25 @@
 # frozen_string_literal: true
 
+# Copyright (C) 2026 Jeroen
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of version 2 of the GNU General Public License as published by the
+# Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
+
 require File.expand_path('../../../../../test/test_helper', File.expand_path(__FILE__))
 require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__FILE__))
 
-# project-list-badge contract — PLB-13-READONLY (INV-READONLY / FR-PLB-13).
-# The view hook emits only HTML tag strings (read) and the new shared label / serializer
+# Project-list badge — read-only guarantee.
+# The view hook emits only HTML tag strings (read) and the shared label / serializer
 # path performs NO write on any Redmine domain table. Mirrors test/functional/
 # read_only_test.rb's write-capture mechanism (capture_write_statements): zero
 # INSERT/UPDATE/DELETE on a Redmine domain table across a hook emission.
 #
 # pulse_snapshots is the plugin-owned cache table the warm path is permitted to write
-# (FC-CA-11) — the guard set (REDMINE_DOMAIN_TABLES) deliberately EXCLUDES it; this test
+# — the guard set (REDMINE_DOMAIN_TABLES) deliberately EXCLUDES it; this test
 # asserts no REDMINE DOMAIN write, exactly as read_only_test.rb does.
 #
-# RED until A9 writes lib/redmine_pulse/hooks.rb (RedminePulseHooks ABSENT -> NameError).
+# Requires lib/redmine_pulse/hooks.rb.
 class ProjectListBadgeReadOnlyTest < ActionDispatch::IntegrationTest
   include PulseAdapterTestSupport
 
@@ -70,7 +76,7 @@ class ProjectListBadgeReadOnlyTest < ActionDispatch::IntegrationTest
       RedminePulseHooks.instance.public_send(HEAD_HOOK, hook_context)
     end
     assert_equal [], writes,
-                 "INV-READONLY: the badge hook emission MUST write NO Redmine domain table " \
+                 "read-only: the badge hook emission MUST write NO Redmine domain table " \
                  "(got: #{writes.inspect})"
   ensure
     User.current = prior || User.anonymous

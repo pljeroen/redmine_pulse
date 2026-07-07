@@ -343,10 +343,20 @@ module Pulse
         redaction = sanitize_redaction(ep['redaction'])
         return nil if redaction == :invalid
 
+        secret = resolve_secret(ep, prior_secret)
+        # WH-07 (safe default, FR-C7-06/07): every DELIVERED webhook must be HMAC-SHA256 signed
+        # with the per-endpoint secret. An endpoint whose EFFECTIVE secret (submitted-non-blank
+        # OR prior) is empty/nil therefore MUST NOT be enabled — an enabled-but-unsigned endpoint
+        # would ship an empty-key HMAC (non-authenticating). We keep the row (URL/config
+        # preserved so the operator can add a secret and enable later) but FORCE enabled=false
+        # rather than dropping their config. Deliberately-unsigned webhooks are NOT an implicit
+        # default; enabling one requires a real secret.
+        enabled = truthy?(ep['enabled']) && !blank?(secret)
+
         {
           'url' => url,
-          'secret' => resolve_secret(ep, prior_secret),
-          'enabled' => truthy?(ep['enabled']),
+          'secret' => secret,
+          'enabled' => enabled,
           'ssrf_override' => truthy?(ep['ssrf_override']),
           'allow_http' => truthy?(ep['allow_http']),
           'event_filter' => event_filter,

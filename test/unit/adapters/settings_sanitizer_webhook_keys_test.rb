@@ -216,4 +216,45 @@ class SettingsSanitizerWebhookKeysTest < Minitest::Test
     refute_includes errors, GLOBAL
     assert_nil sanitized[GLOBAL].first['secret'], 'no prior secret + blank field => nil (unsigned)'
   end
+
+  # ── WH-07 (safe default, FR-C7-06/07): an ENABLED endpoint with NO effective
+  # secret (blank submitted, no prior) MUST NOT persist enabled. We keep the row
+  # (URL/config preserved so the admin can add a secret later) but FORCE enabled
+  # false — an enabled delivery must never be effectively unsigned (empty-key HMAC).
+  def test_enabled_endpoint_without_secret_is_forced_disabled
+    form = { GLOBAL => { '__new0__' => { 'url' => 'https://new.example/hook',
+                                         'secret' => '', 'enabled' => '1' } } }
+    sanitized, errors = san(form)
+    refute_includes errors, GLOBAL, 'the row is kept (not rejected), just disabled'
+    ep = sanitized[GLOBAL].first
+    assert_equal 'https://new.example/hook', ep['url'], 'the URL/config is preserved'
+    assert_nil ep['secret'], 'no effective secret'
+    assert_equal false, ep['enabled'],
+                 'an enabled endpoint with no effective secret is force-disabled (safe default)'
+  end
+
+  # ── WH-07 positive: enabled WITH a non-blank secret STAYS enabled ───────────
+  def test_enabled_endpoint_with_secret_stays_enabled
+    form = { GLOBAL => { '__new0__' => { 'url' => 'https://new.example/hook',
+                                         'secret' => 'signing-key', 'enabled' => '1' } } }
+    sanitized, errors = san(form)
+    refute_includes errors, GLOBAL
+    ep = sanitized[GLOBAL].first
+    assert_equal 'signing-key', ep['secret']
+    assert_equal true, ep['enabled'], 'a signed enabled endpoint stays enabled'
+  end
+
+  # ── WH-07 preserves WH-06: enabled + blank secret + PRIOR secret => stays ───
+  # enabled with the prior secret (the effective secret is non-empty).
+  def test_enabled_blank_secret_with_prior_stays_enabled
+    prior = { GLOBAL => [endpoint('url' => 'https://x.example/hook', 'secret' => 'prior-key')] }
+    form = { GLOBAL => { '0' => { 'url' => 'https://x.example/hook', 'secret' => '',
+                                  'enabled' => '1', 'prior_index' => '0' } } }
+    sanitized, errors = san(form, prior)
+    refute_includes errors, GLOBAL
+    ep = sanitized[GLOBAL].first
+    assert_equal 'prior-key', ep['secret'], 'WH-06 blank-keeps-prior still holds'
+    assert_equal true, ep['enabled'],
+                 'an enabled endpoint with an effective (prior) secret stays enabled'
+  end
 end

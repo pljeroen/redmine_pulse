@@ -19,7 +19,7 @@ module Pulse
   #
   # Lives at lib/pulse/mailer.rb — its path matches the namespaced constant Pulse::Mailer, so
   # it is Zeitwerk eager-load-safe in production without an ignore (unlike the top-level
-  # hooks). Its HTML + text views live at app/views/pulse_mailer/, resolved via the plugin's
+  # hooks). Its HTML + text views live at app/views/pulse/mailer/, resolved via the plugin's
   # view path. Reachable ONLY from RedmineAlertDelivery under the scan_and_alert rake task —
   # never on a request-cycle path (INV-ADDITIVE).
   class Mailer < ::Mailer

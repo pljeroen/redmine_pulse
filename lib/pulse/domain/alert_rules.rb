@@ -18,7 +18,8 @@ module Pulse
     #
     #   prior_state    : Hash-or-nil {last_rag, last_dominant, last_no_data, last_score}
     #                    (nil OR all-fields-nil => first run / baseline => [])
-    #   health_result  : Pulse::Domain::HealthResult (.rag Symbol, .dominant_signal, .health_score)
+    #   health_result  : Pulse::Domain::HealthResult (.rag Symbol, .dominant_signal, .health_score,
+    #                    AND .project_id Integer — stamped onto every emitted AlertEvent.project_id)
     #   score_delta_threshold (N) : Numeric|nil — the canonical/global setting; DEFAULT disabled
     #                               (nil OR <= 0 => score_delta never fires)
     #   occurred_at    : Time — injected (no ambient clock in the domain)

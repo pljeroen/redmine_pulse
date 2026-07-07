@@ -49,37 +49,81 @@ module Pulse
           project = Project.find_by(id: pid)
           next if project.nil?
 
-          prior = state_store.find_by_project(project.id)
-          health = Pulse::Tasks::CanonicalScan.current_health(
-            viewer, engine, project, prior: prior, force_rag: force_rag
-          )
-
-          events = Pulse::Domain::AlertRules.evaluate(
-            prior, health, score_delta_threshold: threshold, occurred_at: occurred_at
-          )
-
-          # (4) deliver each event to the permission-filtered recipient set.
-          unless events.empty?
-            recipients = subscriptions.subscribers_for(project.id)
-            events.each { |event| delivery.deliver(event, recipients) }
-
-            # (4b) C7 — ADDITIVE outbound-webhook dispatch on the SAME event stream, AFTER the
-            # C6 email path. Best-effort: the dispatcher dead-letters every failure and never
-            # raises out, so advance_state (5) still runs regardless of webhook outcome (GR-05 /
-            # OI-C6-01). `previous` is the prior alert-state row (GR-03). When no endpoint is
-            # configured for this project the dispatcher's endpoint list is empty and its
-            # per-endpoint loop never runs — ZERO outbound HTTP (the OFF-by-default short-circuit).
-            dispatch_webhooks(project, health, events, prior)
+          # INV-C6-ONCE under overlapping cron (remediation of C6-CODEX-HIGH-002): the whole
+          # read->evaluate->deliver->advance section is SINGLE-WRITER per project. Without this
+          # serialization two concurrent scan_and_alert runs could both read the SAME prior
+          # state, both deliver the SAME transition, and both advance — duplicate emails for one
+          # transition. with_project_lock takes a Postgres transaction-scoped ADVISORY LOCK keyed
+          # by project_id: the second overlapping run BLOCKS until the first commits its
+          # advance_state, then reads the already-advanced state and emits nothing.
+          events = with_project_lock(project.id) do
+            scan_project(
+              project, state_store: state_store, subscriptions: subscriptions,
+              delivery: delivery, viewer: viewer, engine: engine, threshold: threshold,
+              occurred_at: occurred_at, force_rag: force_rag
+            )
           end
-
-          # (5) advance the alert-state AFTER evaluation, once, regardless of delivery
-          #     outcome (OI-C6-01). Even a first-run baseline (no events) writes the row so
-          #     the NEXT scan has a prior to compare against (no first-cron flood).
-          advance_state(state_store, project.id, health)
 
           all_events.concat(events)
         end
         all_events
+      end
+
+      # The per-project critical section (steps 2-5), run UNDER with_project_lock so it is
+      # single-writer against overlapping scans. Returns the events this run emitted.
+      def scan_project(project, state_store:, subscriptions:, delivery:, viewer:, engine:,
+                       threshold:, occurred_at:, force_rag:)
+        prior = state_store.find_by_project(project.id)
+        health = Pulse::Tasks::CanonicalScan.current_health(
+          viewer, engine, project, prior: prior, force_rag: force_rag
+        )
+
+        events = Pulse::Domain::AlertRules.evaluate(
+          prior, health, score_delta_threshold: threshold, occurred_at: occurred_at
+        )
+
+        # (4) deliver each event to the permission-filtered recipient set.
+        unless events.empty?
+          recipients = subscriptions.subscribers_for(project.id)
+          events.each { |event| delivery.deliver(event, recipients) }
+
+          # (4b) C7 — ADDITIVE outbound-webhook dispatch on the SAME event stream, AFTER the
+          # C6 email path. Best-effort: the dispatcher dead-letters every failure and never
+          # raises out, so advance_state (5) still runs regardless of webhook outcome (GR-05 /
+          # OI-C6-01). `previous` is the prior alert-state row (GR-03). When no endpoint is
+          # configured for this project the dispatcher's endpoint list is empty and its
+          # per-endpoint loop never runs — ZERO outbound HTTP (the OFF-by-default short-circuit).
+          dispatch_webhooks(project, health, events, prior)
+        end
+
+        # (5) advance the alert-state AFTER evaluation, once, regardless of delivery
+        #     outcome (OI-C6-01). Even a first-run baseline (no events) writes the row so
+        #     the NEXT scan has a prior to compare against (no first-cron flood).
+        advance_state(state_store, project.id, health)
+
+        events
+      end
+
+      # Run the block holding a Postgres transaction-scoped ADVISORY LOCK keyed by project_id
+      # (remediation of C6-CODEX-HIGH-002). pg_advisory_xact_lock(classid, objid) auto-releases
+      # when the surrounding transaction commits/rolls back — no explicit unlock, no leak on a
+      # crashed process. It requires NO state row to exist (correct on the FIRST run) and adds NO
+      # schema (reversible). LOCK_NAMESPACE is a stable, plugin-private classid keeping our keyspace
+      # disjoint from any other advisory-lock user in the same database. On a non-Postgres adapter
+      # (dev SQLite, etc.) there is no advisory-lock primitive — we degrade to a plain yield; the
+      # single-writer guarantee is asserted on the Postgres harness (the production DB shape).
+      LOCK_NAMESPACE = 0x70756c73 # 'puls' — a stable per-plugin advisory-lock classid.
+
+      def with_project_lock(project_id)
+        conn = ActiveRecord::Base.connection
+        return yield unless conn.adapter_name =~ /postgres/i
+
+        conn.transaction(requires_new: true) do
+          conn.execute(
+            "SELECT pg_advisory_xact_lock(#{LOCK_NAMESPACE}, #{Integer(project_id)})"
+          )
+          yield
+        end
       end
 
       # C7 — dispatch each event to the operator-configured webhook endpoints for this project

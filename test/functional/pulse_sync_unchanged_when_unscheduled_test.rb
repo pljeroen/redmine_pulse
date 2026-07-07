@@ -14,9 +14,15 @@ require 'json'
 # ══ TIER-1 (FR-C6-03 / INV-ADDITIVE / FC-C6-11) — ADDITIVE guarantee ═══════════
 #
 # IT-C6-01. Installing C6 without EVER invoking either rake task must leave the
-# synchronous HTTP request cycle indistinguishable from the pre-C6 (v0.1.0) release:
+# synchronous HTTP request cycle SCORING-INERT relative to the pre-C6 (v0.1.0) release:
+# the request cycle triggers NO scoring, recompute, alert evaluation, or alert delivery,
+# and the scoring/recompute/scheduler path is unchanged. (See ERR-C6-ADDITIVE-01: this is
+# the ACTUAL FR-C6-03 guarantee, NOT a literal byte-identical-HTML claim — the authorized
+# FR-C6-08 "Watch project health" opt-in legitimately adds a watch/unwatch form + one
+# Watcher existence read to the panel, and that lightweight opt-in performs NO scoring.)
 #   (T1-ADD-01) portfolio + per-project projections return the SAME scores for
-#               identical inputs (functional golden — byte-identical request path);
+#               identical inputs (functional golden — the scoring path ran UNCHANGED,
+#               not short-circuited or altered by any alert coupling);
 #   (T1-ADD-02) NO read or write of pulse_alert_states during any GET/POST cycle;
 #   (T1-ADD-03) STATIC no-coupling grep: the request-cycle code (app/controllers,
 #               app/helpers, request-served views) references NONE of the 7 alert
@@ -99,7 +105,9 @@ class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
     ActiveSupport::Notifications.unsubscribe(sub) if sub
   end
 
-  # ── T1-ADD-01: functional golden — scores unchanged, request path identical ──
+  # ── T1-ADD-01: functional golden — scores unchanged, scoring path scoring-inert ──
+  #    (ERR-C6-ADDITIVE-01: the guarantee is that the SCORING path ran unchanged and no
+  #    alert coupling short-circuited it — NOT a byte-identical-HTML claim.)
   def test_portfolio_json_scores_unchanged_without_any_rake_run
     with_settings rest_api_enabled: '1' do
       get '/pulse/portfolio.json', headers: api_key_header(@user)
@@ -110,7 +118,8 @@ class PulseSyncUnchangedWhenUnscheduledTest < ActionDispatch::IntegrationTest
     refute_nil rows, 'portfolio JSON has a projects payload'
     # The score is produced by the pre-C6 engine; the exact value is provenance-checked
     # elsewhere — here we assert the served row carries a score field, proving the
-    # scoring path ran unchanged (not short-circuited by any alert coupling).
+    # scoring path ran UNCHANGED (scoring-inert additive guarantee, ERR-C6-ADDITIVE-01) —
+    # not short-circuited or altered by any alert coupling.
     first = rows.is_a?(Array) ? rows.first : rows.values.first
     assert first.is_a?(Hash), 'a portfolio row is a Hash produced by the scoring engine'
   end

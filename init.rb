@@ -167,7 +167,7 @@ require 'pulse/adapters/redmine_alert_delivery'
 # Pulse::Mailer lives at lib/pulse/mailer.rb (path-matches its namespaced constant, so it
 # is Zeitwerk eager-load-safe under production — no ignore needed, unlike the top-level
 # hooks). It subclasses Redmine's ::Mailer base (loadable by plugin-init time). Its HTML +
-# text views live at app/views/pulse_mailer/ (resolved via the plugin's view path).
+# text views live at app/views/pulse/mailer/ (resolved via the plugin's view path).
 require 'pulse/mailer'
 # webhooks contract (C7): the WebhookDispatcher port (stdlib + domain only) + the three
 # adapters (SSRF guard, payload serializer, HTTP dispatcher). Reachable ONLY from the

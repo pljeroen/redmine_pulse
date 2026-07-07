@@ -496,6 +496,13 @@ class PulseControllerTest < ActionDispatch::IntegrationTest
   # ──────────── finding 6: sparkline is a VISUAL, not a bare numeric run ───────
 
   def test_show_sparkline_is_a_visual_not_bare_numbers
+    # Time-relative fixture safety: guarantee in-window recent activity so the retrospective
+    # sparkline has non-zero buckets and renders its <svg>/bar visual regardless of wall-clock.
+    # The shared setup issue's fixed June dates fall outside the trailing activity window as real
+    # time advances (a genuinely quiet project correctly renders "no activity" — not what this
+    # test is about); seed a recent issue so the visual is always exercised.
+    create_issue!(project: @project, author: @user, status: open_status,
+                  created_on: Time.now.utc - 10 * 86_400, updated_on: Time.now.utc - 2 * 86_400)
     login_as(@user)
     get "/projects/#{@project.identifier}/pulse"
     assert_response :success

@@ -20,3 +20,11 @@ coverage/
 CLAUDE.md
 SESSION_HANDOFF*.md
 .hypothesis/
+
+# Local env / secrets
+.env
+.env.*
+
+# Editor / tooling
+.serena/
+.claude/

@@ -4,7 +4,7 @@
 # touches any other container, network, or volume on the host.
 set -euo pipefail
 
-PLUGIN_SRC="/home/jeroen/dev/redmine_pulse"
+PLUGIN_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 REDMINE_IMAGE="docker.io/library/redmine:6.1.2"
 POSTGRES_IMAGE="docker.io/library/postgres:16-alpine"
 

@@ -6,3 +6,7 @@
 *.jpg binary
 *.jpeg binary
 *.gif binary
+
+# Exclude dev-only paths from git-archive release tarballs.
+scripts/test-redmine/  export-ignore
+.github/               export-ignore

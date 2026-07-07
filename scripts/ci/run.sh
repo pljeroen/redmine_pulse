@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run.sh — host-neutral test runner for redmine_pulse.
 #
-# Copyright (C) 2026  redmine_pulse contributors
+# Copyright (C) 2026 Jeroen
 #
 # This program is free software: you can redistribute it and/or modify it under
 # the terms of the GNU General Public License, version 2, as published by the
@@ -76,8 +76,8 @@ cd "${PLUGIN_DIR}"
 # not just test/unit/domain/*: the bare-Ruby top-level guards
 # (static_source_guards, i18n_coverage, ci_workflow_safety) are discovered by
 # the Redmine functional+integration lane NOWHERE — this standalone lane is
-# their only home in CI. The narrow domain-only glob silently dropped them
-# (CI-A10-001); the recursive sweep restores coverage parity with the local
+# their only home in CI. The narrow domain-only glob silently dropped them;
+# the recursive sweep restores coverage parity with the local
 # `rake redmine:plugins:test` harness.
 #
 # MT_NO_PLUGINS=1 stops Minitest from auto-loading third-party plugins. When this

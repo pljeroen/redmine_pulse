@@ -244,3 +244,4 @@ en:
   error_pulse_webhook_test_status: "Test webhook returned HTTP %{status}."
   error_pulse_webhook_test_error: "Test webhook failed: %{error}."
   error_pulse_webhook_no_endpoint: "No webhook endpoint is configured at that position."
+  error_pulse_webhook_no_secret: "This webhook endpoint has no signing secret; add one before sending a test event."

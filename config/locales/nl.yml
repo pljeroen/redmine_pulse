@@ -219,3 +219,4 @@ nl:
   error_pulse_webhook_test_status: "Testwebhook gaf HTTP %{status} terug."
   error_pulse_webhook_test_error: "Testwebhook mislukt: %{error}."
   error_pulse_webhook_no_endpoint: "Er is geen webhook-endpoint ingesteld op die positie."
+  error_pulse_webhook_no_secret: "Dit webhook-endpoint heeft geen ondertekeningssleutel; stel er een in voordat je een testgebeurtenis verstuurt."

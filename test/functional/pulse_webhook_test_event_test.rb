@@ -138,6 +138,20 @@ class PulseWebhookTestEventTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # ── an endpoint with NO signing secret is REFUSED — never signs/POSTs with an empty key ──
+  def test_admin_post_without_secret_is_refused_no_dispatch
+    Setting.plugin_redmine_pulse = Setting.plugin_redmine_pulse.merge(
+      'pulse_webhook_endpoints_global' => [ENDPOINT.merge('secret' => '', 'enabled' => false)]
+    )
+    login_as(@admin)
+    with_http(status: '200') do |posts|
+      post_test_event
+      assert_empty posts, 'no dispatch for an endpoint without a signing secret (no empty-key HMAC on the wire)'
+    end
+    assert_match(/signing secret/i, flash.to_hash.values.join(' '),
+                 'the operator is told the endpoint needs a signing secret before testing')
+  end
+
   def test_admin_post_surfaces_503
     login_as(@admin)
     with_http(status: '503') do |_posts|

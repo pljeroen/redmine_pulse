@@ -151,6 +151,11 @@ class PulseController < PulseBaseController
                              default: 'No webhook endpoint is configured at that position.')
       return redirect_to plugin_settings_path(id: 'redmine_pulse')
     end
+    if endpoint['secret'].to_s.strip.empty?
+      flash[:error] = I18n.t(:error_pulse_webhook_no_secret,
+                             default: 'This webhook endpoint has no signing secret; add one before sending a test event.')
+      return redirect_to plugin_settings_path(id: 'redmine_pulse')
+    end
 
     result = deliver_test_event(endpoint)
     if result[:ok]

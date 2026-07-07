@@ -78,6 +78,14 @@ module Pulse
         vetted_ip = ssrf_check(url, ep)
         return nil if vetted_ip == :blocked
 
+        # Never POST an unsigned/empty-key-signed payload: an endpoint without a signing secret
+        # is dead-lettered, not delivered (defense in depth — the sanitizer already refuses to
+        # enable a secretless endpoint, this guarantees no delivery path can emit an empty-key HMAC).
+        if blank_secret?(ep)
+          dead_letter(ep, alert_event, "no signing secret configured")
+          return nil
+        end
+
         body = serialize_body(alert_event, ep, project: project, health_result: health_result,
                                               previous: previous)
         signature = OpenSSL::HMAC.hexdigest('SHA256', ep[:secret].to_s, body)
@@ -107,6 +115,10 @@ module Pulse
           return { ok: false, status: nil, error: "SSRF blocked: #{e.message}" }
         end
 
+        if blank_secret?(ep)
+          return { ok: false, status: nil, error: 'no signing secret configured' }
+        end
+
         body = serialize_body(alert_event, ep, project: project, health_result: health_result,
                                               previous: previous)
         signature = OpenSSL::HMAC.hexdigest('SHA256', ep[:secret].to_s, body)
@@ -122,6 +134,12 @@ module Pulse
       end
 
       private
+
+      # An endpoint with no signing secret (nil / blank / whitespace-only) must never be delivered:
+      # signing with an empty key yields an unauthenticated payload. Callers dead-letter or reject.
+      def blank_secret?(ep)
+        ep[:secret].to_s.strip.empty?
+      end
 
       # Run up to MAX_ATTEMPTS POSTs. A 2xx stops early (success). A non-2xx code or a raised
       # error counts as a failed attempt; between attempts we back off (stubbable sleep). After

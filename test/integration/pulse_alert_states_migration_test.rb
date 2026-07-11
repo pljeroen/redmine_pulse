@@ -25,9 +25,19 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #
 # Requires the migration file + PulseAlertState model + the store adapter.
 #
-# Postgres-gated for parity with the sibling migration/store suites.
+# Runs on BOTH PostgreSQL and MySQL. Its DDL (create_table + unique index + drop_table), its
+# raw DELETE/INSERT against schema_migrations, and its store round-trip are all portable; there
+# is no PG-specific construct, so the former Postgres-only skip is removed (R5).
 class PulseAlertStatesMigrationTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
+
+  # Cycles DDL (drop_table in setup, create_table/drop_table via migrate up/down) in each test.
+  # On MySQL, DDL implicitly COMMITs the surrounding transaction and would destroy the
+  # transactional-fixture savepoint, cascading "SAVEPOINT ... does not exist" into unrelated
+  # sibling classes. Disabling transactional fixtures makes this class self-manage its table
+  # lifecycle (setup drops + clears schema_migrations, teardown re-migrates + restores it) —
+  # correct on both MySQL (no cascade) and PostgreSQL (setup/teardown already own the lifecycle).
+  self.use_transactional_tests = false
 
   MIGRATION_VERSION = 20260706000003
   MIGRATION_PATH = File.expand_path(
@@ -39,17 +49,12 @@ class PulseAlertStatesMigrationTest < ActiveSupport::TestCase
   end
 
   def setup
-    unless conn.adapter_name =~ /postgres/i
-      skip "Postgres-only evidence lane (DB: #{conn.adapter_name})"
-    end
     require MIGRATION_PATH
     conn.drop_table(:pulse_alert_states) if conn.table_exists?(:pulse_alert_states)
     conn.execute("DELETE FROM schema_migrations WHERE version = '#{MIGRATION_VERSION}'")
   end
 
   def teardown
-    return unless conn.adapter_name =~ /postgres/i
-
     migration.migrate(:up) unless conn.table_exists?(:pulse_alert_states)
     unless migrated_row?
       conn.execute("INSERT INTO schema_migrations (version) VALUES ('#{MIGRATION_VERSION}')")

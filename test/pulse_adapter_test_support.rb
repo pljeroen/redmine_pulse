@@ -16,6 +16,37 @@
 # test environment, because init.rb deliberately defers that registration until
 # the controllers are wired up (the adapter under test must still honour it).
 module PulseAdapterTestSupport
+  # ── Locale / User.current teardown reset ──────────────────────────────────
+  # Registered via `included` so EVERY class that does `include PulseAdapterTestSupport`
+  # gets a teardown that restores I18n.locale and User.current to their canonical defaults
+  # after each test, regardless of run order.
+  #
+  # Rationale: Redmine runs tests in random order (config.active_support.test_order = :random).
+  # I18nLensAndUnitsTest#test_pulse_renders_dutch_labels_for_nl_user sets I18n.locale = :nl
+  # inside a request cycle without a post-test reset. Tests that call domain adapters directly
+  # (e.g. HtmlPresenter.signal_rows) then see the leaked Dutch locale and fail on English
+  # label assertions. Several functional tests also set User.current = user in a login_as
+  # fallback without restoring User.anonymous. Both leaks are order-dependent and produce
+  # intermittent failures that vanish on a fixed seed. This teardown is the canonical fix.
+  #
+  # Safety guards:
+  #   - I18n check: only fires when I18n is defined and responds to #locale= (inert in bare-
+  #     Ruby unit tests that do not load Redmine's I18n stack).
+  #   - User check: only fires when User is defined and responds to .anonymous (inert in bare-
+  #     Ruby unit tests where ActiveRecord is absent).
+  #   - Both restore to default only; they do not suppress any test failure.
+  def self.included(base)
+    base.teardown do
+      if defined?(I18n) && I18n.respond_to?(:locale=) &&
+         defined?(I18n.default_locale) && I18n.locale != I18n.default_locale
+        I18n.locale = I18n.default_locale
+      end
+      if defined?(User) && User.respond_to?(:current=) && User.respond_to?(:anonymous)
+        User.current = User.anonymous
+      end
+    end
+  end
+
   # Register the pulse module + view_pulse permission once, for the test env only.
   # The metrics-source suites reference these; init.rb registers them later with the
   # controllers. Re-registration is idempotent (guarded on AccessControl state).

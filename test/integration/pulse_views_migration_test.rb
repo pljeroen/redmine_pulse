@@ -29,6 +29,14 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 # The migration file is db/migrate/*_create_pulse_views.rb, defining the CreatePulseViews
 # class.
 class PulseViewsMigrationTest < ActiveSupport::TestCase
+  # Cycles DDL (drop_table in setup, create_table/drop_table via migrate up/down) in each test.
+  # On MySQL, DDL implicitly COMMITs the surrounding transaction and would destroy the
+  # transactional-fixture savepoint, cascading "SAVEPOINT ... does not exist" into unrelated
+  # sibling classes. Disabling transactional fixtures makes this class self-manage its table
+  # lifecycle (setup drops, teardown re-migrates) — correct on both MySQL (no cascade) and
+  # PostgreSQL (setup/teardown already own the lifecycle).
+  self.use_transactional_tests = false
+
   # The migration owns the concrete timestamp; the test discovers the file by glob so the timestamp
   # is not pinned here (the class name / table / column shape ARE pinned).
   MIGRATION_GLOB = File.expand_path(

@@ -22,14 +22,17 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 # => DUPLICATE alert emails for ONE transition, breaking ONCE.
 #
 # The fix serializes the per-project read->evaluate->deliver->advance section
-# behind a PostgreSQL transaction-scoped ADVISORY LOCK keyed by project_id
-# (pg_advisory_xact_lock). Correct on the FIRST run (no state row need exist yet) and
-# reversible (no schema change). This suite proves BOTH:
+# behind a per-engine advisory lock keyed by project_id (pg_advisory_xact_lock on
+# Postgres; GET_LOCK on MySQL). Correct on the FIRST run (no state row need exist yet)
+# and reversible (no schema change). This suite proves BOTH:
 #   (1) the advisory lock is actually taken around the critical section (spy), and
 #   (2) two concurrent scans against the same prior state deliver EXACTLY ONCE.
 #
-# Postgres-gated: the advisory-lock mechanism is Postgres-specific and the harness DB is
-# PostgreSQL.
+# ENGINE-AGNOSTIC: this test runs on every adapter (Postgres AND MySQL) — it is the
+# authoritative end-to-end delivery-dedup proof. The MySQL-gated
+# PulseScanConcurrencyMysqlTest validates the MySQL lock PRIMITIVE / fail-closed
+# behavior (deterministic two-connection technique), but this test is the honest
+# overlapping-thread proof that must stay GREEN on both engines.
 class PulseScanConcurrencyTest < ActiveSupport::TestCase
   include PulseAdapterTestSupport
 
@@ -38,9 +41,6 @@ class PulseScanConcurrencyTest < ActiveSupport::TestCase
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
-    unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
-      skip "Postgres-only evidence lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
-    end
     ActionMailer::Base.deliveries.clear
     @role = create_role!(name: 'ConcViewer', issues_visibility: 'all',
                          permissions: %i[view_issues view_pulse])

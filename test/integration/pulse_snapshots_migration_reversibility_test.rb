@@ -20,9 +20,28 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 #
 # Runs on PostgreSQL (the production engine) for parity with the sibling store suites.
 class PulseSnapshotsMigrationReversibilityTest < ActiveSupport::TestCase
+  # This class cycles DDL (drop_table in setup, create_table via migrate(:up), drop_table via
+  # migrate(:down)) inside each test. On MySQL, DDL implicitly COMMITs the surrounding
+  # transaction, which would destroy the transactional-fixture savepoint (active_record_1) and
+  # cascade "SAVEPOINT ... does not exist" errors into UNRELATED sibling test classes. Disabling
+  # transactional fixtures makes this class self-manage its table lifecycle (setup drops,
+  # teardown re-migrates + restores schema_migrations) with no savepoint dependency — correct on
+  # both MySQL (no cascade) and PostgreSQL (setup/teardown already own the lifecycle explicitly).
+  self.use_transactional_tests = false
+
   MIGRATION_VERSION = 20260621000001
   MIGRATION_PATH = File.expand_path(
     '../../../db/migrate/20260621000001_create_pulse_snapshots.rb', File.expand_path(__FILE__)
+  )
+
+  # The profile_id column is added by a SEPARATE later migration. Under transactional fixtures
+  # this test's DDL was rolled back, so restoring only the base table was harmless. Non-
+  # transactionally (required on MySQL — see the class comment) the drop/re-create is REAL, so
+  # teardown MUST restore the COMPLETE schema — base table AND profile_id — or every downstream
+  # test that reads pulse_snapshots.profile_id breaks (ASM-07: incomplete teardown must not leak).
+  PROFILE_ID_MIGRATION_VERSION = 20260706000001
+  PROFILE_ID_MIGRATION_PATH = File.expand_path(
+    '../../../db/migrate/20260706000001_add_profile_id_to_pulse_snapshots.rb', File.expand_path(__FILE__)
   )
 
   def conn
@@ -40,14 +59,21 @@ class PulseSnapshotsMigrationReversibilityTest < ActiveSupport::TestCase
     )
   end
 
-  # Re-establish the migrated state the rest of the suite depends on, so this test is
-  # self-contained and leaves the schema as it found it.
+  # Re-establish the FULL migrated state the rest of the suite depends on, so this test is
+  # self-contained and leaves the schema as it found it — base table + profile_id column, and
+  # both schema_migrations rows.
   def teardown
     migration.migrate(:up) unless conn.table_exists?(:pulse_snapshots)
-    unless migrated_row?
-      conn.execute(
-        "INSERT INTO schema_migrations (version) VALUES ('#{MIGRATION_VERSION}')"
-      )
+    unless migrated_row?(MIGRATION_VERSION)
+      conn.execute("INSERT INTO schema_migrations (version) VALUES ('#{MIGRATION_VERSION}')")
+    end
+    # Restore the profile_id column (a later migration) so downstream tests that read
+    # pulse_snapshots.profile_id find it present.
+    unless conn.column_exists?(:pulse_snapshots, :profile_id)
+      profile_id_migration.migrate(:up)
+    end
+    unless migrated_row?(PROFILE_ID_MIGRATION_VERSION)
+      conn.execute("INSERT INTO schema_migrations (version) VALUES ('#{PROFILE_ID_MIGRATION_VERSION}')")
     end
   end
 
@@ -55,9 +81,14 @@ class PulseSnapshotsMigrationReversibilityTest < ActiveSupport::TestCase
     CreatePulseSnapshots.new
   end
 
-  def migrated_row?
+  def profile_id_migration
+    require PROFILE_ID_MIGRATION_PATH
+    AddProfileIdToPulseSnapshots.new
+  end
+
+  def migrated_row?(version = MIGRATION_VERSION)
     conn.select_value(
-      "SELECT COUNT(*) FROM schema_migrations WHERE version = '#{MIGRATION_VERSION}'"
+      "SELECT COUNT(*) FROM schema_migrations WHERE version = '#{version}'"
     ).to_i.positive?
   end
 

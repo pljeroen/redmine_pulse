@@ -43,6 +43,13 @@ module Pulse
         delivery      = Pulse::Adapters::RedmineAlertDelivery.new
         threshold     = score_delta_threshold
         occurred_at   = Time.now.utc
+        # MySQL needs a LOCKING prior-state read inside the locked critical section so the
+        # serialized second scan sees the LATEST committed state, not a stale REPEATABLE READ
+        # snapshot (the fire-once-per-transition freshness guarantee). PG (READ COMMITTED +
+        # transaction-scoped lock) already reads fresh, so this stays false there. Decided ONCE
+        # at the same composition-root engine seam that selects the advisory-lock adapter — the
+        # engine branch is NOT scattered into scan_project.
+        lock_prior_read = locking_prior_read?
 
         all_events = []
         ids.each do |pid|
@@ -53,14 +60,15 @@ module Pulse
           # read->evaluate->deliver->advance section is SINGLE-WRITER per project. Without this
           # serialization two concurrent scan_and_alert runs could both read the SAME prior
           # state, both deliver the SAME transition, and both advance — duplicate emails for one
-          # transition. with_project_lock takes a Postgres transaction-scoped ADVISORY LOCK keyed
-          # by project_id: the second overlapping run BLOCKS until the first commits its
-          # advance_state, then reads the already-advanced state and emits nothing.
+          # transition. with_project_lock delegates to the per-connection AdvisoryLock adapter,
+          # taking a per-project advisory lock keyed by project_id: the second overlapping run does
+          # NOT run the critical section concurrently (PG blocks until the first commits its
+          # advance_state then emits nothing; MySQL fails closed and skips this cycle).
           events = with_project_lock(project.id) do
             scan_project(
               project, state_store: state_store, subscriptions: subscriptions,
               delivery: delivery, viewer: viewer, engine: engine, threshold: threshold,
-              occurred_at: occurred_at, force_rag: force_rag
+              occurred_at: occurred_at, force_rag: force_rag, lock_prior_read: lock_prior_read
             )
           end
 
@@ -72,8 +80,8 @@ module Pulse
       # The per-project critical section (steps 2-5), run UNDER with_project_lock so it is
       # single-writer against overlapping scans. Returns the events this run emitted.
       def scan_project(project, state_store:, subscriptions:, delivery:, viewer:, engine:,
-                       threshold:, occurred_at:, force_rag:)
-        prior = state_store.find_by_project(project.id)
+                       threshold:, occurred_at:, force_rag:, lock_prior_read: false)
+        prior = state_store.find_by_project(project.id, lock: lock_prior_read)
         health = Pulse::Tasks::CanonicalScan.current_health(
           viewer, engine, project, prior: prior, force_rag: force_rag
         )
@@ -104,26 +112,46 @@ module Pulse
         events
       end
 
-      # Run the block holding a Postgres transaction-scoped ADVISORY LOCK keyed by project_id.
-      # pg_advisory_xact_lock(classid, objid) auto-releases
-      # when the surrounding transaction commits/rolls back — no explicit unlock, no leak on a
-      # crashed process. It requires NO state row to exist (correct on the FIRST run) and adds NO
-      # schema (reversible). LOCK_NAMESPACE is a stable, plugin-private classid keeping our keyspace
-      # disjoint from any other advisory-lock user in the same database. On a non-Postgres adapter
-      # (dev SQLite, etc.) there is no advisory-lock primitive — we degrade to a plain yield; the
-      # single-writer guarantee is asserted on the Postgres harness (the production DB shape).
-      LOCK_NAMESPACE = 0x70756c73 # 'puls' — a stable per-plugin advisory-lock classid.
+      # Run the block holding a per-project SINGLE-WRITER advisory lock, keyed by project_id, so
+      # two overlapping scan_and_alert runs cannot both read the SAME prior state, both deliver the
+      # SAME transition, and both advance (duplicate emails for one transition). The DB-specific
+      # lock primitive lives in the Pulse::Ports::AdvisoryLock adapters (Pg = transaction-scoped
+      # advisory lock; Mysql = session GET_LOCK/RELEASE_LOCK, fail-closed; Null = documented no-op
+      # degrade). This method holds NO DB-specifics itself — it delegates to the adapter selected
+      # for the live connection (the hexagonally-correct home for the engine branch). Block form:
+      # the adapter owns its own release discipline internally, so the critical section is
+      # exception-safe and the caller cannot forget to unlock. The public shape
+      # `with_project_lock(project_id) { .. }` is preserved so the concurrency-test spy still wraps
+      # it unchanged.
+      def with_project_lock(project_id, &block)
+        advisory_lock.with_lock(project_id, &block)
+      end
 
-      def with_project_lock(project_id)
+      # Select the AdvisoryLock adapter for the LIVE connection ONCE per run (the composition-root
+      # seam for DB-specifics): /postgres/i -> Pg, /mysql|maria/i -> Mysql, else -> Null (no-lock
+      # degrade). Chosen against ActiveRecord::Base.connection so the adapter's GET_LOCK / txn and
+      # the yielded block's queries share the SAME connection/session (ASM-01/ASM-02).
+      def advisory_lock
         conn = ActiveRecord::Base.connection
-        return yield unless conn.adapter_name =~ /postgres/i
-
-        conn.transaction(requires_new: true) do
-          conn.execute(
-            "SELECT pg_advisory_xact_lock(#{LOCK_NAMESPACE}, #{Integer(project_id)})"
-          )
-          yield
+        case conn.adapter_name
+        when /postgres/i
+          Pulse::Adapters::PgAdvisoryLock.new(conn)
+        when /mysql|maria/i
+          Pulse::Adapters::MysqlAdvisoryLock.new(conn)
+        else
+          Pulse::Adapters::NullAdvisoryLock.new(conn)
         end
+      end
+
+      # Whether the prior-alert-state read inside the locked critical section must be a LOCKING
+      # read (SELECT ... FOR UPDATE) to see the latest committed state. TRUE only on MySQL/MariaDB:
+      # under InnoDB REPEATABLE READ a plain consistent read reuses the pinned snapshot, so a
+      # serialized second scan could still read stale prior state and re-deliver. PostgreSQL (READ
+      # COMMITTED under its transaction-scoped advisory lock) already reads fresh, so it stays
+      # FALSE — byte-identical to today (R3). Same engine seam as #advisory_lock: the DB-specific
+      # branch lives here, once, not scattered through scan_project.
+      def locking_prior_read?
+        ActiveRecord::Base.connection.adapter_name =~ /mysql|maria/i ? true : false
       end
 
       # Dispatch each event to the operator-configured webhook endpoints for this project

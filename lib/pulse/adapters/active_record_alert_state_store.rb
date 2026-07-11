@@ -20,8 +20,22 @@ module Pulse
     class ActiveRecordAlertStateStore
       # -> { last_rag:, last_dominant:, last_no_data:, last_score: } | nil.
       # nil on first run (no prior row for this project).
-      def find_by_project(project_id)
-        row = PulseAlertState.find_by(project_id: project_id)
+      #
+      # lock: when true, the prior-state row is read with a LOCKING read (SELECT ... FOR UPDATE)
+      # instead of a plain snapshot read. This is the MySQL freshness guarantee: under InnoDB's
+      # default REPEATABLE READ isolation a plain consistent read reuses the transaction's pinned
+      # snapshot, so a second concurrent scan (already serialized behind the per-project advisory
+      # lock) could still read a STALE prior state and re-deliver. A locking read bypasses the
+      # pinned snapshot and returns the LATEST row state, so the serialized second scan observes
+      # the already-advanced state and emits nothing (fire-once-per-transition). The flag is set
+      # by the caller ONLY on the MySQL path (see ScanAndAlert#advisory_lock), so PostgreSQL —
+      # which already gets a fresh READ COMMITTED read after acquiring its transaction-scoped lock
+      # — is byte-identical (lock: false, default). The lock is a no-op unless the read runs
+      # inside a transaction (it always does: the advisory-lock critical section / test fixture).
+      def find_by_project(project_id, lock: false)
+        scope = PulseAlertState.where(project_id: project_id)
+        scope = scope.lock if lock
+        row = scope.first
         return nil if row.nil?
 
         {

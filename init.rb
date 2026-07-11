@@ -167,6 +167,14 @@ require 'pulse/domain/alert_rules'
 require 'pulse/ports/alert_state_store'
 require 'pulse/ports/subscription_store'
 require 'pulse/ports/alert_delivery'
+# advisory-lock port + the three DB adapters (Pg / Mysql / Null) that make the per-project
+# scan critical section single-writer across overlapping cron runs. Required BEFORE the tasks
+# (port before adapters before scan_and_alert) so the composition root can select an adapter at
+# wiring time. The DB-specific lock SQL lives ONLY in the adapters (hexagonal seam), never inline.
+require 'pulse/ports/advisory_lock'
+require 'pulse/adapters/pg_advisory_lock'
+require 'pulse/adapters/mysql_advisory_lock'
+require 'pulse/adapters/null_advisory_lock'
 require 'pulse/adapters/active_record_alert_state_store'
 require 'pulse/adapters/redmine_subscription_store'
 require 'pulse/adapters/redmine_alert_delivery'

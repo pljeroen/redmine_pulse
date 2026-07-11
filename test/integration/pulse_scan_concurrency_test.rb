@@ -38,17 +38,58 @@ class PulseScanConcurrencyTest < ActiveSupport::TestCase
 
   fixtures :issue_statuses, :enumerations, :trackers, :users, :roles
 
+  # Non-transactional: the delivery-dedup test's two worker threads each check out their OWN AR
+  # connection, so the setup rows must be COMMITTED to be visible cross-connection — a fixture
+  # transaction would hide them from the sibling connection. Because the rows genuinely commit,
+  # teardown MUST remove every one of them (see teardown below) so the shared DB stays clean and
+  # rerunnable.
+  self.use_transactional_tests = false
+
+  # Unique per-run identifiers so a re-run never collides with a row a prior run leaked, and so
+  # the delivery-dedup test's committed cross-connection rows (see the two-thread test below) can
+  # be found-and-removed exactly in teardown. The suffix is stable within one test instance.
+  def uid
+    @uid ||= SecureRandom.hex(4)
+  end
+
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
     ActionMailer::Base.deliveries.clear
-    @role = create_role!(name: 'ConcViewer', issues_visibility: 'all',
+    @created_users = []
+    @role = create_role!(name: "ConcViewer_#{uid}", issues_visibility: 'all',
                          permissions: %i[view_issues view_pulse])
-    @project = create_project!(name: 'ConcP', identifier: 'conc-p')
-    @author = create_user!(login: 'conc_author')
+    @project = create_project!(name: "ConcP_#{uid}", identifier: "conc-p-#{uid}")
+    @author = create_user!(login: "conc_author_#{uid}")
+    @created_users << @author
     add_member!(project: @project, principal: @author, role: @role)
     create_issue!(project: @project, author: @author, status: open_status,
                   created_on: Time.utc(2026, 6, 1, 0), updated_on: Time.utc(2026, 6, 10, 0))
+  end
+
+  # This suite's delivery-dedup test runs two scans on separately-checked-out connections, so its
+  # setup rows must be COMMITTED to be visible cross-connection — they are NOT rolled back by the
+  # fixture transaction. Remove EVERY row this test created, in reverse dependency order (issues ->
+  # watchers/members -> project -> users -> role -> the pulse_* state/cache rows), each delete
+  # guarded so a partial-setup failure still cleans what exists. Leaving these committed rows would
+  # dirty the shared DB and break reruns / sibling GLOBAL-count assertions.
+  def teardown
+    if @project
+      Issue.where(project_id: @project.id).delete_all rescue nil
+      Watcher.where(watchable_type: 'Project', watchable_id: @project.id).delete_all rescue nil
+      member_ids = Member.where(project_id: @project.id).pluck(:id)
+      MemberRole.where(member_id: member_ids).delete_all rescue nil
+      Member.where(project_id: @project.id).delete_all rescue nil
+      if defined?(PulseAlertState)
+        PulseAlertState.where(project_id: @project.id).delete_all rescue nil
+      end
+      ActiveRecord::Base.connection.execute(
+        "DELETE FROM pulse_snapshots WHERE project_id = #{@project.id.to_i}"
+      ) rescue nil
+      Project.where(id: @project.id).delete_all rescue nil
+    end
+    Array(@created_users).each { |u| User.where(id: u.id).delete_all rescue nil }
+    Role.where(name: "ConcViewer_#{uid}").delete_all rescue nil
   end
 
   def alert_store
@@ -61,7 +102,8 @@ class PulseScanConcurrencyTest < ActiveSupport::TestCase
   end
 
   def add_watcher!(login)
-    u = create_user!(login: login)
+    u = create_user!(login: "#{login}_#{uid}")
+    @created_users << u
     add_member!(project: @project, principal: u, role: @role)
     Pulse::Adapters::RedmineSubscriptionStore.new.watch!(u, @project)
     u
@@ -114,7 +156,11 @@ class PulseScanConcurrencyTest < ActiveSupport::TestCase
     end
     # Release both threads together.
     2.times { barrier << :go }
-    threads.each(&:join)
+    # Use #value (not #join) so ANY exception raised inside a worker thread re-raises HERE and
+    # fails the test. #join would silently swallow a crashed worker, letting a false 1-delivery
+    # green slip through — this test is the authoritative exactly-once proof, so a hidden worker
+    # crash must never masquerade as a pass. (Thread.abort_on_exception is not relied upon.)
+    threads.each(&:value)
 
     delivered = ActionMailer::Base.deliveries.size
     assert_equal 1, delivered,

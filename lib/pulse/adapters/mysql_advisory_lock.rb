@@ -16,21 +16,22 @@ module Pulse
     #
     # ── ACQUISITION SEMANTICS (ASM-04 — pinned here) ──
     # GET_LOCK(name, timeout) returns 1 (acquired), 0 (timed out), or NULL (error/killed session).
-    # We use a BOUNDED, NON-BLOCKING acquire: ACQUIRE_TIMEOUT = 0 seconds ("try once, return
-    # immediately"). Rationale: the scan loop's ethos is best-effort per project — "if another
-    # scan already holds this project this cycle, SKIP it and let the next cron run retry", NOT
-    # "queue behind it indefinitely". A zero-timeout try is operationally safer than an infinite
-    # wait: it can never wedge a whole scan run behind one stuck holder, and a held lock simply
-    # defers the project one cron period. On PG the equivalent is a blocking wait, but PG's
-    # transaction-scoped lock cannot leak a holder across a crashed process the way a session lock
-    # could, so the bounded-try is the prudent MySQL choice.
+    # We use a BOUNDED-BLOCKING acquire: ACQUIRE_TIMEOUT = 5 seconds. On contention the call BLOCKS
+    # up to that timeout, then returns 1 the instant the current holder releases. This MIRRORS
+    # PostgreSQL's block-then-observe semantics (R4): the second overlapping scan BLOCKS until the
+    # first critical section finishes, then acquires, then observes the already-advanced state and
+    # does NOT re-deliver — instead of skipping its scan entirely this cycle. A cron period on a
+    # real deployment is far longer than 5s, so a genuine overlap resolves well inside the window.
     #
-    # ── FAIL CLOSED (the F1 invariant) ──
-    # If GET_LOCK returns 0 (timeout — another scan holds it) or NULL (error/killed), the adapter
-    # MUST NOT run the critical section UNLOCKED — running unlocked would BE the double-delivery
-    # bug. It returns [] (no events emitted) so advance_state never runs unprotected; the next
-    # cron run retries. Only when GET_LOCK == 1 does the block run, and RELEASE_LOCK ALWAYS fires
-    # in an `ensure` so the session lock is freed even if the block raises (no held-lock leak).
+    # ── FAIL CLOSED ON EXPIRY (the F1 invariant — backstop, not the normal path) ──
+    # The timeout is a backstop for a STUCK holder (a wedged/killed session that never releases),
+    # NOT the normal contention path. If GET_LOCK returns 0 (the 5s genuinely expired) or NULL
+    # (error/killed session), the adapter MUST NOT run the critical section UNLOCKED — running
+    # unlocked would BE the double-delivery bug. It returns [] (no events emitted) so advance_state
+    # never runs unprotected; the next cron run retries. Only when GET_LOCK == 1 does the block run,
+    # and RELEASE_LOCK ALWAYS fires in an `ensure` so the session lock is freed even if the block
+    # raises (no held-lock leak). This block-with-bounded-timeout + fail-closed-on-expiry contract
+    # SUPERSEDES the earlier "try once / timeout 0 / skip on contention" prose.
     #
     # ── OPERABILITY PRECONDITION (ASM-01/ASM-02) ──
     # MySQL session advisory locks are SESSION-scoped: GET_LOCK, the yielded block's queries, and
@@ -74,12 +75,12 @@ module Pulse
     # TRANSACTION ISOLATION inside the already-open fixture transaction). The locking read is gated
     # by the caller so PostgreSQL (R3) is byte-identical: it is requested ONLY on the MySQL path.
     #
-    # ── FAIL CLOSED (the F1 invariant) ──
-    # If GET_LOCK returns 0 (timeout — another PROCESS holds it) or NULL (error/killed), the
-    # adapter MUST NOT run the critical section UNLOCKED. It returns [] (no events emitted) so
-    # advance_state never runs unprotected; the next cron run retries. The in-process mutex is
-    # ALWAYS released and RELEASE_LOCK ALWAYS fires (only when GET_LOCK acquired) in `ensure`, so
-    # neither tier can leak on a raised block.
+    # ── FAIL CLOSED ON EXPIRY (the F1 invariant — backstop) ──
+    # If GET_LOCK returns 0 (the bounded 5s wait genuinely expired — a stuck holder) or NULL
+    # (error/killed), the adapter MUST NOT run the critical section UNLOCKED. It returns [] (no
+    # events emitted) so advance_state never runs unprotected; the next cron run retries. The
+    # in-process mutex is ALWAYS released and RELEASE_LOCK ALWAYS fires (only when GET_LOCK
+    # acquired) in `ensure`, so neither tier can leak on a raised block.
     #
     # ── OPERABILITY PRECONDITION (ASM-01/ASM-02) ──
     # MySQL session advisory locks are SESSION-scoped: GET_LOCK, the yielded block's queries, and
@@ -88,8 +89,12 @@ module Pulse
     # Redmine topology) — NOT a session-splitting multiplexer (e.g. ProxySQL) that could route
     # successive statements to different backend sessions.
     class MysqlAdvisoryLock
-      # 0 = try once, return immediately (see ACQUISITION SEMANTICS above).
-      ACQUIRE_TIMEOUT = 0
+      # Bounded-blocking acquire window, in seconds (see ACQUISITION SEMANTICS above).
+      # 5s is comfortably longer than one project's critical section (a couple of reads + one
+      # UPDATE) yet far shorter than any real cron period, so a genuine overlap BLOCKS and then
+      # resolves the instant the holder releases (PG-like block-then-observe), while a truly stuck
+      # holder is bounded and fails closed rather than wedging the scan indefinitely.
+      ACQUIRE_TIMEOUT = 5
 
       # Stable per-plugin lock-name prefix. "pulse_advisory_" (15 chars) + a Bigint-max
       # project_id (19 digits) = 34 chars, well under MySQL's 64-char GET_LOCK name limit
@@ -100,6 +105,12 @@ module Pulse
       # threads in ONE process (which may share one backend session, defeating the reentrant
       # session GET_LOCK) cannot run the same project's critical section concurrently. A single
       # guard mutex protects the lazy creation of the per-project mutexes.
+      #
+      # No reaping (bounded, not a leak): the registry holds one Mutex per DISTINCT project_id
+      # touched by THIS process. The scan runs in a short-lived cron process that exits after the
+      # cycle, so the registry lives only as long as that process and is bounded by the project
+      # count — a few thousand entries at most, each a bare Mutex. Reaping would add locking
+      # complexity for no real memory benefit; it is deliberately omitted.
       @project_mutexes = {}
       @registry_guard = Mutex.new
 
@@ -134,8 +145,10 @@ module Pulse
         name = lock_name(project_id)
         quoted = @conn.quote(name)
 
+        # Blocks up to ACQUIRE_TIMEOUT seconds, then returns 1 the instant the holder releases.
         acquired = @conn.select_value("SELECT GET_LOCK(#{quoted}, #{ACQUIRE_TIMEOUT})")
-        # FAIL CLOSED: 0 (timeout) or NULL (error/killed) => do NOT yield unlocked; skip this run.
+        # FAIL CLOSED ON EXPIRY: 0 (the bounded wait expired — a stuck holder) or NULL
+        # (error/killed) => do NOT yield unlocked; skip this run, next cron retries.
         return [] unless acquired.to_i == 1
 
         begin

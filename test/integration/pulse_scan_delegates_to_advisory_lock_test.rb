@@ -45,16 +45,29 @@ class PulseScanDelegatesToAdvisoryLockTest < ActiveSupport::TestCase
     ActionMailer::Base.deliveries.clear
   end
 
-  # Non-transactional: clean up committed rows (alert-state + any snapshot ScanAndAlert.run
-  # warmed) so a leaked pulse_snapshots row does not break sibling GLOBAL-count assertions
-  # (e.g. CacheClearTaskTest). ASM-07: no residual state.
+  # Non-transactional: the MySQL delegation test COMMITS a role/user/project/member/issue (in the
+  # test body) that must be removed or they dirty the shared DB and break reruns / sibling
+  # GLOBAL-count assertions (e.g. CacheClearTaskTest). Delete in reverse dependency order (issues ->
+  # watchers -> members -> pulse_* -> project -> user -> role), each guarded so a partial-setup
+  # failure (or the source-guard test, which creates nothing) still cleans exactly what exists.
+  # ASM-07: no residual state.
   def teardown
-    return unless @project
-
-    PulseAlertState.where(project_id: @project.id).delete_all if defined?(PulseAlertState)
-    ActiveRecord::Base.connection.execute(
-      "DELETE FROM pulse_snapshots WHERE project_id = #{@project.id.to_i}"
-    )
+    if @project
+      Issue.where(project_id: @project.id).delete_all rescue nil
+      Watcher.where(watchable_type: 'Project', watchable_id: @project.id).delete_all rescue nil
+      member_ids = Member.where(project_id: @project.id).pluck(:id)
+      MemberRole.where(member_id: member_ids).delete_all rescue nil
+      Member.where(project_id: @project.id).delete_all rescue nil
+      if defined?(PulseAlertState)
+        PulseAlertState.where(project_id: @project.id).delete_all rescue nil
+      end
+      ActiveRecord::Base.connection.execute(
+        "DELETE FROM pulse_snapshots WHERE project_id = #{@project.id.to_i}"
+      ) rescue nil
+      Project.where(id: @project.id).delete_all rescue nil
+    end
+    User.where(id: @author.id).delete_all rescue nil if @author
+    Role.where(id: @role.id).delete_all rescue nil if @role
   end
 
   # ── (2) source guard: the inline adapter_name / pg_advisory branch must be GONE ──

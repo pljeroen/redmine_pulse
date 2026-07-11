@@ -46,6 +46,10 @@ class PulseScanConcurrencyMysqlTest < ActiveSupport::TestCase
 
   self.use_transactional_tests = false
 
+  def uid
+    @uid ||= SecureRandom.hex(3)
+  end
+
   def setup
     PulseAdapterTestSupport.ensure_pulse_permission!
     pulse_settings!
@@ -53,25 +57,39 @@ class PulseScanConcurrencyMysqlTest < ActiveSupport::TestCase
       skip "MySQL-only serialization lane (DB: #{ActiveRecord::Base.connection.adapter_name})"
     end
     ActionMailer::Base.deliveries.clear
-    @role = create_role!(name: 'ConcMyViewer', issues_visibility: 'all',
+    @created_users = []
+    @role = create_role!(name: "ConcMyViewer_#{uid}", issues_visibility: 'all',
                          permissions: %i[view_issues view_pulse])
-    @project = create_project!(name: 'ConcMyP', identifier: "conc-my-#{SecureRandom.hex(3)}")
-    @author = create_user!(login: "conc_my_author_#{SecureRandom.hex(3)}")
+    @project = create_project!(name: 'ConcMyP', identifier: "conc-my-#{uid}")
+    @author = create_user!(login: "conc_my_author_#{uid}")
+    @created_users << @author
     add_member!(project: @project, principal: @author, role: @role)
     create_issue!(project: @project, author: @author, status: open_status,
                   created_on: Time.utc(2026, 6, 1, 0), updated_on: Time.utc(2026, 6, 10, 0))
   end
 
-  # This class is non-transactional (real DDL/GET_LOCK on MySQL), so it MUST clean up its own
-  # committed rows or they leak into sibling tests that assert GLOBAL row counts (e.g.
-  # CacheClearTaskTest). Remove the alert-state AND any snapshot rows warmed by ScanAndAlert.run
-  # for the project this test created (ASM-07: no residual state).
+  # This class is non-transactional (real DDL/GET_LOCK on MySQL), so it MUST remove EVERY row it
+  # committed or they leak into sibling tests that assert GLOBAL row counts (e.g.
+  # CacheClearTaskTest) and break reruns. Delete in reverse dependency order (issues -> watchers ->
+  # members -> pulse_* -> project -> users -> role), each guarded so a partial-setup failure still
+  # cleans what exists (ASM-07: no residual state).
   def teardown
-    return unless @project
-
-    conn = ActiveRecord::Base.connection
-    PulseAlertState.where(project_id: @project.id).delete_all if defined?(PulseAlertState)
-    conn.execute("DELETE FROM pulse_snapshots WHERE project_id = #{@project.id.to_i}")
+    if @project
+      Issue.where(project_id: @project.id).delete_all rescue nil
+      Watcher.where(watchable_type: 'Project', watchable_id: @project.id).delete_all rescue nil
+      member_ids = Member.where(project_id: @project.id).pluck(:id)
+      MemberRole.where(member_id: member_ids).delete_all rescue nil
+      Member.where(project_id: @project.id).delete_all rescue nil
+      if defined?(PulseAlertState)
+        PulseAlertState.where(project_id: @project.id).delete_all rescue nil
+      end
+      ActiveRecord::Base.connection.execute(
+        "DELETE FROM pulse_snapshots WHERE project_id = #{@project.id.to_i}"
+      ) rescue nil
+      Project.where(id: @project.id).delete_all rescue nil
+    end
+    Array(@created_users).each { |u| User.where(id: u.id).delete_all rescue nil }
+    Role.where(name: "ConcMyViewer_#{uid}").delete_all rescue nil
   end
 
   def alert_store
@@ -84,7 +102,8 @@ class PulseScanConcurrencyMysqlTest < ActiveSupport::TestCase
   end
 
   def add_watcher!(login)
-    u = create_user!(login: login)
+    u = create_user!(login: "#{login}_#{uid}")
+    @created_users << u
     add_member!(project: @project, principal: u, role: @role)
     Pulse::Adapters::RedmineSubscriptionStore.new.watch!(u, @project)
     u

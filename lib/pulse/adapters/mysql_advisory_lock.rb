@@ -20,8 +20,9 @@ module Pulse
     # up to that timeout, then returns 1 the instant the current holder releases. This MIRRORS
     # PostgreSQL's block-then-observe semantics (R4): the second overlapping scan BLOCKS until the
     # first critical section finishes, then acquires, then observes the already-advanced state and
-    # does NOT re-deliver — instead of skipping its scan entirely this cycle. A cron period on a
-    # real deployment is far longer than 5s, so a genuine overlap resolves well inside the window.
+    # does NOT re-deliver — instead of skipping its scan entirely this cycle. The 5s bounds how
+    # long the CONTENDED WAITER'S GET_LOCK call blocks — NOT the critical section itself (see
+    # ACQUIRE_TIMEOUT comment below for what the lock is actually held across).
     #
     # ── FAIL CLOSED ON EXPIRY (the F1 invariant — backstop, not the normal path) ──
     # The timeout is a backstop for a STUCK holder (a wedged/killed session that never releases),
@@ -90,10 +91,28 @@ module Pulse
     # successive statements to different backend sessions.
     class MysqlAdvisoryLock
       # Bounded-blocking acquire window, in seconds (see ACQUISITION SEMANTICS above).
-      # 5s is comfortably longer than one project's critical section (a couple of reads + one
-      # UPDATE) yet far shorter than any real cron period, so a genuine overlap BLOCKS and then
-      # resolves the instant the holder releases (PG-like block-then-observe), while a truly stuck
-      # holder is bounded and fails closed rather than wedging the scan indefinitely.
+      #
+      # HONEST SCOPE OF THE LOCK: the lock is held for the WHOLE scan_project critical section of one
+      # project — NOT just "a couple of reads + one UPDATE". That section (scan_and_alert.rb) also
+      # runs recipient resolution AND the outbound side effects being deduped: EMAIL delivery and, if
+      # configured, WEBHOOK HTTP dispatch, ALL before advance_state. Delivery is inside the lock BY
+      # NECESSITY — the whole point is that only the single writer that owns the transition delivers
+      # it. So the lock CAN be held across outbound I/O and CAN exceed 5s (e.g. a slow SMTP server or
+      # a slow webhook endpoint).
+      #
+      # What the 5s actually bounds: it is NOT a claim that the critical section finishes within 5s.
+      # It bounds how long a CONTENDED concurrent scan of the SAME project WAITS on GET_LOCK before
+      # giving up. If the current holder finishes within 5s, the waiter acquires the instant it
+      # releases and observes the already-advanced state (PG-like block-then-observe, no re-fire). If
+      # the holder runs LONGER than 5s (slow webhook / SMTP), the waiter's GET_LOCK returns 0 and it
+      # FAILS CLOSED — it safely SKIPS that project for THIS cron cycle and retries on the next run,
+      # rather than blocking unbounded or (the F1 bug) running the section unlocked.
+      #
+      # Why 5s is kept: same-project cron overlap is an operational edge (a cron period is far longer
+      # than one scan), webhooks are OFF by default, and fail-closed is SAFE (a skipped project is
+      # re-scanned next cycle — at worst a one-cycle delay of an alert, never a double-fire and never
+      # a lost transition, since state only advances under the lock). A larger timeout would make a
+      # contended waiter block longer on a genuinely stuck holder for no correctness gain.
       ACQUIRE_TIMEOUT = 5
 
       # Stable per-plugin lock-name prefix. "pulse_advisory_" (15 chars) + a Bigint-max

@@ -68,28 +68,51 @@ class PulseScanConcurrencyMysqlTest < ActiveSupport::TestCase
                   created_on: Time.utc(2026, 6, 1, 0), updated_on: Time.utc(2026, 6, 10, 0))
   end
 
-  # This class is non-transactional (real DDL/GET_LOCK on MySQL), so it MUST remove EVERY row it
-  # committed or they leak into sibling tests that assert GLOBAL row counts (e.g.
-  # CacheClearTaskTest) and break reruns. Delete in reverse dependency order (issues -> watchers ->
-  # members -> pulse_* -> project -> users -> role), each guarded so a partial-setup failure still
-  # cleans what exists (ASM-07: no residual state).
+  # This class is non-transactional (real GET_LOCK on MySQL), so it MUST remove EVERY row it
+  # committed or they leak into sibling tests (e.g. CacheClearTaskTest) and break reruns
+  # (ASM-07: no residual state).
+  #
+  # COMPLETE footprint (traced from setup + add_watcher! + seed_green_baseline! + the scan body):
+  #   issues / enabled_modules / members / member_roles / projects_trackers / project
+  #                     Project.destroy_all cascades all of these (issues :dependent=>:destroy,
+  #                     enabled_modules :dependent=>:delete_all, members via before_destroy
+  #                     :delete_all_members, projects_trackers via HABTM teardown).
+  #   watchers          add_watcher! -> RedmineSubscriptionStore#watch! writes
+  #                     watchable_type='PulseHealth', watchable_id=project.id.
+  #                     Project#destroy has NO dependent for Watcher, so these MUST be removed
+  #                     explicitly before destroy_all. Also delete watchable_type='Project' rows
+  #                     for completeness.
+  #   pulse_alert_states  seed_green_baseline! upsert + the scan's advance_state (plugin table,
+  #                     not covered by Project#destroy — deleted explicitly before destroy_all).
+  #   pulse_snapshots   the scan's CanonicalScan cache write (plugin table, not covered —
+  #                     deleted explicitly before destroy_all).
+  #   users             User.destroy_all cascades email_addresses (:dependent=>:delete_all),
+  #                     tokens, user_preferences, and any remaining memberships. Destroyed AFTER
+  #                     Project.destroy_all so member_roles/members are already gone.
+  #   role              Role.destroy_all cascades any remaining member_roles. Destroyed AFTER
+  #                     users (both are freed from members by the project destroy).
   def teardown
     if @project
-      Issue.where(project_id: @project.id).delete_all rescue nil
-      Watcher.where(watchable_type: 'Project', watchable_id: @project.id).delete_all rescue nil
-      member_ids = Member.where(project_id: @project.id).pluck(:id)
-      MemberRole.where(member_id: member_ids).delete_all rescue nil
-      Member.where(project_id: @project.id).delete_all rescue nil
+      # Watchers: NOT cascaded by Project#destroy — delete explicitly before destroying the project.
+      Watcher.where(watchable_id: @project.id,
+                    watchable_type: %w[Project PulseHealth]).delete_all rescue nil
+      # Plugin tables: not covered by Project#destroy.
       if defined?(PulseAlertState)
         PulseAlertState.where(project_id: @project.id).delete_all rescue nil
       end
       ActiveRecord::Base.connection.execute(
         "DELETE FROM pulse_snapshots WHERE project_id = #{@project.id.to_i}"
       ) rescue nil
-      Project.where(id: @project.id).delete_all rescue nil
+      # Cascade: issues, enabled_modules, members/member_roles, projects_trackers, project row.
+      Project.where(id: @project.id).destroy_all rescue nil
     end
-    Array(@created_users).each { |u| User.where(id: u.id).delete_all rescue nil }
-    Role.where(name: "ConcMyViewer_#{uid}").delete_all rescue nil
+    # Destroy (not delete_all) so Redmine's User#destroy callbacks cascade email_addresses,
+    # tokens, user_preferences, etc. Project must be destroyed first (done above) so member_roles
+    # referencing these users are already gone before User#destroy fires its own callbacks.
+    user_ids = Array(@created_users).map(&:id).compact
+    User.where(id: user_ids).destroy_all rescue nil unless user_ids.empty?
+    # Destroy (not delete_all) so Role#destroy cascades any remaining member_roles.
+    Role.where(name: "ConcMyViewer_#{uid}").destroy_all rescue nil
   end
 
   def alert_store

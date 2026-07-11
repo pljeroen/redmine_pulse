@@ -47,27 +47,47 @@ class PulseScanDelegatesToAdvisoryLockTest < ActiveSupport::TestCase
 
   # Non-transactional: the MySQL delegation test COMMITS a role/user/project/member/issue (in the
   # test body) that must be removed or they dirty the shared DB and break reruns / sibling
-  # GLOBAL-count assertions (e.g. CacheClearTaskTest). Delete in reverse dependency order (issues ->
-  # watchers -> members -> pulse_* -> project -> user -> role), each guarded so a partial-setup
-  # failure (or the source-guard test, which creates nothing) still cleans exactly what exists.
-  # ASM-07: no residual state.
+  # GLOBAL-count assertions (e.g. CacheClearTaskTest). ASM-07: no residual state.
+  #
+  # COMPLETE footprint (traced from the MySQL delegation test body + the scan it runs):
+  #   issues / enabled_modules / members / member_roles / projects_trackers / project
+  #                     Project.destroy_all cascades all of these (issues :dependent=>:destroy,
+  #                     enabled_modules :dependent=>:delete_all, members via before_destroy
+  #                     :delete_all_members, projects_trackers via HABTM teardown).
+  #   watchers          this test creates NO watchers, but the scan body can write
+  #                     watchable_type='PulseHealth' rows via RedmineSubscriptionStore.
+  #                     Project#destroy has NO dependent for Watcher — delete explicitly
+  #                     for both Project and PulseHealth types before destroy_all.
+  #   pulse_alert_states  the scan's advance_state (plugin table, not covered by Project#destroy —
+  #                     deleted explicitly before destroy_all).
+  #   pulse_snapshots   the scan's CanonicalScan cache write (plugin table, not covered —
+  #                     deleted explicitly before destroy_all).
+  #   user              User.destroy_all cascades email_addresses (:dependent=>:delete_all),
+  #                     tokens, user_preferences, and any remaining memberships. Destroyed AFTER
+  #                     Project.destroy_all so member_roles/members are already gone.
+  #   role              Role.destroy_all cascades any remaining member_roles. Destroyed AFTER
+  #                     user (both are freed from members by the project destroy).
   def teardown
     if @project
-      Issue.where(project_id: @project.id).delete_all rescue nil
-      Watcher.where(watchable_type: 'Project', watchable_id: @project.id).delete_all rescue nil
-      member_ids = Member.where(project_id: @project.id).pluck(:id)
-      MemberRole.where(member_id: member_ids).delete_all rescue nil
-      Member.where(project_id: @project.id).delete_all rescue nil
+      # Watchers: NOT cascaded by Project#destroy — delete explicitly before destroying the project.
+      Watcher.where(watchable_id: @project.id,
+                    watchable_type: %w[Project PulseHealth]).delete_all rescue nil
+      # Plugin tables: not covered by Project#destroy.
       if defined?(PulseAlertState)
         PulseAlertState.where(project_id: @project.id).delete_all rescue nil
       end
       ActiveRecord::Base.connection.execute(
         "DELETE FROM pulse_snapshots WHERE project_id = #{@project.id.to_i}"
       ) rescue nil
-      Project.where(id: @project.id).delete_all rescue nil
+      # Cascade: issues, enabled_modules, members/member_roles, projects_trackers, project row.
+      Project.where(id: @project.id).destroy_all rescue nil
     end
-    User.where(id: @author.id).delete_all rescue nil if @author
-    Role.where(id: @role.id).delete_all rescue nil if @role
+    # Destroy (not delete_all) so Redmine's User#destroy callbacks cascade email_addresses,
+    # tokens, user_preferences, etc. Project must be destroyed first (done above) so member_roles
+    # referencing this user are already gone before User#destroy fires its own callbacks.
+    User.where(id: @author.id).destroy_all rescue nil if @author
+    # Destroy (not delete_all) so Role#destroy cascades any remaining member_roles.
+    Role.where(id: @role.id).destroy_all rescue nil if @role
   end
 
   # ── (2) source guard: the inline adapter_name / pg_advisory branch must be GONE ──

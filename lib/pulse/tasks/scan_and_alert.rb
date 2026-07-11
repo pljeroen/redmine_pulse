@@ -62,8 +62,13 @@ module Pulse
           # state, both deliver the SAME transition, and both advance — duplicate emails for one
           # transition. with_project_lock delegates to the per-connection AdvisoryLock adapter,
           # taking a per-project advisory lock keyed by project_id: the second overlapping run does
-          # NOT run the critical section concurrently (PG blocks until the first commits its
-          # advance_state then emits nothing; MySQL fails closed and skips this cycle).
+          # NOT run the critical section concurrently. PG blocks (transaction-scoped lock) until the
+          # first commits its advance_state, then emits nothing. MySQL does the SAME by default — a
+          # BOUNDED-BLOCKING GET_LOCK: the contended scan waits up to the adapter's ACQUIRE_TIMEOUT,
+          # then acquires the instant the holder releases and observes the already-advanced state
+          # (no re-fire). It fails closed (safely skips this project for this cron cycle, retried
+          # next run) ONLY if that timeout expires — a stuck/slow holder — never as the normal
+          # contention path.
           events = with_project_lock(project.id) do
             scan_project(
               project, state_store: state_store, subscriptions: subscriptions,

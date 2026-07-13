@@ -21,7 +21,7 @@ Redmine::Plugin.register :redmine_pulse do
   description 'Portfolio / project-health cockpit: composite health scoring, ' \
               'prioritization lenses, and a read API — computed from real ' \
               'Redmine data. No invented dates; read-only; permission-safe.'
-  version     '0.1.0'
+  version     '0.2.0'
   url         'https://github.com/pljeroen/redmine_pulse'
   author_url  'https://github.com/pljeroen'
 

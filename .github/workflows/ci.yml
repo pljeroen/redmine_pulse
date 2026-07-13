@@ -48,13 +48,15 @@ jobs:
       - name: Run pure-domain suite
         run: ruby -Itest -Ilib -e 'Dir["test/unit/domain/*_test.rb"].sort.each { |f| require File.expand_path(f) }'
 
-  # ── Compatibility matrix: Ruby {3.2, 3.4} × DB {postgres, mysql} on 6.1.x. ──
+  # ── Compatibility matrix: Redmine {6.1.2, 7.0.0} × Ruby {3.2, 3.4} × DB ──────
+  #    {postgres, mysql}. RM6.1.x is Rails 7.2; RM7.0.x is Rails 8.1 / Propshaft.
   harness:
-    name: Redmine 6.1.x · Ruby ${{ matrix.ruby }} · ${{ matrix.db }}
+    name: Redmine ${{ matrix.redmine }} · Ruby ${{ matrix.ruby }} · ${{ matrix.db }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        redmine: ['6.1.2', '7.0.0']
         ruby: ['3.2', '3.4']
         db: [postgres, mysql]
 
@@ -93,10 +95,17 @@ jobs:
         with:
           path: redmine_pulse
 
-      - name: Checkout Redmine 6.1.x (v6.1.2)
-        # Pin the IMMUTABLE 6.1.2 tag, never the moving 6.1-stable branch — the
-        # tested substrate must not change without a repo change.
-        run: git clone --depth 1 --branch 6.1.2 https://github.com/redmine/redmine.git redmine
+      - name: Checkout Redmine ${{ matrix.redmine }}
+        # Pin an IMMUTABLE release tag (6.1.2 / 7.0.0), never a moving *-stable
+        # branch — the tested substrate must not change without a repo change.
+        # Both literal branch refs stay in-file so the static CI-safety guard can
+        # verify each checkout targets an immutable ref.
+        run: |
+          case "${{ matrix.redmine }}" in
+            6.1.2) git clone --depth 1 --branch 6.1.2 https://github.com/redmine/redmine.git redmine ;;
+            7.0.0) git clone --depth 1 --branch 7.0.0 https://github.com/redmine/redmine.git redmine ;;
+            *)     echo "Unsupported Redmine matrix version: ${{ matrix.redmine }}" >&2; exit 1 ;;
+          esac
 
       - name: Link plugin into Redmine
         run: |

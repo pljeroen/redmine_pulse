@@ -80,7 +80,7 @@ class RegistrationTest < ActiveSupport::TestCase
     # (no project context), so we exercise the global allowed_to? path that init.rb
     # uses: proc { User.current.allowed_to?(:view_pulse, nil, global: true) }.
     #
-    # Falsifiability: the negative case below FAILS if the proc were proc { true }
+    # Negative case: the assertion below FAILS if the proc were proc { true }
     # (always visible); the positive case FAILS if it were proc { false } (always
     # hidden). Strong positive = a REAL non-admin member who holds :view_pulse via
     # a role (admins bypass allowed_to? and would be a weak positive).

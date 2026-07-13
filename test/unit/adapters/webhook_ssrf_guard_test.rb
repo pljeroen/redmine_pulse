@@ -8,7 +8,12 @@
 # Free Software Foundation. See <https://www.gnu.org/licenses/> (GPL-2.0-only).
 
 require 'minitest/autorun'
-require 'minitest/mock' # Resolv.stub / Object#stub — not auto-loaded standalone.
+begin
+  require 'minitest/mock' # Resolv.stub / Object#stub — native on minitest 5.x (Redmine 6.1).
+rescue LoadError => e # minitest 6.x (Redmine 7 / Rails 8.1) dropped minitest/mock.
+  raise unless e.path == 'minitest/mock'
+  require File.expand_path('../../support/portable_stub', __dir__)
+end
 require 'resolv'
 require 'ipaddr'
 

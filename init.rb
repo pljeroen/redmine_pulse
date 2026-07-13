@@ -315,10 +315,19 @@ if defined?(Rails) && Rails.env.test?
   # Pulse::Mailer.stub / Rails.stub, but Redmine 6.1.2's test_helper does not require
   # minitest/mock, so Object#stub is otherwise undefined on the harness. Requiring it here
   # (guarded to the test env) makes those suites' stub calls resolve. Best-effort.
+  #
+  # Redmine 7 / Rails 8.1 bundles minitest 6.x, which DROPPED the bundled
+  # minitest/mock — so the require above raises LoadError and Object#stub is
+  # undefined. Fall back to a vendored, behaviour-identical #stub so the stub-based
+  # suites run identically on minitest 5.x (Redmine 6.1) and 6.x (Redmine 7).
   begin
     require 'minitest/mock'
-  rescue LoadError
-    nil
+  rescue LoadError => e
+    # Only fall back when minitest/mock itself is absent (minitest 6.x). A
+    # LoadError from a DIFFERENT missing file means a genuinely broken load — re-raise
+    # it rather than silently masking it with the shim.
+    raise unless e.path == 'minitest/mock'
+    require File.expand_path('test/support/portable_stub', __dir__)
   end
 
   # JSON-Schema draft-07 support (test env ONLY). The API schemas declare

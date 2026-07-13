@@ -1,6 +1,7 @@
 # Redmine Pulse
 
-A portfolio and project-health dashboard for Redmine 6.x (plugin id `redmine_pulse`).
+A portfolio and project-health dashboard for Redmine 6.1 and 7.0 — verified on 6.1.2 and
+7.0.0 (plugin id `redmine_pulse`).
 It answers one question — which project needs attention next, and why — by scoring every
 project you can see, ranking them, and showing a red/amber/green status with the main reason
 for each. English and Dutch.
@@ -8,7 +9,7 @@ for each. English and Dutch.
 [![CI](https://github.com/pljeroen/redmine_pulse/actions/workflows/ci.yml/badge.svg)](https://github.com/pljeroen/redmine_pulse/actions/workflows/ci.yml)
 [![License: GPL-2.0-only](https://img.shields.io/badge/license-GPL--2.0--only-green)](LICENSE)
 [![Ruby](https://img.shields.io/badge/Ruby-3.2%20%7C%203.4-orange)](https://www.ruby-lang.org/)
-[![Redmine](https://img.shields.io/badge/Redmine-6.1%2B-purple)](https://www.redmine.org/)
+[![Redmine](https://img.shields.io/badge/Redmine-6.1%20%7C%207.0-purple)](https://www.redmine.org/)
 [![Architecture](https://img.shields.io/badge/architecture-hexagonal-purple)](#how-it-works)
 
 ## What it does
@@ -65,7 +66,7 @@ bundle exec rails assets:precompile RAILS_ENV=production
 
 Then restart your application server (Passenger, Puma, etc.).
 
-The `assets:precompile` step is required. Redmine 6.x serves plugin CSS/JS as fingerprinted
+The `assets:precompile` step is required. Redmine 6.x and 7.0 serve plugin CSS/JS as fingerprinted
 [Propshaft](https://github.com/rails/propshaft) assets; without it the stylesheet and the
 project-list badge script are never served, so the dashboard renders unstyled and the badges
 don't appear. Re-run it after every upgrade.
@@ -223,15 +224,17 @@ and on manual dispatch:
 
 | Redmine | Ruby 3.2 | Ruby 3.4 |
 | --- | --- | --- |
-| **6.1.x** | PostgreSQL 16 · MySQL 8 | PostgreSQL 16 · MySQL 8 |
+| **6.1.x** (Rails 7.2) | PostgreSQL 16 · MySQL 8 | PostgreSQL 16 · MySQL 8 |
+| **7.0.x** (Rails 8.1) | PostgreSQL 16 · MySQL 8 | PostgreSQL 16 · MySQL 8 |
 
-That's four combinations plus a fast standalone pure-domain lane. CI runs on pushes to `master`
+That's eight combinations plus a fast standalone pure-domain lane. CI runs on pushes to `master`
 and manual dispatch only, never on pull requests, so a fork PR triggers nothing.
 
 Development verifies the full suite against Redmine 6.1.2 on Ruby 3.4 + PostgreSQL 16, the
-pure-domain lane on Ruby 3.2 and 3.4, and at least one full run on MySQL 8. Other Redmine 6.x
-point releases should work but aren't part of the verified set yet; the DOM and asset
-assumptions are kept defensive.
+pure-domain lane on Ruby 3.2 and 3.4, and a full run on MySQL 8; CI additionally exercises
+Redmine 7.0.0 (Rails 8.1) across the same matrix. Other Redmine 6.x / 7.0.x point releases
+should work but aren't part of the verified set yet; the DOM and asset assumptions are kept
+defensive.
 
 The interface ships in English and Dutch (`nl`); Redmine renders it in each viewer's language
 and falls back to English for anything untranslated.
@@ -256,16 +259,23 @@ Two lanes, mirroring CI:
   ```
 
 - **Full Redmine-integrated suite** — the committed harness under
-  [`scripts/test-redmine/`](scripts/test-redmine/README.md) (an ephemeral Redmine 6.1.x +
-  PostgreSQL container pair): `./scripts/test-redmine/up.sh` then
-  `./scripts/test-redmine/run-tests.sh`.
+  [`scripts/test-redmine/`](scripts/test-redmine/README.md), an ephemeral, isolated
+  container stack parameterized over the compatibility matrix (Redmine `6.1.2`/`7.0.0` ×
+  `postgres`/`mysql`). For example, Redmine 7.0 on MySQL:
+
+  ```sh
+  REDMINE_VERSION=7.0.0 DB=mysql ./scripts/test-redmine/up.sh
+  REDMINE_VERSION=7.0.0 DB=mysql ./scripts/test-redmine/run-tests.sh
+  ```
+
+  Both default to `6.1.2` / `postgres`.
 
 [`scripts/ci/run.sh`](scripts/ci/run.sh) is what CI invokes; it runs both lanes against any
 prepared Redmine checkout (set `REDMINE_ROOT` or pass the root as `$1`).
 
 ## Roadmap
 
-More locales, and wider coverage of Redmine 6.x point releases. See [`CHANGELOG.md`](CHANGELOG.md).
+More locales, and wider coverage of Redmine 6.x / 7.x point releases. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing
 

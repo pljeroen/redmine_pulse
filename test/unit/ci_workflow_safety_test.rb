@@ -193,11 +193,15 @@ class CiWorkflowSafetyTest < Minitest::Test
     assert(matrix_tokens.any? { |t| t.include?('mysql') },
            "#{WORKFLOW}: CI matrix MUST include a MySQL DB leg. got=#{matrix_tokens.inspect}")
 
-    # Redmine 6.1.x must be the pinned target somewhere in the workflow (the
-    # checkout step pins the tag, e.g. v6.1.2).
-    src = read_or_flunk(WORKFLOW)
-    assert_match(/6\.1\.\d+|6\.1\.x|v6\.1/, src,
-                 "#{WORKFLOW}: the workflow MUST pin Redmine 6.1.x as the test target")
+    # Both supported Redmine majors must be MATRIX AXIS VALUES so the 2x2 DB
+    # matrix is proven on BOTH Redmine 6.1.x AND 7.0.x. Assert on matrix_tokens
+    # (not raw src) so an incidental substring — e.g. `127.0.0.1` containing
+    # "7.0.0" — cannot satisfy the RM7 requirement.
+    assert(matrix_tokens.any? { |t| t =~ /\A6\.1(?:\.\d+|\.x)?\z/ },
+           "#{WORKFLOW}: the CI matrix MUST include a Redmine 6.1.x leg. got=#{matrix_tokens.inspect}")
+    assert(matrix_tokens.any? { |t| t =~ /\A7\.0(?:\.\d+|\.x)?\z/ },
+           "#{WORKFLOW}: the CI matrix MUST include a Redmine 7.0.x leg (RM7 / Rails 8.1 " \
+           "support is part of the verified matrix). got=#{matrix_tokens.inspect}")
   end
 
   # ───────────────────── host-neutral run.sh ─────────────────────
@@ -264,7 +268,7 @@ class CiWorkflowSafetyTest < Minitest::Test
   # guard — either by a recursive `test/unit/**` glob, or by explicitly naming the
   # guards alongside the domain glob. This fails on a `test/unit/domain/*`-only
   # run.sh.
-  def test_a10_001_run_sh_standalone_lane_runs_full_unit_suite_not_only_domain
+  def test_run_sh_standalone_lane_runs_full_unit_suite_not_only_domain
     src = read_or_flunk(CI_SCRIPT)
 
     # The non-domain top-level unit guards that the Redmine functional+integration
@@ -317,7 +321,7 @@ class CiWorkflowSafetyTest < Minitest::Test
   # change, defeating reproducibility. The Redmine checkout MUST target an IMMUTABLE
   # ref: the `v6.1.2` tag, or a 40-hex commit SHA. The moving `6.1-stable` branch
   # ref MUST NOT be used. This fails on a `-b 6.1-stable` clone.
-  def test_a10_002_workflow_checks_out_immutable_redmine_ref_not_moving_branch
+  def test_workflow_checks_out_immutable_redmine_ref_not_moving_branch
     src = read_or_flunk(WORKFLOW)
 
     # Find the Redmine-checkout command line(s): a git clone of the redmine repo.
@@ -337,11 +341,11 @@ class CiWorkflowSafetyTest < Minitest::Test
                    "#{line.inspect}")
 
       # (b) More generally: a `-b <ref>` / `--branch <ref>` checkout target on the
-      #     redmine clone MUST be an immutable ref — the v6.1.2 tag or a 40-hex SHA.
-      #     Any other named ref (a moving branch) FAILS CLOSED.
+      #     redmine clone MUST be an immutable ref — a pinned release tag (6.1.2 or
+      #     7.0.0) or a 40-hex SHA. Any other named ref (a moving branch) FAILS CLOSED.
       if (m = line.match(/(?:-b|--branch)[=\s]+(\S+)/))
         ref = m[1].delete('"\'')
-        immutable = ref =~ /\Av?6\.1\.2\z/ || ref =~ /\A[0-9a-f]{40}\z/
+        immutable = ref =~ /\Av?(?:6\.1\.2|7\.0\.0)\z/ || ref =~ /\A[0-9a-f]{40}\z/
         assert(immutable,
                "#{WORKFLOW}: the Redmine checkout ref `#{ref}` is not an immutable target — it " \
                "MUST be the v6.1.2 tag or a full 40-hex commit SHA, never a moving branch " \
@@ -362,13 +366,42 @@ class CiWorkflowSafetyTest < Minitest::Test
            "No immutable checkout ref found.")
   end
 
+  # ───────────────────── redmine matrix ⇄ checkout ref bijection ───────
+
+  # BIJECTIVE MAPPING. Every value in the `redmine` matrix axis MUST have an explicit
+  # `--branch <version>` checkout ref in the workflow. Otherwise a matrix value with no
+  # explicit mapping falls through to a fallback branch — the job is LABELLED as that
+  # version but actually tests the fallback (a silent-mislabel defect). This fails on a
+  # checkout `case` whose only concrete arm is one version with a catch-all `*)` fallback.
+  def test_every_redmine_matrix_token_has_an_explicit_immutable_checkout_ref
+    wf = workflow_yaml
+    src = read_or_flunk(WORKFLOW)
+
+    redmine_tokens = wf.fetch('jobs', {}).values.flat_map do |job|
+      next [] unless job.is_a?(Hash)
+      m = job.dig('strategy', 'matrix')
+      m.is_a?(Hash) ? Array(m['redmine']).map(&:to_s) : []
+    end
+    refute_empty redmine_tokens,
+                 "#{WORKFLOW}: expected a `redmine` matrix axis to enforce the checkout bijection"
+
+    redmine_tokens.uniq.each do |ver|
+      assert_match(/(?:-b|--branch)[=\s]+#{Regexp.escape(ver)}\b/, src,
+                   "#{WORKFLOW}: Redmine matrix version #{ver.inspect} has no explicit " \
+                   "`--branch #{ver}` checkout ref. A matrix value with no explicit checkout " \
+                   "would silently test a fallback version. Map every version explicitly and " \
+                   "make the catch-all arm fail (exit 1), not default to another version.")
+    end
+  end
+
   # ───────────────────── README compatibility matrix + CI badge ────────
 
   def test_ci11_readme_has_compatibility_matrix_and_ci_badge
     src = read_or_flunk(README)
 
-    # A compatibility matrix mentioning Redmine 6.1 + both Ruby versions + both DBs.
+    # A compatibility matrix mentioning Redmine 6.1 AND 7.0 + both Ruby versions + both DBs.
     assert_match(/6\.1/, src, "#{README}: compatibility matrix must mention Redmine 6.1")
+    assert_match(/7\.0/, src, "#{README}: compatibility matrix must mention Redmine 7.0")
     assert_match(/3\.2/, src, "#{README}: compatibility matrix must mention Ruby 3.2")
     assert_match(/3\.4/, src, "#{README}: compatibility matrix must mention Ruby 3.4")
     assert_match(/PostgreSQL/i, src, "#{README}: compatibility matrix must mention PostgreSQL")
@@ -396,6 +429,9 @@ class CiWorkflowSafetyTest < Minitest::Test
     # The entry must mention GitHub Actions (the host) so the CI addition is concrete.
     assert_match(/GitHub Actions/i, src,
                  "#{CHANGELOG}: the CI entry should name GitHub Actions, the chosen CI host")
+    # RM7 support must be recorded so the compatibility claim is documented, not silent.
+    assert_match(/7\.0|Redmine 7/i, src,
+                 "#{CHANGELOG}: must record Redmine 7.0 support")
   end
 
   # ───────────────────── harness committed + referenced ────────────

@@ -17,7 +17,7 @@ require File.expand_path('../../pulse_adapter_test_support', File.expand_path(__
 # and the subscription is EXACTLY what RedmineSubscriptionStore#subscribers_for reads, so a
 # watched user receives the scan email and an unwatched user does not.
 #
-# Falsifiability chain (end-to-end through the real HTTP surface):
+# End-to-end negative/positive chain (through the real HTTP surface):
 #   (1) before watching, the viewer is NOT in subscribers_for and receives NO email;
 #   (2) after POST watch, the viewer IS in subscribers_for and RECEIVES the scan email;
 #   (3) after POST unwatch, the viewer is again absent from subscribers_for and receives none.

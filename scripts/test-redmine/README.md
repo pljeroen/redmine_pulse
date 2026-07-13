@@ -1,108 +1,115 @@
-# redmine_pulse — Isolated Functional Test Harness
+# redmine_pulse — Parameterized Test Matrix Harness
 
 ## Purpose
 
-Isolated Podman-based harness to run `rake redmine:plugins:test` for the
-`redmine_pulse` plugin against a real Redmine 6.1.2 instance + Postgres 16.
+Podman-based harness to run `rake redmine:plugins:test` for the `redmine_pulse`
+plugin across a **matrix of Redmine versions x databases**. Every combo is a
+distinct, reproducible, isolated stack:
 
-## Isolation guarantee
+| Combo | Redmine | Rails | Database | Ruby |
+|-------|---------|-------|----------|------|
+| 6.1.2 x postgres | 6.1.2 | 7.2 | PostgreSQL 16 | 3.4 |
+| 6.1.2 x mysql    | 6.1.2 | 7.2 | MySQL 8       | 3.4 |
+| 7.0.0 x postgres | 7.0.0 | 8.1 | PostgreSQL 16 | 3.4 |
+| 7.0.0 x mysql    | 7.0.0 | 8.1 | MySQL 8       | 3.4 |
 
-All resources are prefixed `pulse_test_*` and exist on a dedicated network.
-This harness **never touches** any container, network, volume, or image outside
-its own `pulse_test_*` set.
+## Isolation model
 
-## Versions
+- **Shared substrate (reused, never recreated):** network `pulse_test_net`,
+  Postgres `pulse_test_pg`, MySQL `pulse_test_mysql`. `up.sh` ensures these exist
+  (creating them only if absent) and never stops or removes them.
+- **Per-combo (created/removed by this harness only):**
+  - container `pulse_test_rm_<ver>_<db>` (e.g. `pulse_test_rm_7_0_0_mysql`) — its
+    OWN Redmine checkout, so a PostgreSQL-format `db/schema.rb` can never leak into
+    a MySQL leg;
+  - test DB `redmine_pulse_test_<ver>_<db>` — distinct per combo;
+  - built image `pulse-test-redmine:<ver>` for versions without an official image.
 
-| Component | Image                                  |
-|-----------|----------------------------------------|
-| Redmine   | `docker.io/library/redmine:6.1.2`      |
-| Postgres  | `docker.io/library/postgres:16-alpine` |
+Every combo therefore has a distinct DB **and** a distinct container, so nothing
+collides with another combo or another session on the same host.
+
+## Version -> image routing
+
+- **6.1.x** -> official `docker.io/library/redmine:<ver>`.
+- **7.0.x** (and any version with no official image — Docker Hub's newest
+  `redmine` is 6.1.3) -> built from `Dockerfile` using the official release tarball
+  `https://www.redmine.org/releases/redmine-<ver>.tar.gz` on `ruby:3.4-slim-bookworm`.
+  Both `libpq-dev` and `default-libmysqlclient-dev` are installed so one image
+  serves either DB; gems are bundled at runtime (the gem set is DB-dependent).
 
 ## Commands
 
 ```sh
-# 1. Bring up the stack (first run installs build tools + gems — takes minutes)
-./scripts/test-redmine/up.sh
+cd scripts/test-redmine
 
-# 2. Run the plugin tests
-./scripts/test-redmine/run-tests.sh
+# Bring up one combo (defaults: REDMINE_VERSION=6.1.2 DB=postgres)
+REDMINE_VERSION=6.1.2 DB=postgres  ./up.sh
+REDMINE_VERSION=6.1.2 DB=mysql     ./up.sh
+REDMINE_VERSION=7.0.0 DB=postgres  ./up.sh
+REDMINE_VERSION=7.0.0 DB=mysql     ./up.sh
+# flags also work:  ./up.sh --redmine-version 7.0.0 --db mysql
 
-# 3. Tear down everything (idempotent)
-./scripts/test-redmine/down.sh
+# Run the suite for the matching combo (same params)
+REDMINE_VERSION=7.0.0 DB=mysql ./run-tests.sh
+
+# Tear down ONE combo (default: REDMINE_VERSION=6.1.2 DB=postgres, same params as up.sh).
+# Refuses if that combo is busy (a live up.sh/run-tests.sh holds its lock).
+REDMINE_VERSION=7.0.0 DB=mysql ./down.sh          # its pulse_test_rm_ container
+REDMINE_VERSION=7.0.0 DB=mysql ./down.sh --dbs    # also drop that combo's DB
+
+# Tear down EVERY combo (all pulse_test_rm_* containers + pulse-test-redmine:* images
+# + all redmine_pulse_test_* DBs). Skips (warns on) any combo whose lock is held.
+./down.sh --all
+./down.sh --all --network  # also remove pulse_test_net if empty
 ```
 
-## Smoke-test result (2026-06-20)
+Run combos **sequentially** — they share the same Postgres/MySQL servers.
 
-Status: **WORKS-WITH-CAVEAT**
+## Expected results
 
-- Redmine 6.1.2 (docker.io/library/redmine:6.1.2, Debian 13 trixie, Ruby 3.4)
-- Postgres 16-alpine
-- `rake redmine:plugins:test NAME=redmine_pulse RAILS_ENV=test` runs the full
-  functional/integration + domain suite to completion. Expect **0 failures and
-  2 skips** — the 2 skips are the bare-process purity guards described in the
-  caveat below (they are only meaningful in the standalone domain lane). Any other
-  skip or failure is a real signal.
+A combo is **GREEN iff 0 failures AND 0 errors**.
 
-## Domain unit tests vs. Redmine functional tests — load-path caveat
+| Combo | runs | failures | errors | skips |
+|-------|------|----------|--------|-------|
+| 6.1.2 x postgres | 1254 | 0 | 0 | ~4   |
+| 6.1.2 x mysql    | 1254 | 0 | 0 | ~324 |
+| 7.0.0 x postgres | 1254 | 0 | 0 | ~4   |
+| 7.0.0 x mysql    | 1254 | 0 | 0 | ~324 |
 
-The plugin has two test suites with **different load paths**:
+- **~4 PG skips** — bare-process purity guards (`DomainPurityTest` /
+  `TimelineDomainPurityTest#test_suite_loads_without_rails_or_redmine`) skip under
+  the rake task (Rails is booted first; they are verified in the pure-domain lane).
+- **~324 MySQL skips** — PG-gated functional tests skip on MySQL by policy.
 
-### Standalone domain suite (`test/unit/domain/`)
+## Proof-run isolation guard (HARNESS-ISO)
 
-Uses `test/domain_test_helper.rb` — plain Minitest, `-Ilib` only.
-Zero Redmine dependency. Intended to run standalone:
+`run-tests.sh` makes single-writer isolation mechanical:
 
-```sh
-ruby -Itest -Ilib test/unit/domain/scoring_formula_test.rb
-```
+1. a host `flock` **keyed on the combo DB** (`/tmp/pulse-redmine-test.<db>.lock`)
+   serializes runs of the same combo without falsely serializing different combos;
+2. a preflight refuses to start (exit 2) if any FOREIGN connection is already
+   attached to **this combo's DB**, and fails closed (exit 3) if the preflight
+   query itself cannot run.
 
-When Redmine's rake task picks up these tests, they run under Rails' load path.
-**Two tests assert Rails/Redmine are not loaded** (`DomainPurityTest` and
-`TimelineDomainPurityTest`, `#test_suite_loads_without_rails_or_redmine`). Those
-guards are only meaningful in the standalone domain lane, so under
-`rake redmine:plugins:test` — where Rails is booted first — they **SKIP** rather
-than fail. That is the source of the expected 2 skips; they are verified in the
-standalone lane. All other domain tests pass correctly.
+The preflight probes the **actual adapter/server** for the combo (PostgreSQL
+`pg_stat_activity` or MySQL `information_schema.processlist`).
 
-Do NOT modify the domain tests to force these two guards green under rake. The
-standalone suite stays standalone; the Redmine task is for functional tests.
+## Two defect fixes baked into this harness
 
-### Functional / integration suite (`test/functional/`, `test/integration/`)
+1. **Test-group install.** On the `redmine:6.1.2` image an app-level bundler
+   `without` overrides a local `with`, so `bundle config set --local with 'test'`
+   silently skips the test group and `mocha`/`minitest` raise `LoadError`. `up.sh`
+   uses `bundle config set --local without 'development'` instead and asserts
+   `mocha` is present after `bundle install`.
+2. **Isolation-guard adapter.** The previous harness always probed
+   `pulse_test_pg`/`redmine_test` even on a MySQL run. The guard now probes the
+   combo's real DB on its real server (postgres or mysql).
 
-Uses `test/test_helper.rb` — requires Redmine's test_helper.
-Run via Redmine's rake task (what this harness is for):
+## Files
 
-```sh
-rake redmine:plugins:test NAME=redmine_pulse RAILS_ENV=test
-```
-
-### Scoping rules for the functional test suite
-
-- File location: `test/functional/pulse_<feature>_test.rb`
-- First line: `require File.expand_path('../../../../test/test_helper', __FILE__)`
-  (already wired in `test/test_helper.rb` — just `require 'test_helper'`)
-- The standalone domain suite in `test/unit/domain/` stays untouched.
-- The `DomainPurityTest` / `TimelineDomainPurityTest` **skip** under
-  `rake redmine:plugins:test` is expected as-is (it proves the isolation is real).
-
-## First-run prerequisites (handled by up.sh)
-
-The official `redmine:6.1.2` image (Debian) ships without build tools
-(gcc, make) and native dev headers. `up.sh` installs these into the container
-on first run:
-
-- `build-essential` — gcc, make, etc. (for native gem extensions)
-- `libpq-dev` — PostgreSQL client headers (for the `pg` gem)
-- `libyaml-dev` — YAML headers (for the `psych` gem)
-
-These installs are not persistent across container re-creation. `up.sh` always
-runs them on a fresh container.
-
-## Resources created
-
-| Resource           | Name                |
-|--------------------|---------------------|
-| Podman network     | `pulse_test_net`    |
-| Postgres container | `pulse_test_pg`     |
-| Redmine container  | `pulse_test_redmine`|
-| Postgres volume    | `pulse_test_pgdata` |
+| File | Role |
+|------|------|
+| `Dockerfile`   | Tarball build for versions without an official image (7.0.x+). |
+| `up.sh`        | Bring up one (version x DB) combo. |
+| `run-tests.sh` | Run the suite for one combo (with isolation guard). |
+| `down.sh`      | Tear down ONE combo (default) or every combo (`--all`); shared substrate safe, refuses/skips busy combos. |

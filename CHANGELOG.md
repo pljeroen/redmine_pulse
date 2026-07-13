@@ -5,6 +5,18 @@ All notable changes to **redmine_pulse** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Redmine 7.0 support.** The plugin now runs on Redmine 7.0 (Ruby 3.4, Rails
+  8.1, Propshaft) in addition to Redmine 6.1 (Rails 7.2) — no scoring or storage
+  changes; the same read-only, permission-safe behaviour on both. Verified on Redmine
+  6.1.2 and 7.0.0; other point releases are expected to work but are not yet in the
+  verified set. The GitHub Actions CI matrix exercises Redmine 6.1.2 and 7.0.0 across
+  Ruby 3.2 / 3.4 and PostgreSQL 16 / MySQL 8 (eight combinations) plus the standalone
+  pure-domain lane.
+
 ## [0.1.0] - 2026-07-03
 
 First public release. A feature-complete portfolio / project-health cockpit

@@ -404,4 +404,24 @@ class StaticSourceGuardsTest < Minitest::Test
                  "(stylesheet_link_tag '...redmine_pulse' or content_for(:header_tags)) so the RAG " \
                  "colors/sparkline styling actually load")
   end
+
+  # ───────────── standalone-lane hygiene ───────────────
+  #
+  # test/unit is the bare-Ruby STANDALONE lane. scripts/ci/run.sh Lane 2 sweeps it recursively
+  # (Dir["test/unit/**/*_test.rb"]) under plain `ruby` with NO Rails. A test that requires the
+  # Redmine test_helper boots Rails during that sweep — which, on a migrated schema, trips
+  # maintain_test_schema!/PendingMigrationError and crashes the whole lane. (This guard exists
+  # because a misfiled pulse_view_model_test.rb did exactly that.) Rails/AR-coupled tests belong
+  # in test/functional or test/integration, where the Redmine-integrated lane runs them.
+  def test_unit_lane_is_free_of_rails_coupled_tests
+    offenders = Dir[path('test/unit/**/*_test.rb')].select do |f|
+      src = File.read(f)
+      src.match?(%r{require\s.*/test/test_helper}) || src.match?(/require\s+['"]test_helper['"]/)
+    end.map { |f| f.sub(ROOT + '/', '') }.sort
+    assert_empty offenders,
+                 "test/unit is the bare-Ruby standalone lane (CI Lane 2 requires each file under " \
+                 "plain ruby, no Rails). These files require the Redmine test_helper and boot Rails, " \
+                 "crashing the lane — move them to test/functional or test/integration: " \
+                 "#{offenders.join(', ')}"
+  end
 end
